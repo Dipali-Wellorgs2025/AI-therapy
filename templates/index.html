@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Therapy Chat Bot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f7fa;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .chat-container {
+      max-width: 700px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 12px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #chatbox {
+      height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fafafa;
+      margin-bottom: 10px;
+    }
+
+    .msg {
+      margin: 10px 0;
+      line-height: 1.4;
+    }
+
+    .user-msg {
+      text-align: right;
+      color: #333;
+    }
+
+    .bot-msg {
+      text-align: left;
+      color: #0055cc;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #0055ff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #0041cc;
+    }
+  </style>
+</head>
+<body>
+
+<div class="chat-container">
+  <h2>🧠 Therapy Bot Chat</h2>
+
+  <label>Your Name:</label>
+  <input type="text" id="user_name" placeholder="e.g. Ananya">
+
+  <label>Select Bot:</label>
+  <select id="botName">
+    <option value="Sage">Sage (Anxiety)</option>
+    <option value="Jorden">Jorden (Breakups)</option>
+    <option value="River">River (Self-worth)</option>
+    <option value="Phoenix">Phoenix (Trauma)</option>
+    <option value="Ava">Ava (Family)</option>
+    <option value="Raya">Raya (Crisis)</option>
+  </select>
+
+  <label>Issue Description:</label>
+  <input type="text" id="issue_description" placeholder="e.g. I can't talk to my dad">
+
+  <label>Preferred Style:</label>
+  <select id="preferred_style">
+    <option value="Practical">Practical</option>
+    <option value="Validating">Validating</option>
+    <option value="Balanced" selected>Balanced</option>
+  </select>
+
+  <label>Severity Rating (1–10):</label>
+  <input type="number" id="severity_rating" min="1" max="10" value="5">
+
+  <label>Message:</label>
+  <textarea id="messageInput" rows="3" placeholder="Type your message..."></textarea>
+
+  <button onclick="sendMessage()">Send</button>
+
+  <div id="chatbox"></div>
+</div>
+
+<script>
+  const chatbox = document.getElementById("chatbox");
+
+  async function sendMessage() {
+    const user_message = document.getElementById("messageInput").value.trim();
+    const user_name = document.getElementById("user_name").value.trim() || "friend";
+    const botName = document.getElementById("botName").value;
+    const issue_description = document.getElementById("issue_description").value;
+    const preferred_style = document.getElementById("preferred_style").value;
+    const severity_rating = document.getElementById("severity_rating").value;
+
+    if (!user_message) return;
+
+    appendMessage("You", user_message, "user-msg");
+    document.getElementById("messageInput").value = "";
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botName,
+          message: user_message,
+          user_name,
+          issue_description,
+          preferred_style,
+          severity_rating
+        })
+      });
+
+      const data = await response.json();
+      if (data.botReply) {
+        appendLineByLine(botName, data.botReply, "bot-msg");
+      } else {
+        appendMessage("Bot", "Error: " + (data.error || "unknown"), "bot-msg");
+      }
+    } catch (e) {
+      appendMessage("Bot", "Error connecting to server.", "bot-msg");
+    }
+  }
+
+  function appendMessage(sender, text, className) {
+    const msg = document.createElement("div");
+    msg.className = `msg ${className}`;
+    msg.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    chatbox.appendChild(msg);
+    chatbox.scrollTop = chatbox.scrollHeight;
+  }
+
+  function appendLineByLine(sender, text, className) {
+    const lines = text.split('\n').filter(l => l.trim() !== "");
+    let i = 0;
+
+    function showNextLine() {
+      if (i < lines.length) {
+        appendMessage(sender, lines[i], className);
+        i++;
+        setTimeout(showNextLine, 600); // speed per line
+      }
+    }
+    showNextLine();
+  }
+
+  // Optional: press Enter to send
+  document.getElementById("messageInput").addEventListener("keypress", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+</script>
+
+</body>
+</html>

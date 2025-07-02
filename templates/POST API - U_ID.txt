@@ -1,0 +1,35 @@
+POST API - U_ID
+           
+           user_name
+           Messege
+           timestamp
+           Bot_name(from firebase(Name+Id)
+           Role(bot name,user)
+           Issue Discription (from step 1)
+           goal(step 2)
+           Preffered Style(step 3)
+	   checkIn(step 4)
+        collection name(chats)random document ID,
+                   inside the doc( u id
+                   user name
+                    bot name
+                    
+                   history(array)
+                   chat Id
+                   massage
+                   Role
+                   time stamp
+get api-parameter(bot name,u Id)
+response( u id
+                   user name
+                    bot name
+                    
+                   history(array)
+                   chat Id
+                   massage
+                   Role
+                   time stamp)
+
+
+                   
+          
