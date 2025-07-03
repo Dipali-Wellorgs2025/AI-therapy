@@ -5,7 +5,7 @@ chat_sessions = {}  # Store user-specific Gemini sessions
 
 app = Flask(__name__)
 # ✅ Set your Gemini API key (set via environment or hardcoded for testing)i
-GEMINI_API_KEY = "AIzaSyA9i1ieXnEK7h-yOcL6zL-8J1LqglV9bMQ"
+GEMINI_API_KEY = "AIzaSyAerwaCS0GdQS8naymPwz_jUH0uevKvrMM"
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ✅ Create Gemini model instance
