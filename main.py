@@ -479,62 +479,74 @@ RULES:
 }
 
 
-# ✅ Topic reroute and out-of-scope keywords
-TOPIC_TO_BOT = {
-    "anxiety": "Sage", "breakup": "Jorden", "self-worth": "River",
-    "trauma": "Phoenix", "family": "Ava", "crisis": "Raya"
-}
-OUT_OF_SCOPE_TOPICS = ["addiction", "eating disorder", "suicide", "bipolar", "overdose", "self-harm", "schizophrenia"]
-
-# ✅ Serve frontend
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-# ✅ Main Chat Endpoint
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.json
     user_message = data.get("message", "")
-    bot_name = data.get("botName")
+    bot_name = data.get("botName")  # The bot user clicked (e.g. "Sage")
     user_name = data.get("user_name", "Friend")
-    issue_description = data.get("issue_description", "").lower()
+    issue_description = data.get("issue_description", "N/A")
     severity_rating = str(data.get("severity_rating", "5"))
     preferred_style = data.get("preferred_style", "Balanced")
 
-    if not user_message or bot_name not in BOT_PROMPTS:
-        return jsonify({"error": "Invalid request"}), 400
+    OUT_OF_SCOPE_TOPICS = [
+        "addiction", "eating disorder", "suicide", "bipolar", "overdose", "self-harm", "schizophrenia"
+    ]
+    TOPIC_TO_BOT = {
+        "anxiety": "Sage",
+        "breakup": "Jorden",
+        "self-worth": "River",
+        "trauma": "Phoenix",
+        "family": "Ava",
+        "crisis": "Raya"
+    }
+    ALLOWED_TOPICS = list(TOPIC_TO_BOT.keys())
 
-    # 🚫 Out-of-scope content block
+    # ❌ 1. Block out-of-scope content
     if any(term in user_message.lower() for term in OUT_OF_SCOPE_TOPICS):
         return jsonify({
             "botReply": "That’s an important issue, but it's beyond what our bots can safely support. Please reach out to a licensed professional or helpline."
         })
 
-    # ✅ Validate that issue_description matches the intended bot
-    expected_keyword = next((k for k, v in TOPIC_TO_BOT.items() if v == bot_name), None)
-    if expected_keyword and expected_keyword not in issue_description:
-        return jsonify({
-            "botReply": f"That’s an important issue, but {bot_name} is designed for '{expected_keyword}'-related concerns. Please try the appropriate bot or describe a relevant issue."
-        })
+    # 🧠 2. Classify the issue using Gemini
+    classification_prompt = f"""
+You are a smart AI assistant that classifies therapy-related messages into categories. 
+Given this user message and issue description, respond ONLY with the best-matching topic from this list:
+["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
 
-    # 🔁 Topic redirect logic (if someone is talking to wrong bot)
-    for keyword, mapped_bot in TOPIC_TO_BOT.items():
-        if keyword in user_message.lower() and mapped_bot != bot_name:
-            return jsonify({
-                "botReply": f"It sounds like you're discussing {keyword}. You might prefer chatting with {mapped_bot}, who's trained for that topic."
-            })
+If none are appropriate, reply with: "none"
 
-    # ✅ Fill variables in prompt
-    raw_prompt = BOT_PROMPTS[bot_name]
-    prompt_filled = raw_prompt.replace("{{user_name}}", user_name)\
-                               .replace("{{issue_description}}", issue_description)\
-                               .replace("{{preferred_style}}", preferred_style)\
-                               .replace("{{severity_rating}}", severity_rating)
+User message: \"{user_message}\"
+Issue description: \"{issue_description}\"
+"""
 
     try:
-        uid = user_name.strip().lower()
+        classification_response = model.generate_content(classification_prompt)
+        category = classification_response.text.strip().lower()
 
+        # ❌ 3. Reject unsupported topics
+        if category not in ALLOWED_TOPICS:
+            return jsonify({
+                "botReply": "That’s an important issue, but it's beyond what our bots can safely support. Please reach out to a licensed professional or helpline."
+            })
+
+        correct_bot = TOPIC_TO_BOT[category]
+
+        # 🔁 4. Suggest correct bot if current one doesn’t match
+        if correct_bot != bot_name:
+            return jsonify({
+                "botReply": f"It sounds like your concern relates to '{category}', which is best handled by {correct_bot}. Please switch to that bot for the best support."
+            })
+
+        # 🧠 5. Prepare and personalize prompt
+        raw_prompt = BOT_PROMPTS[bot_name]
+        prompt_filled = raw_prompt.replace("{{user_name}}", user_name)\
+                                  .replace("{{issue_description}}", issue_description)\
+                                  .replace("{{preferred_style}}", preferred_style)\
+                                  .replace("{{severity_rating}}", severity_rating)
+
+        # 🗨️ 6. Use or start Gemini session
+        uid = user_name.strip().lower() + "_" + bot_name.lower()
         if uid not in chat_sessions:
             chat_sessions[uid] = model.start_chat(history=[
                 {"role": "user", "parts": [prompt_filled]}
@@ -545,8 +557,10 @@ def chat():
         reply = response.text.strip()
 
         return jsonify({"botReply": reply})
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":
