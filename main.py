@@ -514,11 +514,18 @@ You are a smart AI assistant that classifies therapy-related messages into categ
 Given this user message and issue description, respond ONLY with the best-matching topic from this list:
 ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
 
-If none are appropriate, reply with: "none"
+Choose the one that best fits the **underlying emotional or relational theme**. 
+Examples:
+- If it's about panic, overthinking, nervousness → anxiety
+- If it's about conflict with romantic partner, silent treatment, patch-up, or break → breakup
+- If it's about family arguments → family
+
+Only return the exact keyword like: breakup
 
 User message: \"{user_message}\"
 Issue description: \"{issue_description}\"
 """
+
 
     try:
         classification_response = model.generate_content(classification_prompt)
@@ -547,8 +554,7 @@ Issue description: \"{issue_description}\"
                                   .replace("{{issue_description}}", issue_description)\
                                   .replace("{{preferred_style}}", preferred_style)\
                                   .replace("{{severity_rating}}", severity_rating)
-        if mismatch_warning:
-            user_message = mismatch_warning + "\n\n" + user_message
+        
 
         # 🗨️ 6. Use or start Gemini session
         uid = user_name.strip().lower() + "_" + bot_name.lower()
