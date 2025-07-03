@@ -484,6 +484,7 @@ def home():
     return render_template("index.html")
 
 
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.json
@@ -538,10 +539,12 @@ Issue description: \"{issue_description}\"
         correct_bot = TOPIC_TO_BOT[category]
 
         # 🔁 4. Suggest correct bot if current one doesn’t match
+        # 🔁 4. Flexibly proceed or warn if mismatch
         if correct_bot != bot_name:
-            return jsonify({
-                "botReply": f"It sounds like your concern relates to '{category}', which is best handled by {correct_bot}. Please switch to that bot for the best support."
-            })
+            mismatch_warning = f"Note: This topic seems related to '{category}', usually handled by {correct_bot}. I’ll try to help you here anyway."
+        else:
+            mismatch_warning = ""
+
 
         # 🧠 5. Prepare and personalize prompt
         raw_prompt = BOT_PROMPTS[bot_name]
@@ -549,6 +552,8 @@ Issue description: \"{issue_description}\"
                                   .replace("{{issue_description}}", issue_description)\
                                   .replace("{{preferred_style}}", preferred_style)\
                                   .replace("{{severity_rating}}", severity_rating)
+        if mismatch_warning:
+            user_message = mismatch_warning + "\n\n" + user_message
 
         # 🗨️ 6. Use or start Gemini session
         uid = user_name.strip().lower() + "_" + bot_name.lower()
@@ -565,9 +570,6 @@ Issue description: \"{issue_description}\"
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=False, host="0.0.0.0", port=port)
