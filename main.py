@@ -535,9 +535,10 @@ Issue description: \"{issue_description}\"
         # 🔁 4. Suggest correct bot if current one doesn’t match
         # 🔁 4. Flexibly proceed or warn if mismatch
         if correct_bot != bot_name:
-            mismatch_warning = f"Note: This topic seems related to '{category}', usually handled by {correct_bot}. I’ll try to help you here anyway."
-        else:
-            mismatch_warning = ""
+             return jsonify({
+                  "botReply": f"That’s an important issue, but {bot_name} is designed for '{category}'-related concerns. Please switch to {correct_bot} for more appropriate help."
+             })
+
 
 
         # 🧠 5. Prepare and personalize prompt
