@@ -30,6 +30,7 @@ firebase_key = os.getenv("FIREBASE_KEY_JSON")
 if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(firebase_key))
     firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # Local cache for sessions
 chat_sessions = {}
