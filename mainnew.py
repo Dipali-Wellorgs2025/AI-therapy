@@ -895,7 +895,6 @@ BOT_PROMPTS = {
 def sse_format(message):
     return f"data: {message}\n\n"
  
-# Chat logic
 def handle_message(data):
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
@@ -903,43 +902,56 @@ def handle_message(data):
     user_id = data.get("user_id", "unknown")
     issue = data.get("issue_description", "")
     style = data.get("preferred_style", "Balanced")
- 
+
     session_id = f"{user_id}_{bot_name}"
-    session_ref = db.collection("sessions").document(session_id)
-    session = session_ref.get()
- 
-    if session.exists:
-        history = session.to_dict().get("messages", [])
-    else:
-        history = []
- 
+    history = []
+
+    # ✅ Firestore .get() is wrapped
+    try:
+        session_ref = db.collection("sessions").document(session_id)
+        session = session_ref.get()
+        if session.exists:
+            history = session.to_dict().get("messages", [])
+    except Exception as e:
+        print("❌ Firestore .get() failed:", e)
+        session_ref = None  # fallback if db failed
+
     # Prompt construction
-    style_prompt = therapist_personas.get(style, "")
-    intro = f"{bot_name}: {style_prompt}\nUser: {user_msg}\n{bot_name}:"
+    intro = f"{bot_name}: {BOT_PROMPTS.get(bot_name, '')}\nUser: {user_msg}\n{bot_name}:"
     full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
- 
-    # Gemini stream response
-    response = model.generate_content(full_prompt, stream=True)
+
     bot_response = ""
- 
-    for chunk in response:
-        if chunk.text:
-            bot_response += chunk.text
-            yield sse_format(chunk.text)
- 
-    # Save chat to Firestore
-    timestamp = datetime.datetime.utcnow().isoformat()
-    history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
-    history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
- 
-    session_ref.set({
-        "user_id": user_id,
-        "bot_name": bot_name,
-        "messages": history,
-        "last_updated": timestamp
-    })
- 
+
+    try:
+        response = model.generate_content(full_prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                bot_response += chunk.text
+                yield sse_format(chunk.text)
+    except Exception as e:
+        print("❌ Gemini stream failed:", e)
+        yield sse_format("Sorry, I had trouble responding.")
+        yield sse_format("[END]")
+        return
+
+    # ✅ Firestore .set() wrapped too
+    try:
+        timestamp = datetime.datetime.utcnow().isoformat()
+        history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
+        history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
+
+        if session_ref:
+            session_ref.set({
+                "user_id": user_id,
+                "bot_name": bot_name,
+                "messages": history,
+                "last_updated": timestamp
+            })
+    except Exception as e:
+        print("❌ Firestore .set() failed:", e)
+
     yield sse_format("[END]")
+
  
 # ✅ GET + SSE endpoint (Flutter-compatible)
 @app.route("/api/stream", methods=["GET"])
