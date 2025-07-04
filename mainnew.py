@@ -882,14 +882,7 @@ TOPIC_TO_BOT = {
     "crisis": "Raya"
 }
 
-# Load bot prompts (shortened for this example)
-BOT_PROMPTS = {
-    "Sage": "You are Sage, a CBT therapist. Start session {{session_number}} with {{user_name}}...",
-    "Jorden": "You are Jorden, a breakup therapist. Start session {{session_number}} with {{user_name}}...",
-    # Add the rest similarly
-}
 
- 
  
 # SSE message formatter
 def sse_format(message):
