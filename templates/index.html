@@ -109,8 +109,7 @@
     <option value="Balanced" selected>Balanced</option>
   </select>
 
-  <label>Severity Rating (1–10):</label>
-  <input type="number" id="severity_rating" min="1" max="10" value="5">
+
 
   <label>Message:</label>
   <textarea id="messageInput" rows="3" placeholder="Type your message..."></textarea>
@@ -129,7 +128,7 @@
     const botName = document.getElementById("botName").value;
     const issue_description = document.getElementById("issue_description").value;
     const preferred_style = document.getElementById("preferred_style").value;
-    const severity_rating = document.getElementById("severity_rating").value;
+    
 
     if (!user_message) return;
 
@@ -146,7 +145,7 @@
           user_name,
           issue_description,
           preferred_style,
-          severity_rating
+          
         })
       });
 
