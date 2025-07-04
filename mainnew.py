@@ -41,8 +41,7 @@ chat_sessions = {}
 
 app = Flask(__name__)
 # ✅ Set your Gemini API key (set via environment or hardcoded for testing)i
-GEMINI_API_KEY = "AIzaSyBTASLI9yLK7IGM_kFhES1VL7kUoYn572o"
-genai.configure(api_key=GEMINI_API_KEY)
+
 
 # ✅ Create Gemini model instance
 model = genai.GenerativeModel("models/gemini-1.5-flash")
@@ -895,200 +894,100 @@ BOT_PROMPTS = {
 
  
  
+# SSE message formatter
 def sse_format(message):
-
     return f"data: {message}\n\n"
  
- 
-@app.route("/api/start-task", methods=["POST"])
-
-def start_task():
-
-    task_id = str(uuid4())
-
-    data = request.json
- 
+# Chat logic
+def handle_message(data):
     user_msg = data.get("message", "")
-
     bot_name = data.get("botName")
-
     user_name = data.get("user_name", "User")
-
     user_id = data.get("user_id", "unknown")
-
     issue = data.get("issue_description", "")
-
     style = data.get("preferred_style", "Balanced")
  
-    # Save task to Firestore
-
-    db.collection("tasks").document(task_id).set({
-
-        "status": "started",
-
-        "input": data,
-
-        "messages": [],
-
-        "timestamp": datetime.datetime.now().isoformat()
-
-    })
+    session_id = f"{user_id}_{bot_name}"
+    session_ref = db.collection("sessions").document(session_id)
+    session = session_ref.get()
  
-    # Start async generation
-
-    threading.Thread(
-
-        target=run_task_logic,
-
-        args=(task_id, user_msg, bot_name, user_name, user_id, issue, style)
-
-    ).start()
+    if session.exists:
+        history = session.to_dict().get("messages", [])
+    else:
+        history = []
  
-    return jsonify({"task_id": task_id})
+    # Prompt construction
+    style_prompt = therapist_personas.get(style, "")
+    intro = f"{bot_name}: {style_prompt}\nUser: {user_msg}\n{bot_name}:"
+    full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
  
- 
-def run_task_logic(task_id, user_msg, bot_name, user_name, user_id, issue, style):
-
-    doc_ref = db.collection("tasks").document(task_id)
- 
-    try:
-
-        for chunk in generate_response_stream(
-
-            user_msg=user_msg,
-
-            bot_name=bot_name,
-
-            user_name=user_name,
-
-            issue=issue,
-
-            style=style
-
-        ):
-
-            doc_ref.update({
-
-                "messages": firestore.ArrayUnion([chunk])
-
-            })
-
-    except Exception as e:
-
-        doc_ref.update({
-
-            "messages": firestore.ArrayUnion([f"[ERROR] {str(e)}"]),
-
-            "status": "error"
-
-        })
-
-        return
- 
-    doc_ref.update({"status": "completed"})
- 
- 
-@app.route("/api/stream", methods=["GET"])
-
-def stream():
-
-    task_id = request.args.get("task_id")
-
-    seen_messages = set()
- 
-    def generate():
-
-        while True:
-
-            doc = db.collection("tasks").document(task_id).get()
-
-            if not doc.exists:
-
-                yield sse_format("Invalid task ID.")
-
-                break
- 
-            data = doc.to_dict()
-
-            for msg in data.get("messages", []):
-
-                if msg not in seen_messages:
-
-                    seen_messages.add(msg)
-
-                    yield sse_format(msg)
- 
-            if data.get("status") == "completed":
-
-                yield sse_format("[END]")
-
-                break
-
-            elif data.get("status") == "error":
-
-                yield sse_format("[ERROR]")
-
-                break
- 
-            time.sleep(1)
- 
-    return Response(generate(), mimetype="text/event-stream")
- 
- 
-def generate_response_stream(user_msg, bot_name, user_name, issue, style):
-
-    system_message = (
-
-        f"You are {bot_name}, a mental health assistant. "
-
-        f"The user is {user_name}. "
-
-        f"They are experiencing: {issue}. "
-
-        f"Respond in a {style.lower()} tone."
-
-    )
- 
-    messages = [
-
-        {"role": "system", "content": system_message},
-
-        {"role": "user", "content": user_msg}
-
-    ]
- 
-    response = client.ChatCompletion.create(
-
-        model="model",
-
-        messages=messages,
-
-        stream=True,
-
-        temperature=0.7,
-
-        max_tokens=500,
-
-        presence_penalty=0.5,
-
-        frequency_penalty=0.5,
-
-    )
+    # Gemini stream response
+    response = model.generate_content(full_prompt, stream=True)
+    bot_response = ""
  
     for chunk in response:
-
-        if "choices" in chunk:
-
-            delta = chunk["choices"][0]["delta"]
-
-            if "content" in delta:
-
-                yield delta["content"]
+        if chunk.text:
+            bot_response += chunk.text
+            yield sse_format(chunk.text)
  
+    # Save chat to Firestore
+    timestamp = datetime.datetime.utcnow().isoformat()
+    history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
+    history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
  
+    session_ref.set({
+        "user_id": user_id,
+        "bot_name": bot_name,
+        "messages": history,
+        "last_updated": timestamp
+    })
+ 
+    yield sse_format("[END]")
+ 
+# ✅ GET + SSE endpoint (Flutter-compatible)
+@app.route("/api/stream", methods=["GET"])
+def stream():
+    user_msg = request.args.get("message", "")
+    bot_name = request.args.get("botName")
+    user_name = request.args.get("user_name", "User")
+    user_id = request.args.get("user_id", "unknown")
+    issue = request.args.get("issue_description", "")
+    style = request.args.get("preferred_style", "Balanced")
+ 
+    data = {
+        "message": user_msg,
+        "botName": bot_name,
+        "user_name": user_name,
+        "user_id": user_id,
+        "issue_description": issue,
+        "preferred_style": style
+    }
+ 
+    return Response(handle_message(data), mimetype="text/event-stream")
+ 
+# ✅ Get message history
+@app.route("/api/history", methods=["GET"])
+def get_history():
+    user_id = request.args.get("user_id")
+    bot_name = request.args.get("botName")
+    session_id = f"{user_id}_{bot_name}"
+ 
+    session_ref = db.collection("sessions").document(session_id)
+    doc = session_ref.get()
+ 
+    if doc.exists:
+        return jsonify(doc.to_dict().get("messages", []))
+    else:
+        return jsonify([])
+ 
+# ✅ Root route (optional)
+@app.route("/")
+def home():
+    return "Server is running ✅"
+ 
+# ✅ Run the app
 if __name__ == "__main__":
-
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5000, host="0.0.0.0")
 
  
 
