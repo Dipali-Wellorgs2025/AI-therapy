@@ -26,10 +26,10 @@ genai.configure(api_key="AIzaSyD4CHk-nzAhChj-tgfmk10rePf7xner9ps")
 model = genai.GenerativeModel("models/gemini-1.5-flash")
 
 
-# Initialize Firebase
-cred = credentials.Certificate("ai-therapy-44682-firebase-adminsdk-fbsvc-9dd5f0f502.json")  # Replace with your Firebase key path
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+firebase_key = os.getenv("FIREBASE_KEY_JSON")
+if not firebase_admin._apps:
+    cred = credentials.Certificate(json.loads(firebase_key))
+    firebase_admin.initialize_app(cred)
 
 # Local cache for sessions
 chat_sessions = {}
