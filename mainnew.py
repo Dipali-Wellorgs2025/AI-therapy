@@ -18,8 +18,6 @@ import firebase_admin
 
 from firebase_admin import credentials, firestore
 
-import openai
-
 import os
 
 from dotenv import load_dotenv
@@ -1059,9 +1057,9 @@ def generate_response_stream(user_msg, bot_name, user_name, issue, style):
 
     ]
  
-    response = openai.ChatCompletion.create(
+    response = client.ChatCompletion.create(
 
-        model="gpt-4",
+        model="model",
 
         messages=messages,
 
