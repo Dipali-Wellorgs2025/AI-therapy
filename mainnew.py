@@ -10,8 +10,6 @@ import threading
 
 import time
 
-import datetime
-
 from uuid import uuid4
 
 import firebase_admin
@@ -929,7 +927,7 @@ def handle_message(data):
 
     # ✅ Firestore .set() wrapped too
     try:
-        timestamp = datetime.datetime.utcnow().isoformat()
+        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
         history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
         history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
 
