@@ -39,6 +39,9 @@ app = Flask(__name__)
 # ✅ Set your Gemini API key (set via environment or hardcoded for testing)i
 
 
+# ✅ Create Gemini model instance
+model = genai.GenerativeModel("models/gemini-1.5-flash")
+
 # ✅ Bot Prompt Templates (short demo versions, replace with full if needed)
 # === 1. Bot Personality Prompts ===
 BOT_PROMPTS = {
@@ -864,7 +867,6 @@ You are always aware of these:
 }
 
 
-
 # Constants
 OUT_OF_SCOPE_TOPICS = ["addiction", "suicide", "overdose", "bipolar", "self-harm"]
 TECH_KEYWORDS = ["algorithm", "training", "parameters", "architecture", "how are you trained"]
@@ -895,12 +897,11 @@ def handle_message(data):
     style = data.get("preferred_style", "Balanced")
 
     session_id = f"{user_id}_{bot_name}"
-    session_ref = db.collection("sessions").document(session_id)
     history = []
 
     # Get existing session
     try:
-        
+        session_ref = db.collection("sessions").document(session_id)
         session = session_ref.get()
         if session.exists:
             history = session.to_dict().get("messages", [])
@@ -918,30 +919,46 @@ def handle_message(data):
 User: {user_msg}
 {bot_name}:"""
     
-    full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
+    # ✅ Build structured Gemini chat prompt
+    structured_prompt = []
+
+    for m in history:
+            role = "user" if m["sender"].lower() == "user" else "model"
+            structured_prompt.append({
+                "role": role,
+                "parts": [m["message"]]
+            })
+
+        # Add final prompt as the user's last turn
+    structured_prompt.append({
+            "role": "user",
+            "parts": [intro]
+        })
+
     bot_response = ""
     last_chunk = ""
+
     try:
-        response = model.generate_content(full_prompt, stream=True)
+            response = model.generate_content(structured_prompt, stream=True)
 
-        for chunk in response:
-          if chunk.text:
-            text = chunk.text.strip()
+            for chunk in response:
+                if chunk.text:
+                    text = chunk.text.strip()
+                    if text and text != "-" and text != last_chunk:
+                        delta = text.replace(last_chunk, "", 1)
+                        if delta.strip():
+                            yield sse_format(delta)
+                        last_chunk = text
+                        bot_response = text
 
-            # Filter garbage and repeats
-            if text and text != "-" and text != last_chunk:
-                delta = text.replace(last_chunk, "", 1)
-                if delta.strip():
-                    yield sse_format(delta)
-                last_chunk = text
-                bot_response = text  # Save final bot response
+            yield sse_format("[END]")
 
-        yield sse_format("[END]")  # Always end with [END]
     except Exception as e:
-       print("❌ Gemini stream failed:", e)
-       yield sse_format("Sorry, I had trouble responding.")
-       yield sse_format("[END]")
-       return  # Exit early on error
+            print("❌ Gemini stream failed:", e)
+            yield sse_format("Sorry, I had trouble responding.")
+            yield sse_format("[END]")
+            return
+    return  # Exit early on error
 
 
 
@@ -978,7 +995,7 @@ except Exception as e:
             })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
-        
+         
 
     # ✅ Firestore .set() wrapped too
         try:
@@ -996,7 +1013,7 @@ except Exception as e:
         except Exception as e:
            print("❌ Firestore .set() failed:", e)
 
-
+          #  yield sse_format("[END]")
 
  
 # ✅ GET + SSE endpoint (Flutter-compatible)
