@@ -938,8 +938,7 @@ User: {user_msg}
                 bot_response = text  # Save final bot response
 
         yield sse_format("[END]")  # Always end with [END]
-
-     except Exception as e:
+    except Exception as e:
        print("❌ Gemini stream failed:", e)
        yield sse_format("Sorry, I had trouble responding.")
        yield sse_format("[END]")
