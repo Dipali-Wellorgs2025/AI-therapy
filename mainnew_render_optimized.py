@@ -1119,7 +1119,7 @@ Issue: "{issue_description}"
 def get_recent_sessions():
     try:
         user_id = request.args.get("user_id")
-        
+
         sessions_ref = db.collection("sessions")
 
         if user_id:
@@ -1132,12 +1132,21 @@ def get_recent_sessions():
         session_list = []
         for doc in docs:
             data = doc.to_dict()
+            ai_therapist_id = data.get("ai_therapist_id")  # Link to ai_therapists
+
+            # Default fallback
+            problem_text = "N/A"
+            if ai_therapist_id:
+                therapist_doc = db.collection("ai_therapists").document(ai_therapist_id).get()
+                if therapist_doc.exists:
+                    problem_text = therapist_doc.to_dict().get("problem", "N/A")
+
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
 
             session_list.append({
-                "problem": data.get("problem", "N/A"),  # <-- replaced doc.id with Firestore field `problem`
+                "problem": problem_text,
                 "bot_name": data.get("bot_name", ""),
                 "status": status,
                 "date": data.get("last_updated", ""),
