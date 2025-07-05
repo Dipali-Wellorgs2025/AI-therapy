@@ -982,22 +982,22 @@ except Exception as e:
         return
 
     # ✅ Firestore .set() wrapped too
-    try:
-        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
-        history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
-        history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
+        try:
+           timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+           history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
+           history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
 
-        if session_ref:
+           if session_ref:
             session_ref.set({
                 "user_id": user_id,
                 "bot_name": bot_name,
                 "messages": history,
                 "last_updated": timestamp
             })
-    except Exception as e:
-        print("❌ Firestore .set() failed:", e)
+        except Exception as e:
+           print("❌ Firestore .set() failed:", e)
 
-    yield sse_format("[END]")
+        yield sse_format("[END]")
 
  
 # ✅ GET + SSE endpoint (Flutter-compatible)
