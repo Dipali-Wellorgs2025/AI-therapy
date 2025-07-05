@@ -922,7 +922,7 @@ User: {user_msg}
     # ✅ Build structured Gemini chat prompt
     structured_prompt = []
 
-    for m in history:
+    for m in history[-10:]:
             role = "user" if m["sender"].lower() == "user" else "model"
             structured_prompt.append({
                 "role": role,
