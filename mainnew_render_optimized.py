@@ -924,7 +924,7 @@ User: {user_msg}
     last_chunk = ""
 
     try:
-         response = model.generate_content(full_prompt, stream=True)
+      response = model.generate_content(full_prompt, stream=True)
 
       for chunk in response:
         if chunk.text:
