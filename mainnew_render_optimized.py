@@ -979,7 +979,7 @@ except Exception as e:
             })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
-        return
+        
 
     # ✅ Firestore .set() wrapped too
         try:
@@ -997,7 +997,7 @@ except Exception as e:
         except Exception as e:
            print("❌ Firestore .set() failed:", e)
 
-        yield sse_format("[END]")
+
 
  
 # ✅ GET + SSE endpoint (Flutter-compatible)
