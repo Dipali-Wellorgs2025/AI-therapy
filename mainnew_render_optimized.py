@@ -1024,7 +1024,13 @@ Issue: "{issue_description}"
                 "botReply": f"This concern fits better with our specialist {correct_bot}. Please switch to that therapist for more personalized help."
             })
 
-        raw_prompt = BOT_PROMPTS.get(bot_name, "")
+        raw_prompt = BOT_PROMPTS[bot_name]
+        filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
+                          .replace("{{issue_description}}", issue_description)\
+                          .replace("{{preferred_style}}", preferred_style)
+
+        full_prompt = filled_prompt + "\n" + user_message
+
         if not raw_prompt:
             return jsonify({"botReply": "Sorry, I’m having trouble identifying this therapist. Please try another one."})
 
