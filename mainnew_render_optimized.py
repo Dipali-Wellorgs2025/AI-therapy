@@ -1042,7 +1042,7 @@ Issue: "{issue_description}"
         if not raw_prompt:
             return jsonify({"botReply": "Sorry, I’m having trouble identifying this therapist. Please try another one."})
 
-        prompt_filled = raw_prompt.replace("{{user_name}}", user_name)                                  .replace("{{issue_description}}", issue_description)                                  .replace("{{preferred_style}}", preferred_style)
+        prompt_filled = raw_prompt.replace("{{user_name}}", user_name).replace("{{issue_description}}", issue_description).replace("{{preferred_style}}", preferred_style)
 
         session_id = f"{user_id}_{bot_name}"
         try:
