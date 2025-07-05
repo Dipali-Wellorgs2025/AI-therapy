@@ -1132,7 +1132,7 @@ def get_recent_sessions():
         session_list = []
         for doc in docs:
             data = doc.to_dict()
-            ai_therapist_id = data.get("ai_therapist_id")  # Link to ai_therapists
+            ai_therapist_id = data.get("id")  # Link to ai_therapists
 
             # Default fallback
             problem_text = "N/A"
