@@ -922,28 +922,48 @@ User: {user_msg}
     full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
     bot_response = ""
     last_chunk = ""
-
     try:
-      response = model.generate_content(full_prompt, stream=True)
+        response = model.generate_content(full_prompt, stream=True)
 
-      for chunk in response:
-        if chunk.text:
+        for chunk in response:
+          if chunk.text:
             text = chunk.text.strip()
 
-            # Filter garbage and repeat
+            # Filter garbage and repeats
             if text and text != "-" and text != last_chunk:
-                # Get the delta part only
                 delta = text.replace(last_chunk, "", 1)
-                if delta.strip():  # Avoid sending blank diffs
+                if delta.strip():
                     yield sse_format(delta)
                 last_chunk = text
-                bot_response = text  # Save full clean bot response
+                bot_response = text  # Save final bot response
+
+        yield sse_format("[END]")  # Always end with [END]
+
+   except Exception as e:
+       print("❌ Gemini stream failed:", e)
+       yield sse_format("Sorry, I had trouble responding.")
+       yield sse_format("[END]")
+       return  # Exit early on error
+
+
+
+# ✅ Save session to Firestore (once)
+try:
+    timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+    history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
+    history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
+
+    if session_ref:
+        session_ref.set({
+            "user_id": user_id,
+            "bot_name": bot_name,
+            "messages": history,
+            "last_updated": timestamp
+        })
 
 except Exception as e:
-    print("❌ Gemini stream failed:", e)
-    yield sse_format("Sorry, I had trouble responding.")
-    yield sse_format("[END]")
-    return
+    print("❌ Firestore .set() failed:", e)
+
 
     # Save session
     try:
