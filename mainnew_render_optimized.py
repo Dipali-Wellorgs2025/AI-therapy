@@ -7,6 +7,7 @@ import google.generativeai as genai
 from flask import Flask, request, jsonify, Response
 import json
 import threading
+import traceback
 
 import time
 
@@ -898,7 +899,7 @@ def handle_message(data):
     session_id = f"{user_id}_{bot_name}"
     history = []
 
-    # ✅ Firestore .get() is wrapped
+    # Get existing session
     try:
         session_ref = db.collection("sessions").document(session_id)
         session = session_ref.get()
@@ -906,35 +907,53 @@ def handle_message(data):
             history = session.to_dict().get("messages", [])
     except Exception as e:
         print("❌ Firestore .get() failed:", e)
-        session_ref = None  # fallback if db failed
+        session_ref = None
 
-    # Prompt construction
+    # Construct prompt
     raw_prompt = BOT_PROMPTS.get(bot_name, "")
     filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
-                          .replace("{{issue_description}}", issue)\
-                          .replace("{{preferred_style}}", style)
-
+                              .replace("{{issue_description}}", issue)\
+                              .replace("{{preferred_style}}", style)
+    
     intro = f"""Therapist Profile: {filled_prompt}
-    User: {user_msg}
-    {bot_name}:"""
-
-
-
-    full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
-
+User: {user_msg}
+{bot_name}:"""
+    
+    full_prompt = "".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
     bot_response = ""
 
     try:
         response = model.generate_content(full_prompt, stream=True)
         for chunk in response:
             if chunk.text:
-                bot_response += chunk.text
-                yield sse_format(chunk.text)
+                text = chunk.text.strip()
+                if text and text != "-":
+                    yield sse_format(text)
+                    bot_response += text
     except Exception as e:
         print("❌ Gemini stream failed:", e)
         yield sse_format("Sorry, I had trouble responding.")
         yield sse_format("[END]")
         return
+
+    # Save session
+    try:
+        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+        history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
+        history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
+
+        if session_ref:
+            session_ref.set({
+                "user_id": user_id,
+                "bot_name": bot_name,
+                "messages": history,
+                "last_updated": timestamp
+            })
+    except Exception as e:
+        print("❌ Firestore .set() failed:", e)
+
+       
+    return
 
     # ✅ Firestore .set() wrapped too
     try:
@@ -990,6 +1009,10 @@ def get_history():
         return jsonify(doc.to_dict().get("messages", []))
     else:
         return jsonify([])
+    
+    
+@app.route("/api/recent_sessions", methods=["GET"])
+
  
 # ✅ Root route (optional)
 @app.route("/")
@@ -1075,11 +1098,14 @@ Issue: "{issue_description}"
 
         try:
             session_ref.set({
-                "user_id": user_id,
-                "bot_name": bot_name,
-                "messages": history,
-                "last_updated": timestamp
+             "user_id": user_id,
+             "bot_name": bot_name,
+             "messages": history,
+             "last_updated": timestamp,
+             "status": "active",  # Optional field
+             "title": f"{user_name} with {bot_name}"  # Optional field
             })
+
         except Exception as e:
             print("Firestore set failed:", e)
 
@@ -1089,9 +1115,35 @@ Issue: "{issue_description}"
         traceback.print_exc()
         return jsonify({"botReply": "An unexpected error occurred. Please try again later."}), 500
 
+@app.route("/api/recent_sessions", methods=["GET"])
+def get_recent_sessions():
+    try:
+        sessions_ref = db.collection("sessions").order_by("last_updated", direction=firestore.Query.DESCENDING).limit(20)
+        docs = sessions_ref.stream()
+
+        session_list = []
+        for doc in docs:
+            data = doc.to_dict()
+            messages = data.get("messages", [])
+            user_turns = sum(1 for m in messages if m.get("sender") == "User")
+            status = "completed" if user_turns >= 5 else "in_progress"
+
+            session_list.append({
+                "title": doc.id,
+                "bot_name": data.get("bot_name", ""),
+                "status": status,
+                "date": data.get("last_updated", ""),
+                "user_id": data.get("user_id", "")
+            })
+
+        return jsonify(session_list)
+    except Exception as e:
+        print("❌ Failed to fetch recent sessions:", e)
+        return jsonify({"error": "Failed to fetch recent sessions"}), 500
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
-
