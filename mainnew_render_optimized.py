@@ -1048,7 +1048,8 @@ Issue: "{issue_description}"
         full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
 
         reply = ""
-        response = model.generate_content(full_prompt)
+        response = model.generate_content(full_prompt, stream=True)
+
         if response and response.text:
             reply = response.text.strip()
         else:
