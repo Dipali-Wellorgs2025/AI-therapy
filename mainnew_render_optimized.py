@@ -886,6 +886,7 @@ TOPIC_TO_BOT = {
 def sse_format(message):
     return f"data: {message}\n\n"
  
+ 
 def handle_message(data):
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
@@ -908,7 +909,14 @@ def handle_message(data):
         session_ref = None  # fallback if db failed
 
     # Prompt construction
-    intro = f"{bot_name}: {BOT_PROMPTS.get(bot_name, '')}\nUser: {user_msg}\n{bot_name}:"
+    raw_prompt = BOT_PROMPTS.get(bot_name, "")
+    filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
+                          .replace("{{issue_description}}", issue)\
+                          .replace("{{preferred_style}}", style)
+
+     intro = f"{bot_name}: {filled_prompt}\nUser: {user_msg}\n{bot_name}:"
+
+
     full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
 
     bot_response = ""
