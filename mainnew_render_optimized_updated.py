@@ -1012,31 +1012,6 @@ def get_history():
     
     
 @app.route("/api/recent_sessions", methods=["GET"])
-def get_recent_sessions():
-    try:
-        sessions_ref = db.collection("sessions").order_by("last_updated", direction=firestore.Query.DESCENDING).limit(20)
-        docs = sessions_ref.stream()
-
-        session_list = []
-        for doc in docs:
-            data = doc.to_dict()
-            messages = data.get("messages", [])
-            user_turns = sum(1 for m in messages if m.get("sender") == "User")
-
-            status = "completed" if user_turns >= 5 else "in_progress"
-
-            session_list.append({
-                "title": doc.id,
-                "bot_name": data.get("bot_name", ""),
-                "status": status,
-                "date": data.get("last_updated", ""),
-                "user_id": data.get("user_id", "")
-            })
-
-        return jsonify(session_list)
-    except Exception as e:
-        print("❌ Failed to fetch recent sessions:", e)
-        return jsonify({"error": "Failed to fetch recent sessions"}), 500
 
  
 # ✅ Root route (optional)
