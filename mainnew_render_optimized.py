@@ -1119,16 +1119,14 @@ Issue: "{issue_description}"
 def get_recent_sessions():
     try:
         user_id = request.args.get("user_id")
-        bot_name = request.args.get("bot_name")
-
+        
         sessions_ref = db.collection("sessions")
 
         if user_id:
             sessions_ref = sessions_ref.where("user_id", "==", user_id)
-        if bot_name:
-            sessions_ref = sessions_ref.where("bot_name", "==", bot_name)
+        
 
-        sessions_ref = sessions_ref.order_by("last_updated", direction=firestore.Query.DESCENDING).limit(20)
+        sessions_ref = sessions_ref.order_by("last_updated", direction=firestore.Query.DESCENDING).limit(1)
         docs = sessions_ref.stream()
 
         session_list = []
@@ -1139,7 +1137,7 @@ def get_recent_sessions():
             status = "completed" if user_turns >= 5 else "in_progress"
 
             session_list.append({
-                "title": doc.id,
+                "problem": data.get("problem", "N/A"),  # <-- replaced doc.id with Firestore field `problem`
                 "bot_name": data.get("bot_name", ""),
                 "status": status,
                 "date": data.get("last_updated", ""),
@@ -1147,9 +1145,10 @@ def get_recent_sessions():
             })
 
         return jsonify(session_list)
+
     except Exception as e:
-        print("❌ Failed to fetch filtered sessions:", e)
-        return jsonify({"error": "Failed to fetch filtered sessions"}), 500
+        print("❌ Failed to fetch session:", e)
+        return jsonify({"error": "Failed to fetch session"}), 500
 
 
 
