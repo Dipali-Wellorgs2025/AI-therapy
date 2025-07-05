@@ -39,9 +39,6 @@ app = Flask(__name__)
 # ✅ Set your Gemini API key (set via environment or hardcoded for testing)i
 
 
-# ✅ Create Gemini model instance
-model = genai.GenerativeModel("models/gemini-1.5-flash")
-
 # ✅ Bot Prompt Templates (short demo versions, replace with full if needed)
 # === 1. Bot Personality Prompts ===
 BOT_PROMPTS = {
@@ -865,6 +862,7 @@ You are always aware of these:
 
 """
 }
+
 
 
 # Constants
