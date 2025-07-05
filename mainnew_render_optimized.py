@@ -1011,7 +1011,7 @@ def get_history():
         return jsonify([])
     
     
-@app.route("/api/recent_sessions", methods=["GET"])
+
 
  
 # ✅ Root route (optional)
@@ -1118,7 +1118,17 @@ Issue: "{issue_description}"
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
-        sessions_ref = db.collection("sessions").order_by("last_updated", direction=firestore.Query.DESCENDING).limit(20)
+        user_id = request.args.get("user_id")
+        bot_name = request.args.get("bot_name")
+
+        sessions_ref = db.collection("sessions")
+
+        if user_id:
+            sessions_ref = sessions_ref.where("user_id", "==", user_id)
+        if bot_name:
+            sessions_ref = sessions_ref.where("bot_name", "==", bot_name)
+
+        sessions_ref = sessions_ref.order_by("last_updated", direction=firestore.Query.DESCENDING).limit(20)
         docs = sessions_ref.stream()
 
         session_list = []
@@ -1138,8 +1148,9 @@ def get_recent_sessions():
 
         return jsonify(session_list)
     except Exception as e:
-        print("❌ Failed to fetch recent sessions:", e)
-        return jsonify({"error": "Failed to fetch recent sessions"}), 500
+        print("❌ Failed to fetch filtered sessions:", e)
+        return jsonify({"error": "Failed to fetch filtered sessions"}), 500
+
 
 
 
