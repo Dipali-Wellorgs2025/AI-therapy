@@ -1162,7 +1162,7 @@ def get_recent_sessions():
             ai_therapist_id = data.get("id")  # Link to ai_therapists
 
             # Default fallback
-            problem_text = "N/A"
+            # problem_text = "N/A"
             if ai_therapist_id:
                 therapist_doc = db.collection("ai_therapists").document(ai_therapist_id).get()
                 if therapist_doc.exists:
