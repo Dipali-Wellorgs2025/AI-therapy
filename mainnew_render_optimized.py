@@ -979,7 +979,7 @@ except Exception as e:
             })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
-    return
+        return
 
     # ✅ Firestore .set() wrapped too
     try:
