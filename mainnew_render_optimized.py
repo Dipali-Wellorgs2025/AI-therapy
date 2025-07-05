@@ -885,7 +885,7 @@ TOPIC_TO_BOT = {
  
 # SSE message formatter
 def sse_format(message):
-    return f"data: {message}\n\n"
+    return f": {message} \n\n"
  
  
 def handle_message(data):
