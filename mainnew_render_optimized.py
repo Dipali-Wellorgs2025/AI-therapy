@@ -919,22 +919,31 @@ def handle_message(data):
 User: {user_msg}
 {bot_name}:"""
     
-    full_prompt = "".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
+    full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
     bot_response = ""
+    last_chunk = ""
 
     try:
-        response = model.generate_content(full_prompt, stream=True)
-        for chunk in response:
-            if chunk.text:
-                text = chunk.text.strip()
-                if text and text != "-":
-                    yield sse_format(text)
-                    bot_response += text
-    except Exception as e:
-        print("❌ Gemini stream failed:", e)
-        yield sse_format("Sorry, I had trouble responding.")
-        yield sse_format("[END]")
-        return
+         response = model.generate_content(full_prompt, stream=True)
+
+      for chunk in response:
+        if chunk.text:
+            text = chunk.text.strip()
+
+            # Filter garbage and repeat
+            if text and text != "-" and text != last_chunk:
+                # Get the delta part only
+                delta = text.replace(last_chunk, "", 1)
+                if delta.strip():  # Avoid sending blank diffs
+                    yield sse_format(delta)
+                last_chunk = text
+                bot_response = text  # Save full clean bot response
+
+except Exception as e:
+    print("❌ Gemini stream failed:", e)
+    yield sse_format("Sorry, I had trouble responding.")
+    yield sse_format("[END]")
+    return
 
     # Save session
     try:
