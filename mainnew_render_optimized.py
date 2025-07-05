@@ -1008,7 +1008,9 @@ def classify_and_respond():
 You are a smart AI assistant that classifies therapy-related messages into categories.
 Return only one word from this list: ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
 Message: "{user_message}"
-Issue: "{issue_description}""""
+Issue: "{issue_description}"
+""".strip()
+
 
         category_response = model.generate_content(classification_prompt)
         category = category_response.text.strip().lower()
