@@ -897,11 +897,12 @@ def handle_message(data):
     style = data.get("preferred_style", "Balanced")
 
     session_id = f"{user_id}_{bot_name}"
+    session_ref = db.collection("sessions").document(session_id)
     history = []
 
     # Get existing session
     try:
-        session_ref = db.collection("sessions").document(session_id)
+        
         session = session_ref.get()
         if session.exists:
             history = session.to_dict().get("messages", [])
