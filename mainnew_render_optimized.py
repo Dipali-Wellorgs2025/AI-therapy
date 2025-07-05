@@ -914,7 +914,10 @@ def handle_message(data):
                           .replace("{{issue_description}}", issue)\
                           .replace("{{preferred_style}}", style)
 
-    intro = f"{bot_name}: {filled_prompt}\nUser: {user_msg}\n{bot_name}:"
+    intro = f"""Therapist Profile: {filled_prompt}
+    User: {user_msg}
+    {bot_name}:"""
+
 
 
     full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
@@ -1052,7 +1055,10 @@ Issue: "{issue_description}"
         except:
             history = []
 
-        intro = f"{bot_name}: {prompt_filled}\nUser: {user_message}\n{bot_name}:"
+        intro = f"""Therapist Profile: {filled_prompt}
+        User: {user_msg}
+        {bot_name}:"""
+
         full_prompt = "\n".join([f"{m['sender']}: {m['message']}" for m in history] + [intro])
 
         reply = ""
