@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from queue import Queue
 import json
+import re
+
+def convert_starred_to_bold(text):
+    return re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
+
 
 task_queues = {}  # task_id -> Queue()
 
@@ -948,13 +953,17 @@ User: {user_name}, Style: {style}."""
             if chunk.choices and chunk.choices[0].delta.content:
                 piece = chunk.choices[0].delta.content
                 cleaned = piece.replace(" -", "-").replace("- ", "-")\
-                               .replace(" ,", ",").replace(" .", ".")\
-                               .replace("*", "").replace("’ ", "’")\
-                               .replace("“", '"').replace("”", '"')\
-                               .replace("—", "").replace("–", "")
+               .replace(" ,", ",").replace(" .", ".")\
+               .replace("’ ", "’").replace("“", '"')\
+               .replace("”", '"').replace("—", "").replace("–", "")
+                
+
                 cleaned = " ".join(w if len(w) <= 1 else w.replace(" ", "") for w in cleaned.split())
+                cleaned = convert_starred_to_bold(cleaned)
                 bot_response += cleaned
                 yield sse_format(cleaned)
+                
+
 
         yield sse_format("[END]")
     except Exception as e:
