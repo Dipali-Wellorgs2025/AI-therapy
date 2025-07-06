@@ -949,8 +949,15 @@ User: {user_name}, Style: {style}."""
                 piece = chunk.choices[0].delta.content
 
                 # Clean only em-dashes, preserve other formatting and spaces
+                
                 cleaned = piece.replace("—", "")
                 cleaned = convert_starred_to_bold(cleaned)
+                cleaned = re.sub(r'\s+([,.!?])', r'\1', cleaned)
+                cleaned = cleaned.replace("’ ", "’").replace(" ’", "’")
+                cleaned = cleaned.replace("‘ ", "‘").replace(" ’", "’")
+                cleaned = re.sub(r'(\w)\s+(\w)', lambda m: f"{m.group(1)}{m.group(2)}" if len(m.group(0)) <= 3 else m.group(0), cleaned)
+
+                
 
                 # Optional: fix space between words cut by streaming
                 if partial_chunk and not partial_chunk.endswith(" ") and not cleaned.startswith(" "):
