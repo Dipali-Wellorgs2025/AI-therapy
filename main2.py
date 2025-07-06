@@ -896,9 +896,12 @@ task_queues = {}
 
 # 🔁 Streaming format
 def sse_format(message):
-    return f"data: {message}\n\n"
+    return f"{message}\n"
+
 
 # 🔄 Main Gemini Streaming Logic
+import re  # Add this at the top if not already imported
+
 def handle_message(data):
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
@@ -923,23 +926,16 @@ def handle_message(data):
                               .replace("{{issue_description}}", issue)\
                               .replace("{{preferred_style}}", style)
 
-    intro = f"""Therapist Profile: {filled_prompt}
-User: {user_msg}
-{bot_name}:"""
-
-    structured_prompt = []
-    for m in history[-10:]:
-        role = "user" if m["sender"].lower() == "user" else "model"
-        structured_prompt.append({"role": role, "parts": [m["message"]]})
-    structured_prompt.append({"role": "user", "parts": [intro]})
-
-    last_chunk = ""
-    bot_response = ""
-    try:
-        system_prompt = f"""You're {bot_name}, a therapist helping with {issue}.
+    system_prompt = f"""You're {bot_name}, a therapist helping with {issue}.
 Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
 User: {user_name}, Style: {style}."""
+
+    last_sent_time = time.time()
+    bot_response = ""
+    partial_chunk = ""
+
+    try:
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
@@ -949,28 +945,35 @@ User: {user_name}, Style: {style}."""
             stream=True
         )
 
-                yield sse_format(cleaned)
         for chunk in response:
-           if chunk.choices and chunk.choices[0].delta.content:
-               piece = chunk.choices[0].delta.content
-               cleaned = piece.replace(" -", "-").replace("- ", "-")\
-                           .replace(" ,", ",").replace(" .", ".")\
-                           .replace("’ ", "’").replace("“", '"')\
-                           .replace("”", '"').replace("—", "").replace("–", "")
-               cleaned = " ".join(w if len(w) <= 1 else w.replace(" ", "") for w in cleaned.split())
-               cleaned = convert_starred_to_bold(cleaned)
-               bot_response += cleaned
-               partial_chunk += cleaned
+            if chunk.choices and chunk.choices[0].delta.content:
+                piece = chunk.choices[0].delta.content
+
+                # Clean formatting and preserve spacing
+                cleaned = piece.replace(" -", "-").replace("- ", "-")\
+                               .replace(" ,", ",").replace(" .", ".")\
+                               .replace("’ ", "’").replace("“", '"')\
+                               .replace("”", '"').replace("—", "").replace("–", "")
+                cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                cleaned = convert_starred_to_bold(cleaned)
+
+                bot_response += cleaned
+                partial_chunk += cleaned
+
             if "." in partial_chunk or "?" in partial_chunk or len(partial_chunk) > 40 or time.time() - last_sent_time > 0.5:
-               yield sse_format(partial_chunk.strip())
-               last_sent_time = time.time()
-               partial_chunk = ""
+                yield partial_chunk.strip() + "\n"
+                last_sent_time = time.time()
+                partial_chunk = ""
+
         if partial_chunk.strip():
-          yield sse_format(partial_chunk.strip())
+            yield partial_chunk.strip() + "\n"
+
+        yield "[END]\n"
+
     except Exception as e:
         print("❌ Gemini stream failed:", e)
-        yield sse_format("Sorry, I had trouble responding.")
-        yield sse_format("[END]")
+        yield "Sorry, I had trouble responding.\n"
+        yield "[END]\n"
 
     # 🔒 Save session
     try:
@@ -988,7 +991,7 @@ User: {user_name}, Style: {style}."""
 
 
 # 🌐 SSE streaming endpoint
-@app.route("/api/stream", methods=["GET"])
+@app.route("/api/stream", methods=["GET"]) 
 def stream():
     data = {
         "message": request.args.get("message", ""),
