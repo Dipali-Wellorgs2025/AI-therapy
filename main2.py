@@ -949,23 +949,24 @@ User: {user_name}, Style: {style}."""
             stream=True
         )
 
-        for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
-                piece = chunk.choices[0].delta.content
-                cleaned = piece.replace(" -", "-").replace("- ", "-")\
-               .replace(" ,", ",").replace(" .", ".")\
-               .replace("’ ", "’").replace("“", '"')\
-               .replace("”", '"').replace("—", "").replace("–", "")
-                
-
-                cleaned = " ".join(w if len(w) <= 1 else w.replace(" ", "") for w in cleaned.split())
-                cleaned = convert_starred_to_bold(cleaned)
-                bot_response += cleaned
                 yield sse_format(cleaned)
-                
-
-
-        yield sse_format("[END]")
+        for chunk in response:
+           if chunk.choices and chunk.choices[0].delta.content:
+               piece = chunk.choices[0].delta.content
+               cleaned = piece.replace(" -", "-").replace("- ", "-")\
+                           .replace(" ,", ",").replace(" .", ".")\
+                           .replace("’ ", "’").replace("“", '"')\
+                           .replace("”", '"').replace("—", "").replace("–", "")
+               cleaned = " ".join(w if len(w) <= 1 else w.replace(" ", "") for w in cleaned.split())
+               cleaned = convert_starred_to_bold(cleaned)
+               bot_response += cleaned
+               partial_chunk += cleaned
+            if "." in partial_chunk or "?" in partial_chunk or len(partial_chunk) > 40 or time.time() - last_sent_time > 0.5:
+               yield sse_format(partial_chunk.strip())
+               last_sent_time = time.time()
+               partial_chunk = ""
+        if partial_chunk.strip():
+          yield sse_format(partial_chunk.strip())
     except Exception as e:
         print("❌ Gemini stream failed:", e)
         yield sse_format("Sorry, I had trouble responding.")
