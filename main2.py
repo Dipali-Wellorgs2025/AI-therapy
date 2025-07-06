@@ -1097,9 +1097,9 @@ def get_recent_sessions():
             return jsonify({"error": "Missing user_id"}), 400
 
         # ✅ Use keyword-style filter to avoid deprecation warning
-        sessions_ref = db.collection("sessions")\
-            .where(filter=("user_id", "==", user_id))\
-            .order_by("last_updated", direction=firestore.Query.DESCENDING)\
+        sessions_ref = db.collection("sessions") \
+            .where("user_id", "==", user_id) \
+            .order_by("last_updated", direction=firestore.Query.DESCENDING) \
             .limit(1)
 
         docs = sessions_ref.stream()
