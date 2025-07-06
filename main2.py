@@ -1088,20 +1088,29 @@ Issue: "{issue_description}"
         traceback.print_exc()
         return jsonify({"botReply": "An unexpected error occurred."}), 500
 
-# 🧠 Get recent session summaries
+
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
         user_id = request.args.get("user_id")
-        sessions_ref = db.collection("sessions").where("user_id", "==", user_id)\
-                          .order_by("last_updated", direction=firestore.Query.DESCENDING).limit(1)
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
+
+        # ✅ Use keyword-style filter to avoid deprecation warning
+        sessions_ref = db.collection("sessions")\
+            .where(filter=("user_id", "==", user_id))\
+            .order_by("last_updated", direction=firestore.Query.DESCENDING)\
+            .limit(1)
+
         docs = sessions_ref.stream()
         session_list = []
+
         for doc in docs:
             data = doc.to_dict()
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
+
             session_list.append({
                 "problem": data.get("title", "Therapy Session"),
                 "bot_name": data.get("bot_name", ""),
@@ -1109,10 +1118,15 @@ def get_recent_sessions():
                 "date": data.get("last_updated", ""),
                 "user_id": data.get("user_id", "")
             })
+
         return jsonify(session_list)
+
     except Exception as e:
-        print("❌ Failed to fetch session:", e)
-        return jsonify({"error": "Failed to fetch session"}), 500
+        import traceback
+        print("[❌] Error in get_recent_sessions:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Server error retrieving session"}), 500
+
 
 # ✅ Run
 if __name__ == "__main__":
