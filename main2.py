@@ -950,11 +950,8 @@ User: {user_name}, Style: {style}."""
                 piece = chunk.choices[0].delta.content
 
                 # Clean formatting and preserve spacing
-                cleaned = piece.replace(" -", "-").replace("- ", "-")\
-                               .replace(" ,", ",").replace(" .", ".")\
-                               .replace("’ ", "’").replace("“", '"')\
-                               .replace("”", '"').replace("—", "").replace("–", "")
-                cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                cleaned = piece.replace("—", "")  # remove em-dash only
+                
                 cleaned = convert_starred_to_bold(cleaned)
 
                 bot_response += cleaned
