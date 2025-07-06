@@ -900,8 +900,7 @@ def sse_format(message):
 
 
 # 🔄 Main Gemini Streaming Logic
-import re  # Add this at the top if not already imported
-
+# import re  # Add this at the top if not already imported
 def handle_message(data):
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
@@ -949,10 +948,13 @@ User: {user_name}, Style: {style}."""
             if chunk.choices and chunk.choices[0].delta.content:
                 piece = chunk.choices[0].delta.content
 
-                # Clean formatting and preserve spacing
-                cleaned = piece.replace("—", "")  # remove em-dash only
-                
+                # Clean only em-dashes, preserve other formatting and spaces
+                cleaned = piece.replace("—", "")
                 cleaned = convert_starred_to_bold(cleaned)
+
+                # Optional: fix space between words cut by streaming
+                if partial_chunk and not partial_chunk.endswith(" ") and not cleaned.startswith(" "):
+                    cleaned = " " + cleaned  # insert space between joined words
 
                 bot_response += cleaned
                 partial_chunk += cleaned
@@ -962,15 +964,13 @@ User: {user_name}, Style: {style}."""
                 last_sent_time = time.time()
                 partial_chunk = ""
 
+        # Send final partial chunk, no [END]
         if partial_chunk.strip():
             yield partial_chunk.strip() + "\n"
-
-        yield "[END]\n"
 
     except Exception as e:
         print("❌ Gemini stream failed:", e)
         yield "Sorry, I had trouble responding.\n"
-        yield "[END]\n"
 
     # 🔒 Save session
     try:
@@ -985,6 +985,8 @@ User: {user_name}, Style: {style}."""
         })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
+
+
 
 
 # 🌐 SSE streaming endpoint
