@@ -996,6 +996,7 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
         # ✅ Final processing
         final_clean = fix_contractions(bot_response.strip())
         final_clean = wrap_action_phrases(final_clean)
+        final_clean = convert_starred_to_bold(final_clean)
 
         yield f"{bot_name}: {final_clean}\n\n"
 
