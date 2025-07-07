@@ -17,7 +17,8 @@ import re
 
 
 def convert_starred_to_bold(text):
-    return re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
+    # Convert *text* to **text** (Markdown bold)
+    return re.sub(r'\*(.*?)\*', r'**\1**', text)
 
 
 task_queues = {}  # task_id -> Queue()
@@ -61,6 +62,9 @@ BOT_PROMPTS = {
 You are Sage — a licensed psychotherapist with 10+ years of clinical experience and formal training in CBT, trauma-focused therapy, somatic techniques, and Socratic questioning.
 
 Your voice is warm, collaborative, and evidence-based. You **must** sound like a calm, compassionate, emotionally intelligent human being — never robotic or generic.
+
+Use **bold** for emphasis instead of <b>tags</b>.
+Example: **This is important** not <b>This is important</b>
 
 You must:
 • Mirror emotions using natural, empathetic language  
@@ -201,6 +205,9 @@ You are always aware of these:
 You are Jorden — a licensed psychotherapist with 10+ years of experience and deep expertise in relationship dynamics, attachment theory, emotional recovery, and boundary work.
 
 Your tone is warm, emotionally intelligent, and grounded. You speak like a wise, compassionate therapist with clear boundaries and heartfelt insight — never robotic, judgmental, or vague.
+ 
+Use **bold** for emphasis instead of <b>tags</b>.
+Example: **This is important** not <b>This is important</b>
 
 You must:
 • Mirror emotions using compassionate, validating language  
@@ -339,6 +346,9 @@ You are River — a licensed psychotherapist with 10+ years of experience suppor
 
 Your voice is soft, patient, and emotionally nourishing — like a calm guide who helps clients rediscover their inner strength without pressure or shame.
 
+Use **bold** for emphasis instead of <b>tags</b>.
+Example: **This is important** not <b>This is important</b>
+
 You must:
 • Mirror feelings using natural, compassionate language  
 • Ask open yet emotionally safe questions  
@@ -474,6 +484,9 @@ You are always aware of these:
 You are Phoenix — a licensed trauma-informed therapist with 10+ years of experience supporting clients through PTSD, flashbacks, and emotional safety rebuilding. You are trained in somatic grounding, trauma recovery, and gentle exposure-based work.
 
 Your tone is steady, safe, and emotionally anchored — like a strong but soft guide who honors survival, validates the pain, and helps rebuild safety without pushing too fast.
+
+Use **bold** for emphasis instead of <b>tags</b>.
+Example: **This is important** not <b>This is important</b>
 
 You must:
 • Use language that creates psychological and emotional safety  
@@ -612,6 +625,9 @@ You are always aware of these:
 You are Ava — a licensed therapist with 10+ years of experience in family therapy, generational healing, emotional communication, and relational boundaries.
 
 Your presence is warm, grounded, and maternal — like a wise, steady guide who helps people feel heard, respected, and empowered inside their complex family systems.
+ 
+Use **bold** for emphasis instead of <b>tags</b>.
+Example: **This is important** not <b>This is important</b>
 
 You must:
 • Validate relational pain without taking sides  
@@ -746,6 +762,9 @@ You are always aware of these:
 You are Raya — a licensed therapist with 10+ years of experience in helping clients navigate emotional crises, identity shifts, decision paralysis, and high-stakes transitions (breakdowns, job loss, panic, sudden change).
 
 Your tone is steady, hopeful, and motivating. You speak with calm urgency — holding space for confusion while gently guiding people toward clarity and grounded action.
+ 
+Use **bold** for emphasis instead of <b>tags</b>.
+Example: **This is important** not <b>This is important</b>
 
 You must:
 • Provide safety without overwhelming the user  
@@ -994,9 +1013,12 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
             bot_response += text
 
         # ✅ Final processing
+        
+        # In your handle_message function, ensure consistent formatting:
         final_clean = fix_contractions(bot_response.strip())
         final_clean = wrap_action_phrases(final_clean)
         final_clean = convert_starred_to_bold(final_clean)
+        final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
 
         yield f"{bot_name}: {final_clean}\n\n"
 
@@ -1129,55 +1151,60 @@ Issue: "{issue_description}"
 
 
 @app.route("/api/recent_sessions", methods=["GET"])
-@app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
         user_id = request.args.get("user_id")
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # ✅ Correct Firestore path: ai_therapists/anxiety/sessions
-        sessions_ref = db.collection("ai_therapists").document("anxiety").collection("sessions") \
-            .where("userId", "==", user_id) \
-            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+        # 🔧 Therapist bot mapping: Firestore doc ID => Display Name
+        bots = {
+            "anxiety": "Sage",
+            "trauma": "Phoenix",
+            "family": "Ava",
+            "crisis": "Raya",
+            "couples": "River",
+            "depression": "Jorden"
+        }
 
-        docs = sessions_ref.stream()
-        session_list = []
+        sessions = []
 
-        for doc in docs:
-            data = doc.to_dict()
-            raw_status = data.get("status", "").strip().lower()
+        for bot_doc_id, bot_name in bots.items():
+            session_ref = db.collection("ai_therapists").document(bot_doc_id).collection("sessions") \
+                .where("userId", "==", user_id) \
+                .order_by("createdAt", direction=firestore.Query.DESCENDING) \
+                .limit(1)
 
-            if raw_status == "end":
-                status = "completed"
-            elif raw_status in ("exit", "active"):
-                status = "in_progress"
-            else:
-                continue  # skip if status is unknown
+            docs = session_ref.stream()
 
-            session_list.append({
-                "session_id": doc.id,  # ✅ Firestore document ID
-                "bot_name": "Sage",  # hardcoded if not stored in Firestore
-                "problem": data.get("title", "Therapy Session"),
-                "status": status,
-                "date": str(data.get("createdAt", "")),
-                "user_id": data.get("userId", ""),
-                "preferred_style": data.get("therapyStyle", "")
-            })
+            for doc in docs:
+                data = doc.to_dict()
+                raw_status = data.get("status", "").strip().lower()
 
-        if not session_list:
-            print("[ℹ️] No sessions found for user:", user_id)
+                if raw_status == "end":
+                    status = "completed"
+                elif raw_status in ("exit", "active"):
+                    status = "in_progress"
+                else:
+                    continue  # skip invalid or missing status
 
-        return jsonify(session_list)
+                sessions.append({
+                    "session_id": doc.id,
+                    "bot_name": bot_name,
+                    "problem": data.get("title", "Therapy Session"),
+                    "status": status,
+                    "date": str(data.get("createdAt", "")),
+                    "user_id": data.get("userId", ""),
+                    "preferred_style": data.get("therapyStyle", "")
+                })
+
+        return jsonify(sessions)
 
     except Exception as e:
         import traceback
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
-
-
-
 
 # ✅ Recap
 # ✅ Run
