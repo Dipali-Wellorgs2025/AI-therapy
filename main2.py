@@ -15,6 +15,26 @@ from queue import Queue
 import json
 import re
 
+def clean_response(text: str) -> str:
+    """Comprehensive response cleaner"""
+    # Fix contractions first
+    text = fix_contractions(text)
+    
+    # Convert all bold formats to **markdown**
+    text = re.sub(r'<b>(.*?)</b>', r'**\1**', text)  # HTML tags
+    text = re.sub(r'\*(.*?)\*', r'**\1**', text)     # *asterisks*
+    
+    # Clean action phrases
+    text = wrap_action_phrases(text)
+    
+    # Remove unwanted symbols
+    text = text.replace("🟡", "•")  # Replace special symbols
+    text = re.sub(r'\s+', ' ', text)  # Fix extra spaces
+    
+    return text.strip()
+
+# In your handle_message function:
+
 
 def convert_starred_to_bold(text):
     # Convert *text* to **text** (Markdown bold)
@@ -65,6 +85,8 @@ Your voice is warm, collaborative, and evidence-based. You **must** sound like a
 
 Use **bold** for emphasis instead of <b>tags</b>.
 Example: **This is important** not <b>This is important</b>
+For actions use: [breathe in for 4] 
+Not: <breathe in for 4>
 
 You must:
 • Mirror emotions using natural, empathetic language  
@@ -208,7 +230,8 @@ Your tone is warm, emotionally intelligent, and grounded. You speak like a wise,
  
 Use **bold** for emphasis instead of <b>tags</b>.
 Example: **This is important** not <b>This is important</b>
-
+For actions use: [breathe in for 4] 
+Not: <breathe in for 4>
 You must:
 • Mirror emotions using compassionate, validating language  
 • Ask thoughtful, emotionally aware questions  
@@ -348,7 +371,8 @@ Your voice is soft, patient, and emotionally nourishing — like a calm guide wh
 
 Use **bold** for emphasis instead of <b>tags</b>.
 Example: **This is important** not <b>This is important</b>
-
+For actions use: [breathe in for 4] 
+Not: <breathe in for 4>
 You must:
 • Mirror feelings using natural, compassionate language  
 • Ask open yet emotionally safe questions  
@@ -487,7 +511,8 @@ Your tone is steady, safe, and emotionally anchored — like a strong but soft g
 
 Use **bold** for emphasis instead of <b>tags</b>.
 Example: **This is important** not <b>This is important</b>
-
+For actions use: [breathe in for 4] 
+Not: <breathe in for 4>
 You must:
 • Use language that creates psychological and emotional safety  
 • Mirror trauma responses without reactivating them  
@@ -628,7 +653,8 @@ Your presence is warm, grounded, and maternal — like a wise, steady guide who 
  
 Use **bold** for emphasis instead of <b>tags</b>.
 Example: **This is important** not <b>This is important</b>
-
+For actions use: [breathe in for 4] 
+Not: <breathe in for 4>
 You must:
 • Validate relational pain without taking sides  
 • Ask grounded, thoughtful questions  
@@ -765,7 +791,8 @@ Your tone is steady, hopeful, and motivating. You speak with calm urgency — ho
  
 Use **bold** for emphasis instead of <b>tags</b>.
 Example: **This is important** not <b>This is important</b>
-
+For actions use: [breathe in for 4] 
+Not: <breathe in for 4>
 You must:
 • Provide safety without overwhelming the user  
 • Ask questions that help the client stabilize and focus  
@@ -925,6 +952,7 @@ def sse_format(message):
 from firebase_admin import firestore
 from datetime import datetime, timezone
 
+
 import re
 
 # Only wrap action phrases, NOT emojis
@@ -1011,14 +1039,25 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
                 bot_response += " "
 
             bot_response += text
+            def validate_response(response: str) -> bool:
+                    """Check for common formatting errors"""
+               if re.search(r'<b>.*?</b>', response):
+                   return False
+              if re.search(r'\*.*\*', response) and not re.search(r'\*\*.*\*\*', response):
+                  return False
+                  return True
 
+              # Usage:
+              if not validate_response(bot_response):
+                   bot_response = clean_response(bot_response)  # Auto-clean if invalid
         # ✅ Final processing
         
         # In your handle_message function, ensure consistent formatting:
-        final_clean = fix_contractions(bot_response.strip())
-        final_clean = wrap_action_phrases(final_clean)
-        final_clean = convert_starred_to_bold(final_clean)
-        final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
+        final_clean = clean_response(bot_response)
+        # final_clean = fix_contractions(bot_response.strip())
+        # final_clean = wrap_action_phrases(final_clean)
+        # final_clean = convert_starred_to_bold(final_clean)
+        # final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
 
         yield f"{bot_name}: {final_clean}\n\n"
 
