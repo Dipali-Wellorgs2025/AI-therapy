@@ -1102,7 +1102,6 @@ Issue: "{issue_description}"
         traceback.print_exc()
         return jsonify({"botReply": "An unexpected error occurred."}), 500
 
-
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1110,39 +1109,45 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # ✅ Use keyword-style filter to avoid deprecation warning
+        now = datetime.utcnow()
+        last_24_hours = now - timedelta(hours=24)
+
         sessions_ref = db.collection("sessions") \
             .where("user_id", "==", user_id) \
-            .order_by("last_updated", direction=firestore.Query.DESCENDING) \
-            .limit(1)
+            .where("last_updated", ">", last_24_hours) \
+            .order_by("last_updated", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
-        session_list = []
+
+        latest_sessions_per_bot = {}
 
         for doc in docs:
             data = doc.to_dict()
+            bot_name = data.get("bot_name", "")
+            if bot_name in latest_sessions_per_bot:
+                continue  # Already have the latest for this bot
+
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
 
-            session_list.append({
+            latest_sessions_per_bot[bot_name] = {
                 "problem": data.get("title", "Therapy Session"),
-                "bot_name": data.get("bot_name", ""),
+                "bot_name": bot_name,
                 "status": status,
                 "date": data.get("last_updated", ""),
                 "user_id": data.get("user_id", ""),
                 "issue_description": data.get("issue_description", ""),
                 "preferred_style": data.get("preferred_style", "")
-            })
+            }
 
-        return jsonify(session_list)
+        return jsonify(list(latest_sessions_per_bot.values()))
 
     except Exception as e:
         import traceback
         print("[❌] Error in get_recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
-
 
 # ✅ Run
 if __name__ == "__main__":
