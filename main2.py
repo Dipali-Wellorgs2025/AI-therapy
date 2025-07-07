@@ -966,7 +966,14 @@ ACTION_PHRASES = [
     r"in for \d+",
     r"out for \d+"
 ]
-
+import re
+def validate_response(response: str) -> bool:
+    """Check for common formatting errors"""
+    if re.search(r'<b>.*?</b>', response):
+        return False
+    if re.search(r'\*.*\*', response) and not re.search(r'\*\*.*\*\*', response):
+        return False
+        return True
 def wrap_action_phrases(text: str) -> str:
     for phrase in ACTION_PHRASES:
         text = re.sub(
@@ -1038,17 +1045,10 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
             ):
                 bot_response += " "
 
-            bot_response += text
-            def validate_response(response: str) -> bool:
-                    """Check for common formatting errors"""
-               if re.search(r'<b>.*?</b>', response):
-                   return False
-              if re.search(r'\*.*\*', response) and not re.search(r'\*\*.*\*\*', response):
-                  return False
-                  return True
+  
 
               # Usage:
-              if not validate_response(bot_response):
+                if not validate_response(bot_response):
                    bot_response = clean_response(bot_response)  # Auto-clean if invalid
         # ✅ Final processing
         
