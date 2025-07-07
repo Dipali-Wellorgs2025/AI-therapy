@@ -3,8 +3,8 @@ import firebase_admin
 import uuid
 import traceback
 from firebase_admin import credentials, firestore
-# from datetime import datetime, timedelta
-import datetime
+from datetime import datetime, timedelta
+# import datetime
 import threading
 import time
 from uuid import uuid4
@@ -973,10 +973,10 @@ Avoid repeating the user's name in every reply."""
         )
 
         for chunk in response:
-           """ if chunk.choices and chunk.choices[0].delta.content:
+           if chunk.choices and chunk.choices[0].delta.content:
                 piece = chunk.choices[0].delta.content
-                cleaned = piece.replace("—", "")"""
-             
+                cleaned = piece.replace("—", "")
+            
            if (
                chunk.choices 
                and chunk.choices[0].delta.content 
@@ -990,19 +990,19 @@ Avoid repeating the user's name in every reply."""
                     bot_response 
                     and bot_response[-1].isalnum() 
                     and cleaned[0].isalnum()
-                   ):
+                  ):
           
                     bot_response += " "
 
-                    bot_response+= cleaned.strip()
+                    bot_response += cleaned.strip()
                 # cleaned to cleaned.strip()
 
         # Post-process full message
         bot_response = fix_contractions(bot_response.strip())
         bot_response = wrap_action_phrases(bot_response)
         full_reply = f"{bot_name}: {bot_response}"
-        yield full_reply.strip()
-        # yield f"{full_reply}.strip()\n\n"
+        # yield full_reply.strip()
+        yield f"{full_reply.strip()}\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
@@ -1138,6 +1138,8 @@ Issue: "{issue_description}"
         return jsonify({"botReply": "An unexpected error occurred."}), 500
 
 @app.route("/api/recent_sessions", methods=["GET"])
+
+
 def get_recent_sessions():
     try:
         user_id = request.args.get("user_id")
@@ -1160,11 +1162,18 @@ def get_recent_sessions():
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
 
+            # Handle datetime formatting safely
+            last_updated = data.get("last_updated")
+            if isinstance(last_updated, datetime):
+                formatted_date = last_updated.isoformat()
+            else:
+                formatted_date = ""
+
             session_list.append({
                 "problem": data.get("title", "Therapy Session"),
                 "bot_name": data.get("bot_name", ""),
                 "status": status,
-                "date": data.get("last_updated", ""),
+                "date": formatted_date,
                 "user_id": data.get("user_id", ""),
                 "issue_description": data.get("issue_description", ""),
                 "preferred_style": data.get("preferred_style", "")
@@ -1178,6 +1187,8 @@ def get_recent_sessions():
         print("[❌] Error in get_recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
+
 
 # ✅ Recap
 # ✅ Run
