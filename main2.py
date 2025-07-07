@@ -3,7 +3,7 @@ import firebase_admin
 import uuid
 import traceback
 from firebase_admin import credentials, firestore
-import datetime
+from datetime import datetime, timedelta
 import threading
 import time
 from uuid import uuid4
@@ -13,6 +13,7 @@ from openai import OpenAI
 from queue import Queue
 import json
 import re
+
 
 def convert_starred_to_bold(text):
     return re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
