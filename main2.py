@@ -966,17 +966,17 @@ User: {user_name}, Style: {preferred_style}.You will support them step by step t
                 partial_chunk += cleaned
 
             if "." in partial_chunk or "?" in partial_chunk or len(partial_chunk) > 40 or time.time() - last_sent_time > 0.5:
-                yield f"data: {partial_chunk.strip()}\n\n"
+                yield f" {partial_chunk.strip()}\n\n"
                 last_sent_time = time.time()
                 partial_chunk = ""
 
         # Send final partial chunk, no [END]
         if partial_chunk.strip():
-            yield f"data: {partial_chunk.strip()}\n\n"
+            yield f" {partial_chunk.strip()}\n\n"
 
     except Exception as e:
         print("❌ Gemini stream failed:", e)
-        yield f"data: Sorry, I had trouble responding.\n\n"
+        yield f" Sorry, I had trouble responding.\n\n"
 
     # 🔒 Save session
     try:
