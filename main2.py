@@ -928,7 +928,7 @@ def handle_message(data):
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
 Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
-User: {user_name}, Style: {preferred_style}.This therapist uses a {preferred_style} tone with the user.You will support them step by step through this situation. Your tone should match their preferred style."""
+User: {user_name}, Style: {preferred_style}.You will support them step by step through this situation. Your tone should match their preferred style.do not greet with {user_name} in every reply"""
 
     last_sent_time = time.time()
     bot_response = ""
@@ -949,35 +949,34 @@ User: {user_name}, Style: {preferred_style}.This therapist uses a {preferred_sty
                 piece = chunk.choices[0].delta.content
 
                 # Clean only em-dashes, preserve other formatting and spaces
-                
                 cleaned = piece.replace("—", "")
                 cleaned = convert_starred_to_bold(cleaned)
-                cleaned = re.sub(r'\s+([,.!?])', r'\1', cleaned)
-                cleaned = cleaned.replace("’ ", "’").replace(" ’", "’")
-                cleaned = cleaned.replace("‘ ", "‘").replace(" ’", "’")
-                cleaned = re.sub(r'(\w)\s+(\w)', lambda m: f"{m.group(1)}{m.group(2)}" if len(m.group(0)) <= 3 else m.group(0), cleaned)
-
-                
 
                 # Optional: fix space between words cut by streaming
                 if partial_chunk and not partial_chunk.endswith(" ") and not cleaned.startswith(" "):
                     cleaned = " " + cleaned  # insert space between joined words
+                    cleaned = convert_starred_to_bold(cleaned)
+                    cleaned = re.sub(r"\b(\w+)\s+([’'])\s+(\w+)\b", r"\1\2\3", cleaned)
+                    cleaned = re.sub(r"\s+([?.!,])", r"\1", cleaned)
+                    cleaned = re.sub(r"([?.!,])([^\s])", r"\1 \2", cleaned)
+                    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+                    cleaned = cleaned.strip()
 
                 bot_response += cleaned
                 partial_chunk += cleaned
 
             if "." in partial_chunk or "?" in partial_chunk or len(partial_chunk) > 40 or time.time() - last_sent_time > 0.5:
-                yield partial_chunk.strip() + "\n"
+                yield f"data: {partial_chunk.strip()}\n\n"
                 last_sent_time = time.time()
                 partial_chunk = ""
 
         # Send final partial chunk, no [END]
         if partial_chunk.strip():
-            yield partial_chunk.strip() + "\n"
+            yield f"data: {partial_chunk.strip()}\n\n"
 
     except Exception as e:
         print("❌ Gemini stream failed:", e)
-        yield "Sorry, I had trouble responding.\n"
+        yield f"data: Sorry, I had trouble responding.\n\n"
 
     # 🔒 Save session
     try:
@@ -991,6 +990,7 @@ User: {user_name}, Style: {preferred_style}.This therapist uses a {preferred_sty
             "last_updated": timestamp,
             "issue_description": issue_description,
             "preferred_style": preferred_style
+
         })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
