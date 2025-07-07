@@ -1110,51 +1110,29 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        now = datetime.utcnow()
-        last_24_hours = now - timedelta(hours=24)
-
-        print(f"[📥] Getting sessions for user_id: {user_id}")
-        print(f"[⏱] Filtering sessions after: {last_24_hours}")
-
-        sessions_ref = db.collection("sessions") \
-            .where(field_path="user_id", op_string="==", value=user_id) \
-            .where(field_path="last_updated", op_string=">", value=last_24_hours) \
-            .order_by("last_updated", direction=firestore.Query.DESCENDING)
+        # ✅ Use keyword-style filter to avoid deprecation warning
+        sessions_ref = db.collection("sessions")\
+            .where(filter=("user_id", "==", user_id))\
+            .order_by("last_updated", direction=firestore.Query.DESCENDING)\
+            .limit(1)
 
         docs = sessions_ref.stream()
-
         session_list = []
-        seen_bots = set()
 
         for doc in docs:
             data = doc.to_dict()
-            bot_name = data.get("bot_name", "")
-            last_updated = data.get("last_updated")
-
-            if not isinstance(last_updated, datetime):
-                print(f"[⚠️] Skipping doc with invalid timestamp: {last_updated}")
-                continue
-
-            if bot_name in seen_bots:
-                continue
-
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
 
             session_list.append({
                 "problem": data.get("title", "Therapy Session"),
-                "bot_name": bot_name,
+                "bot_name": data.get("bot_name", ""),
                 "status": status,
-                "date": last_updated,
-                "user_id": data.get("user_id", ""),
-                "issue_description": data.get("issue_description", ""),
-                "preferred_style": data.get("preferred_style", "")
+                "date": data.get("last_updated", ""),
+                "user_id": data.get("user_id", "")
             })
 
-            seen_bots.add(bot_name)
-
-        print(f"[✅] Returning {len(session_list)} session(s)")
         return jsonify(session_list)
 
     except Exception as e:
