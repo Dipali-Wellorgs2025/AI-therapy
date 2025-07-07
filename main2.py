@@ -993,7 +993,7 @@ Avoid repeating the user's name in every reply."""
           
                     bot_response += " "
 
-                 bot_response+= cleaned.strip()
+                    bot_response+= cleaned.strip()
                 # cleaned to cleaned.strip()
 
         # Post-process full message
@@ -1143,11 +1143,12 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # ✅ Use keyword-style filter to avoid deprecation warning
-        sessions_ref = db.collection("sessions")\
-            .where(filter=("user_id", "==", user_id))\
-            .order_by("last_updated", direction=firestore.Query.DESCENDING)\
-            .limit(1)
+        print(f"[📥] Getting sessions for user_id: {user_id}")
+
+        # Fetch all sessions for this user, ordered by last_updated
+        sessions_ref = db.collection("sessions") \
+            .where("user_id", "==", user_id) \
+            .order_by("last_updated", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
         session_list = []
@@ -1163,9 +1164,12 @@ def get_recent_sessions():
                 "bot_name": data.get("bot_name", ""),
                 "status": status,
                 "date": data.get("last_updated", ""),
-                "user_id": data.get("user_id", "")
+                "user_id": data.get("user_id", ""),
+                "issue_description": data.get("issue_description", ""),
+                "preferred_style": data.get("preferred_style", "")
             })
 
+        print(f"[✅] Returning {len(session_list)} sessions")
         return jsonify(session_list)
 
     except Exception as e:
