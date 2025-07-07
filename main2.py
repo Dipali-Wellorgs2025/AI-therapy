@@ -902,6 +902,9 @@ def sse_format(message):
 
 # 🔄 Main Gemini Streaming Logic
 # import re  # Add this at the top if not already imported
+from firebase_admin import firestore
+from datetime import datetime, timezone
+
 def handle_message(data):
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
@@ -920,20 +923,15 @@ def handle_message(data):
     except Exception as e:
         print("❌ Firestore get failed:", e)
 
-    # Fill prompt
-    raw_prompt = BOT_PROMPTS.get(bot_name, "")
-    filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
-                              .replace("{{issue_description}}", issue_description)\
-                              .replace("{{preferred_style}}", preferred_style)
-
+    # System prompt
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
-Use a warm, practical tone. Respond like a human.
+Use a warm, {preferred_style.lower()} tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
-User: {user_name}, Style: {preferred_style}.You will support them step by step through this situation. Your tone should match their preferred style.do not greet with {user_name} in every reply"""
+User: {user_name}, Style: {preferred_style}. Support them step by step.
+Avoid repeating the user's name in every reply."""
 
-    last_sent_time = time.time()
     bot_response = ""
-    partial_chunk = ""
+    last_piece = ""
 
     try:
         response = client.chat.completions.create(
@@ -948,53 +946,39 @@ User: {user_name}, Style: {preferred_style}.You will support them step by step t
         for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 piece = chunk.choices[0].delta.content
+                cleaned = convert_starred_to_bold(piece.replace("—", ""))
 
-                # Clean only em-dashes, preserve other formatting and spaces
-                cleaned = piece.replace("—", "")
-                cleaned = convert_starred_to_bold(cleaned)
-
-                # Optional: fix space between words cut by streaming
-                if partial_chunk and not partial_chunk.endswith(" ") and not cleaned.startswith(" "):
-                    cleaned = " " + cleaned  # insert space between joined words
-                    cleaned = convert_starred_to_bold(cleaned)
-                    cleaned = re.sub(r"\b(\w+)\s+([’'])\s+(\w+)\b", r"\1\2\3", cleaned)
-                    cleaned = re.sub(r"\s+([?.!,])", r"\1", cleaned)
-                    cleaned = re.sub(r"([?.!,])([^\s])", r"\1 \2", cleaned)
-                    cleaned = re.sub(r"\s{2,}", " ", cleaned)
-                    cleaned = cleaned.strip()
-
+                # ✅ Handle spacing between tokens
+                if last_piece and not last_piece.endswith((" ", "\n")) and not cleaned.startswith((" ", "\n", ".", ",", "!", "?")):
+                    bot_response += " "  # insert a space between words
                 bot_response += cleaned
-                partial_chunk += cleaned
+                last_piece = cleaned
 
-            if "." in partial_chunk or "?" in partial_chunk or len(partial_chunk) > 40 or time.time() - last_sent_time > 0.5:
-                yield f" {partial_chunk.strip()}\n\n"
-                last_sent_time = time.time()
-                partial_chunk = ""
-
-        # Send final partial chunk, no [END]
-        if partial_chunk.strip():
-            yield f" {partial_chunk.strip()}\n\n"
+        full_reply = f"{bot_name}: {bot_response.strip()}"
+        yield f"{full_reply}\n\n"
 
     except Exception as e:
-        print("❌ Gemini stream failed:", e)
-        yield f" Sorry, I had trouble responding.\n\n"
+        print("❌ Streaming failed:", e)
+        yield f"{bot_name}: Sorry, I had trouble responding.\n\n"
 
     # 🔒 Save session
     try:
-        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
-        history.append({"sender": "User", "message": user_msg, "timestamp": timestamp})
-        history.append({"sender": bot_name, "message": bot_response, "timestamp": timestamp})
+        now_str = datetime.now(timezone.utc).isoformat()
+        history.append({"sender": "User", "message": user_msg, "timestamp": now_str})
+        history.append({"sender": bot_name, "message": bot_response.strip(), "timestamp": now_str})
+
         session_ref.set({
             "user_id": user_id,
             "bot_name": bot_name,
             "messages": history,
-            "last_updated": timestamp,
+            "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style
+        }, merge=True)
 
-        })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
+
 
 
 
