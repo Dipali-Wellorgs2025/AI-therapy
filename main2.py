@@ -1110,26 +1110,34 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # 🕒 Time window for last 24 hours
         now = datetime.utcnow()
         last_24_hours = now - timedelta(hours=24)
 
+        print(f"[📥] Getting sessions for user_id: {user_id}")
+        print(f"[⏱] Filtering sessions after: {last_24_hours}")
+
+        # ✅ Use .filter() to avoid warnings
         sessions_ref = db.collection("sessions") \
-            .where("user_id", "==", user_id) \
-            .where("last_updated", ">", last_24_hours) \
+            .filter("user_id", "==", user_id) \
+            .filter("last_updated", ">", last_24_hours) \
             .order_by("last_updated", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
+
         session_list = []
         seen_bots = set()
 
         for doc in docs:
             data = doc.to_dict()
             bot_name = data.get("bot_name", "")
+            last_updated = data.get("last_updated")
 
-            # Skip if we already have a session for this bot
-            if bot_name in seen_bots:
+            if not isinstance(last_updated, datetime):
+                print(f"[⚠️] Skipping doc with invalid timestamp: {last_updated}")
                 continue
+
+            if bot_name in seen_bots:
+                continue  # only keep latest per bot
 
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
@@ -1139,7 +1147,7 @@ def get_recent_sessions():
                 "problem": data.get("title", "Therapy Session"),
                 "bot_name": bot_name,
                 "status": status,
-                "date": data.get("last_updated", ""),
+                "date": last_updated,
                 "user_id": data.get("user_id", ""),
                 "issue_description": data.get("issue_description", ""),
                 "preferred_style": data.get("preferred_style", "")
@@ -1147,6 +1155,7 @@ def get_recent_sessions():
 
             seen_bots.add(bot_name)
 
+        print(f"[✅] Returning {len(session_list)} session(s)")
         return jsonify(session_list)
 
     except Exception as e:
@@ -1154,6 +1163,7 @@ def get_recent_sessions():
         print("[❌] Error in get_recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+# ✅ Recap
 # ✅ Run
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
