@@ -1116,10 +1116,9 @@ def get_recent_sessions():
         print(f"[📥] Getting sessions for user_id: {user_id}")
         print(f"[⏱] Filtering sessions after: {last_24_hours}")
 
-        # ✅ Use .filter() to avoid warnings
         sessions_ref = db.collection("sessions") \
-            .filter("user_id", "==", user_id) \
-            .filter("last_updated", ">", last_24_hours) \
+            .where(field_path="user_id", op_string="==", value=user_id) \
+            .where(field_path="last_updated", op_string=">", value=last_24_hours) \
             .order_by("last_updated", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
@@ -1137,7 +1136,7 @@ def get_recent_sessions():
                 continue
 
             if bot_name in seen_bots:
-                continue  # only keep latest per bot
+                continue
 
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
@@ -1163,6 +1162,7 @@ def get_recent_sessions():
         print("[❌] Error in get_recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 # ✅ Recap
 # ✅ Run
 if __name__ == "__main__":
