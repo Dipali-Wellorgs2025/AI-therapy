@@ -1010,35 +1010,26 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
         )
 
         for chunk in response:
-            content = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta.content else None
-            if not content or not content.strip():
+            if not chunk.choices:
+                continue
+                
+            delta = chunk.choices[0].delta
+            if not delta or not delta.content:
                 continue
 
-            text = content.replace("—", "").strip()
-            if not text:
-                continue
+            text = delta.content
+            bot_response += text  # Accumulate the response
 
-            # Add space if needed between words
-            if (
-                bot_response 
-                and text 
-                and bot_response[-1].isalnum() 
-                and text[0].isalnum()
-            ):
-                bot_response += " "
-
-  
-
-              # Usage:
-               
-        # ✅ Final processing
-        
-        # In your handle_message function, ensure consistent formatting:
-        # final_clean = clean_response(bot_response)
+        # Final processing
         final_clean = fix_contractions(bot_response.strip())
         final_clean = wrap_action_phrases(final_clean)
         final_clean = convert_starred_to_bold(final_clean)
         final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
+
+        # Validate response format
+        if not validate_response(final_clean):
+            final_clean = re.sub(r'<b>(.*?)</b>', r'**\1**', final_clean)
+            final_clean = re.sub(r'\*(.*?)\*', r'**\1**', final_clean)
 
         yield f"{bot_name}: {final_clean}\n\n"
 
@@ -1046,11 +1037,11 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
         print("❌ Streaming failed:", e)
         yield f"{bot_name}: Sorry, I had trouble responding.\n\n"
 
-    # 🔒 Save session to Firestore
+    # Save session to Firestore
     try:
         now = datetime.now(timezone.utc).isoformat()
         history.append({"sender": "User", "message": user_msg, "timestamp": now})
-        history.append({"sender": bot_name, "message": bot_response, "timestamp": now})
+        history.append({"sender": bot_name, "message": final_clean, "timestamp": now})
 
         session_ref.set({
             "user_id": user_id,
@@ -1063,6 +1054,14 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
 
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
+
+def validate_response(response: str) -> bool:
+    """Check for common formatting errors"""
+    if re.search(r'<b>.*?</b>', response):
+        return False
+    if re.search(r'\*.*\*', response) and not re.search(r'\*\*.*\*\*', response):
+        return False
+    return True
 
 # 🌐 SSE streaming endpoint
 @app.route("/api/stream", methods=["GET"]) 
