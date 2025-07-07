@@ -973,43 +973,21 @@ Avoid repeating the user's name in every reply."""
         )
 
         for chunk in response:
-           if chunk.choices and chunk.choices[0].delta.content:
-                piece = chunk.choices[0].delta.content
-                cleaned = piece.replace("—", "")
-            
-           if (
-               chunk.choices 
-               and chunk.choices[0].delta.content 
-               and chunk.choices[0].delta.content.strip()
-             ):
+            delta = chunk.choices[0].delta if chunk.choices else None
+            content_piece = delta.content if delta and delta.content else ""
+            content_piece = content_piece.replace("—", "").strip()
 
-                # Add space if previous character was not a space/punctuation
-                 # if bot_response and not bot_response.endswith((" ", "\n", ".", ",", "!", "?", "'")) \
-                   # and not cleaned.startswith((" ", "\n", ".", ",", "!", "?", "'")):
-                  if (
-                    bot_response 
-                    and bot_response[-1].isalnum() 
-                    and cleaned[0].isalnum()
-                  ):
-          
+            if content_piece:
+                if bot_response and bot_response[-1].isalnum() and content_piece[0].isalnum():
                     bot_response += " "
+                bot_response += content_piece
+                yield f"{bot_name}: {bot_response.strip()}\n\n"
 
-                  bot_response += cleaned.strip()
-                  yield f"{bot_name}: {bot_response.strip()}\n\n"  
-                # cleaned to cleaned.strip()
-
-        # Post-process full message
+        # Final processing
         bot_response = fix_contractions(bot_response.strip())
         bot_response = wrap_action_phrases(bot_response)
-        full_reply = f"{bot_name}: {bot_response}"
-        # yield full_reply.strip()
-        yield f"{full_reply.strip()}\n\n"
-        if bot_response and text and text[0].isalnum() and (
-        bot_response[-1].isalnum() or bot_response[-1] in ".!?"
-        ):
-             bot_response += " "
-             bot_response += text
-             yield f"{bot_name}: {bot_response}\n\n"
+        final_reply = f"{bot_name}: {bot_response}"
+        yield f"{final_reply.strip()}\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
