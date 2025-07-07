@@ -1127,6 +1127,8 @@ Issue: "{issue_description}"
         return jsonify({"botReply": "An unexpected error occurred."}), 500
 
 
+
+@app.route("/api/recent_sessions", methods=["GET"])
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1134,39 +1136,43 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        sessions_ref = db.collection("sessions") \
-            .where("user_id", "==", user_id) \
-            .order_by("last_updated", direction=firestore.Query.DESCENDING)
+        # ✅ Correct Firestore path: ai_therapists/anxiety/sessions
+        sessions_ref = db.collection("ai_therapists").document("anxiety").collection("sessions") \
+            .where("userId", "==", user_id) \
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
         session_list = []
 
         for doc in docs:
             data = doc.to_dict()
-            firestore_status = data.get("status", "").strip().lower()
+            raw_status = data.get("status", "").strip().lower()
 
-            # 🔍 Status logic
-            if firestore_status == "end":
+            if raw_status == "end":
                 status = "completed"
-            elif firestore_status == "exit":
+            elif raw_status in ("exit", "active"):
                 status = "in_progress"
             else:
-                continue  # ⛔️ Skip session if status isn't End/Exit
+                continue  # skip if status is unknown
 
             session_list.append({
-                "bot_name": data.get("bot_name", ""),
+                "session_id": doc.id,  # ✅ Firestore document ID
+                "bot_name": "Sage",  # hardcoded if not stored in Firestore
                 "problem": data.get("title", "Therapy Session"),
                 "status": status,
-                "date": data.get("last_updated", ""),
-                "user_id": data.get("user_id", ""),
-                "preferred_style": data.get("therapyStyle", data.get("preferred_style", ""))
+                "date": str(data.get("createdAt", "")),
+                "user_id": data.get("userId", ""),
+                "preferred_style": data.get("therapyStyle", "")
             })
+
+        if not session_list:
+            print("[ℹ️] No sessions found for user:", user_id)
 
         return jsonify(session_list)
 
     except Exception as e:
         import traceback
-        print("[❌] Error in get_recent_sessions:", e)
+        print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
 
