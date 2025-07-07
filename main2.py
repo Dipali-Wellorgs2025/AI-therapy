@@ -1001,7 +1001,7 @@ Avoid repeating the user's name in every reply."""
         bot_response = fix_contractions(bot_response.strip())
         bot_response = wrap_action_phrases(bot_response)
         full_reply = f"{bot_name}: {bot_response}"
-        yeild f"{full_reply}.strip()"
+        yield full_reply.strip()
         # yield f"{full_reply}.strip()\n\n"
 
     except Exception as e:
