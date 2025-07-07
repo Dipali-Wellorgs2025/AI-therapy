@@ -981,13 +981,13 @@ Avoid repeating the user's name in every reply."""
                    and not cleaned.startswith((" ", "\n", ".", ",", "!", "?", "'")):
                     bot_response += " "
 
-                bot_response += cleaned
+                bot_response.strip()
 
         # Post-process full message
         bot_response = fix_contractions(bot_response.strip())
         bot_response = wrap_action_phrases(bot_response)
         full_reply = f"{bot_name}: {bot_response}"
-        yield f"{full_reply}\n\n"
+        yield f"{full_reply}.strip()\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
