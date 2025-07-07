@@ -972,22 +972,36 @@ Avoid repeating the user's name in every reply."""
         )
 
         for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
+           """ if chunk.choices and chunk.choices[0].delta.content:
                 piece = chunk.choices[0].delta.content
-                cleaned = piece.replace("—", "")
+                cleaned = piece.replace("—", "")"""
+             
+           if (
+               chunk.choices 
+               and chunk.choices[0].delta.content 
+               and chunk.choices[0].delta.content.strip()
+             ):
 
                 # Add space if previous character was not a space/punctuation
-                if bot_response and not bot_response.endswith((" ", "\n", ".", ",", "!", "?", "'")) \
-                   and not cleaned.startswith((" ", "\n", ".", ",", "!", "?", "'")):
+                # if bot_response and not bot_response.endswith((" ", "\n", ".", ",", "!", "?", "'")) \
+                   # and not cleaned.startswith((" ", "\n", ".", ",", "!", "?", "'")):
+                  if (
+                    bot_response 
+                    and bot_response[-1].isalnum() 
+                    and cleaned[0].isalnum()
+                   ):
+          
                     bot_response += " "
 
-                bot_response.strip()
+                 bot_response+= cleaned.strip()
+                # cleaned to cleaned.strip()
 
         # Post-process full message
         bot_response = fix_contractions(bot_response.strip())
         bot_response = wrap_action_phrases(bot_response)
         full_reply = f"{bot_name}: {bot_response}"
-        yield f"{full_reply}.strip()\n\n"
+        full_reply to full_reply.strip()
+        # yield f"{full_reply}.strip()\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
