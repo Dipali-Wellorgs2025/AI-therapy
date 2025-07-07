@@ -955,13 +955,14 @@ def handle_message(data):
     except Exception as e:
         print("❌ Firestore get failed:", e)
 
-    # Build prompt
+    # Build system prompt
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
 Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
 User: {user_name}, Style: {preferred_style}. You will support them step by step through this situation. Your tone should match their preferred style."""
 
     bot_response = ""
+
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -978,24 +979,31 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
                 continue
 
             text = content.replace("—", "").strip()
+            if not text:
+                continue
 
-            if bot_response and text[0].isalnum() and (
-                bot_response[-1].isalnum() or bot_response[-1] in ".!?"
+            # Add space if needed between words
+            if (
+                bot_response 
+                and text 
+                and bot_response[-1].isalnum() 
+                and text[0].isalnum()
             ):
                 bot_response += " "
 
             bot_response += text
 
-        # ✅ Final response only
+        # ✅ Final processing
         final_clean = fix_contractions(bot_response.strip())
         final_clean = wrap_action_phrases(final_clean)
+
         yield f"{bot_name}: {final_clean}\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
         yield f"{bot_name}: Sorry, I had trouble responding.\n\n"
 
-    # 🔒 Save session
+    # 🔒 Save session to Firestore
     try:
         now = datetime.now(timezone.utc).isoformat()
         history.append({"sender": "User", "message": user_msg, "timestamp": now})
@@ -1012,9 +1020,6 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
 
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
-
-
-
 
 # 🌐 SSE streaming endpoint
 @app.route("/api/stream", methods=["GET"]) 
