@@ -1109,6 +1109,7 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
+        # 🕒 Time window for last 24 hours
         now = datetime.utcnow()
         last_24_hours = now - timedelta(hours=24)
 
@@ -1118,20 +1119,22 @@ def get_recent_sessions():
             .order_by("last_updated", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
-
-        latest_sessions_per_bot = {}
+        session_list = []
+        seen_bots = set()
 
         for doc in docs:
             data = doc.to_dict()
             bot_name = data.get("bot_name", "")
-            if bot_name in latest_sessions_per_bot:
-                continue  # Already have the latest for this bot
+
+            # Skip if we already have a session for this bot
+            if bot_name in seen_bots:
+                continue
 
             messages = data.get("messages", [])
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
 
-            latest_sessions_per_bot[bot_name] = {
+            session_list.append({
                 "problem": data.get("title", "Therapy Session"),
                 "bot_name": bot_name,
                 "status": status,
@@ -1139,16 +1142,17 @@ def get_recent_sessions():
                 "user_id": data.get("user_id", ""),
                 "issue_description": data.get("issue_description", ""),
                 "preferred_style": data.get("preferred_style", "")
-            }
+            })
 
-        return jsonify(list(latest_sessions_per_bot.values()))
+            seen_bots.add(bot_name)
+
+        return jsonify(session_list)
 
     except Exception as e:
         import traceback
         print("[❌] Error in get_recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
-
 # ✅ Run
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
