@@ -3,7 +3,8 @@ import firebase_admin
 import uuid
 import traceback
 from firebase_admin import credentials, firestore
-from datetime import datetime, timedelta
+# from datetime import datetime, timedelta
+import datetime
 import threading
 import time
 from uuid import uuid4
@@ -1000,7 +1001,7 @@ Avoid repeating the user's name in every reply."""
         bot_response = fix_contractions(bot_response.strip())
         bot_response = wrap_action_phrases(bot_response)
         full_reply = f"{bot_name}: {bot_response}"
-        full_reply.strip()
+        yeild f"{full_reply}.strip()"
         # yield f"{full_reply}.strip()\n\n"
 
     except Exception as e:
