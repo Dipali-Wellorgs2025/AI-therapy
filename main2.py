@@ -1125,8 +1125,6 @@ Issue: "{issue_description}"
         traceback.print_exc()
         return jsonify({"botReply": "An unexpected error occurred."}), 500
 
-@app.route("/api/recent_sessions", methods=["GET"])
-
 
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
@@ -1135,28 +1133,32 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # ✅ Use keyword-style filter to avoid deprecation warning
         sessions_ref = db.collection("sessions") \
             .where("user_id", "==", user_id) \
-            .order_by("last_updated", direction=firestore.Query.DESCENDING) 
+            .order_by("last_updated", direction=firestore.Query.DESCENDING)
 
         docs = sessions_ref.stream()
         session_list = []
 
         for doc in docs:
             data = doc.to_dict()
-            messages = data.get("messages", [])
-            user_turns = sum(1 for m in messages if m.get("sender") == "User")
-            status = "completed" if user_turns >= 5 else "in_progress"
+            firestore_status = data.get("status", "").strip().lower()
+
+            # 🔍 Status logic
+            if firestore_status == "end":
+                status = "completed"
+            elif firestore_status == "exit":
+                status = "in_progress"
+            else:
+                continue  # ⛔️ Skip session if status isn't End/Exit
 
             session_list.append({
-                "problem": data.get("title", "Therapy Session"),
                 "bot_name": data.get("bot_name", ""),
+                "problem": data.get("title", "Therapy Session"),
                 "status": status,
                 "date": data.get("last_updated", ""),
                 "user_id": data.get("user_id", ""),
-                "issue_description": data.get("issue_description", ""),
-                "preferred_style": data.get("preferred_style", "")
+                "preferred_style": data.get("therapyStyle", data.get("preferred_style", ""))
             })
 
         return jsonify(session_list)
@@ -1165,7 +1167,8 @@ def get_recent_sessions():
         import traceback
         print("[❌] Error in get_recent_sessions:", e)
         traceback.print_exc()
-        return jsonify({"error": "Server error retrieving session"}), 500
+        return jsonify({"error": "Server error retrieving sessions"}), 500
+
 
 
 
