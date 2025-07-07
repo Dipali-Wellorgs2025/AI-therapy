@@ -984,7 +984,7 @@ Avoid repeating the user's name in every reply."""
              ):
 
                 # Add space if previous character was not a space/punctuation
-                # if bot_response and not bot_response.endswith((" ", "\n", ".", ",", "!", "?", "'")) \
+                 # if bot_response and not bot_response.endswith((" ", "\n", ".", ",", "!", "?", "'")) \
                    # and not cleaned.startswith((" ", "\n", ".", ",", "!", "?", "'")):
                   if (
                     bot_response 
@@ -1004,6 +1004,12 @@ Avoid repeating the user's name in every reply."""
         full_reply = f"{bot_name}: {bot_response}"
         # yield full_reply.strip()
         yield f"{full_reply.strip()}\n\n"
+        if bot_response and text and text[0].isalnum() and (
+        bot_response[-1].isalnum() or bot_response[-1] in ".!?"
+        ):
+             bot_response += " "
+             bot_response += text
+             yield f"{bot_name}: {bot_response}\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
@@ -1141,18 +1147,17 @@ Issue: "{issue_description}"
 @app.route("/api/recent_sessions", methods=["GET"])
 
 
+@app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
         user_id = request.args.get("user_id")
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        print(f"[📥] Getting sessions for user_id: {user_id}")
-
-        # Fetch all sessions for this user, ordered by last_updated
+        # ✅ Use keyword-style filter to avoid deprecation warning
         sessions_ref = db.collection("sessions") \
             .where("user_id", "==", user_id) \
-            .order_by("last_updated", direction=firestore.Query.DESCENDING)
+            .order_by("last_updated", direction=firestore.Query.DESCENDING) 
 
         docs = sessions_ref.stream()
         session_list = []
@@ -1163,24 +1168,16 @@ def get_recent_sessions():
             user_turns = sum(1 for m in messages if m.get("sender") == "User")
             status = "completed" if user_turns >= 5 else "in_progress"
 
-            # Handle datetime formatting safely
-            last_updated = data.get("last_updated")
-            if isinstance(last_updated, datetime):
-                formatted_date = last_updated.isoformat()
-            else:
-                formatted_date = ""
-
             session_list.append({
                 "problem": data.get("title", "Therapy Session"),
                 "bot_name": data.get("bot_name", ""),
                 "status": status,
-                "date": formatted_date,
+                "date": data.get("last_updated", ""),
                 "user_id": data.get("user_id", ""),
                 "issue_description": data.get("issue_description", ""),
                 "preferred_style": data.get("preferred_style", "")
             })
 
-        print(f"[✅] Returning {len(session_list)} sessions")
         return jsonify(session_list)
 
     except Exception as e:
