@@ -994,7 +994,8 @@ Avoid repeating the user's name in every reply."""
           
                     bot_response += " "
 
-                    bot_response += cleaned.strip()
+                  bot_response += cleaned.strip()
+                  yield f"{bot_name}: {bot_response.strip()}\n\n"  
                 # cleaned to cleaned.strip()
 
         # Post-process full message
