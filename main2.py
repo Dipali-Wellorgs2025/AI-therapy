@@ -1048,8 +1048,7 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
   
 
               # Usage:
-                if not validate_response(bot_response):
-                   bot_response = clean_response(bot_response)  # Auto-clean if invalid
+               
         # ✅ Final processing
         
         # In your handle_message function, ensure consistent formatting:
