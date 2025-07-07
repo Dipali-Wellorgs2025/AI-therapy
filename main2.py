@@ -15,25 +15,7 @@ from queue import Queue
 import json
 import re
 
-def clean_response(text: str) -> str:
-    """Comprehensive response cleaner"""
-    # Fix contractions first
-    text = fix_contractions(text)
-    
-    # Convert all bold formats to **markdown**
-    text = re.sub(r'<b>(.*?)</b>', r'**\1**', text)  # HTML tags
-    text = re.sub(r'\*(.*?)\*', r'**\1**', text)     # *asterisks*
-    
-    # Clean action phrases
-    text = wrap_action_phrases(text)
-    
-    # Remove unwanted symbols
-    text = text.replace("🟡", "•")  # Replace special symbols
-    text = re.sub(r'\s+', ' ', text)  # Fix extra spaces
-    
-    return text.strip()
 
-# In your handle_message function:
 
 
 def convert_starred_to_bold(text):
@@ -1052,11 +1034,11 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
         # ✅ Final processing
         
         # In your handle_message function, ensure consistent formatting:
-        final_clean = clean_response(bot_response)
-        # final_clean = fix_contractions(bot_response.strip())
-        # final_clean = wrap_action_phrases(final_clean)
-        # final_clean = convert_starred_to_bold(final_clean)
-        # final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
+        # final_clean = clean_response(bot_response)
+        final_clean = fix_contractions(bot_response.strip())
+        final_clean = wrap_action_phrases(final_clean)
+        final_clean = convert_starred_to_bold(final_clean)
+        final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
 
         yield f"{bot_name}: {final_clean}\n\n"
 
