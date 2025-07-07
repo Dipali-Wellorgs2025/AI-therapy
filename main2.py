@@ -905,6 +905,37 @@ def sse_format(message):
 from firebase_admin import firestore
 from datetime import datetime, timezone
 
+import re
+
+# Only wrap action phrases, NOT emojis
+ACTION_PHRASES = [
+    r"take a (deep )?breath",
+    r"inhale (slowly)?",
+    r"exhale (gently)?",
+    r"let'?s (breathe|pause|reflect)",
+    r"slow down",
+    r"hold for \d+",
+    r"in for \d+",
+    r"out for \d+"
+]
+
+def wrap_action_phrases(text: str) -> str:
+    for phrase in ACTION_PHRASES:
+        text = re.sub(
+            rf"\b({phrase})\b",
+            r"[\1]",
+            text,
+            flags=re.IGNORECASE
+        )
+    return text
+def fix_contractions(text: str) -> str:
+    """
+    Fixes broken contractions like "you 're" to "you're"
+    and "let 's" to "let's"
+    """
+    text = re.sub(r"\b([A-Za-z]+)\s+['’`]\s+([a-zA-Z]+)\b", r"\1'\2", text)
+    text = re.sub(r"\b([A-Za-z]+)\s+['’`]\s*([a-zA-Z]+)", r"\1'\2", text)
+    return text
 def handle_message(data):
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
@@ -923,7 +954,6 @@ def handle_message(data):
     except Exception as e:
         print("❌ Firestore get failed:", e)
 
-    # System prompt
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
 Use a warm, {preferred_style.lower()} tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
@@ -931,8 +961,6 @@ User: {user_name}, Style: {preferred_style}. Support them step by step.
 Avoid repeating the user's name in every reply."""
 
     bot_response = ""
-    last_piece = ""
-
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -946,15 +974,19 @@ Avoid repeating the user's name in every reply."""
         for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 piece = chunk.choices[0].delta.content
-                cleaned = convert_starred_to_bold(piece.replace("—", ""))
+                cleaned = piece.replace("—", "")
 
-                # ✅ Handle spacing between tokens
-                if last_piece and not last_piece.endswith((" ", "\n")) and not cleaned.startswith((" ", "\n", ".", ",", "!", "?")):
-                    bot_response += " "  # insert a space between words
+                # Add space if previous character was not a space/punctuation
+                if bot_response and not bot_response.endswith((" ", "\n", ".", ",", "!", "?", "'")) \
+                   and not cleaned.startswith((" ", "\n", ".", ",", "!", "?", "'")):
+                    bot_response += " "
+
                 bot_response += cleaned
-                last_piece = cleaned
 
-        full_reply = f"{bot_name}: {bot_response.strip()}"
+        # Post-process full message
+        bot_response = fix_contractions(bot_response.strip())
+        bot_response = wrap_action_phrases(bot_response)
+        full_reply = f"{bot_name}: {bot_response}"
         yield f"{full_reply}\n\n"
 
     except Exception as e:
@@ -963,9 +995,9 @@ Avoid repeating the user's name in every reply."""
 
     # 🔒 Save session
     try:
-        now_str = datetime.now(timezone.utc).isoformat()
-        history.append({"sender": "User", "message": user_msg, "timestamp": now_str})
-        history.append({"sender": bot_name, "message": bot_response.strip(), "timestamp": now_str})
+        now = datetime.now(timezone.utc).isoformat()
+        history.append({"sender": "User", "message": user_msg, "timestamp": now})
+        history.append({"sender": bot_name, "message": bot_response, "timestamp": now})
 
         session_ref.set({
             "user_id": user_id,
@@ -978,6 +1010,9 @@ Avoid repeating the user's name in every reply."""
 
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
+
+
+
 
 
 
