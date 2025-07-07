@@ -955,11 +955,16 @@ def handle_message(data):
     except Exception as e:
         print("❌ Firestore get failed:", e)
 
+    # Fill prompt
+    raw_prompt = BOT_PROMPTS.get(bot_name, "")
+    filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
+                              .replace("{{issue_description}}", issue_description)\
+                              .replace("{{preferred_style}}", preferred_style)
+
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
-Use a warm, {preferred_style.lower()} tone. Respond like a human.
+Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
-User: {user_name}, Style: {preferred_style}. Support them step by step.
-Avoid repeating the user's name in every reply."""
+User: {user_name}, Style: {preferred_style}. You will support them step by step through this situation. Your tone should match their preferred style."""
 
     bot_response = ""
     try:
@@ -973,27 +978,30 @@ Avoid repeating the user's name in every reply."""
         )
 
         for chunk in response:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            content_piece = delta.content if delta and delta.content else ""
-            content_piece = content_piece.replace("—", "").strip()
+            content = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta.content else None
+            if not content or not content.strip():
+                continue
 
-            if content_piece:
-                if bot_response and bot_response[-1].isalnum() and content_piece[0].isalnum():
-                    bot_response += " "
-                bot_response += content_piece
-                yield f"{bot_name}: {bot_response.strip()}\n\n"
+            text = content.replace("—", "").strip()
 
-        # Final processing
-        bot_response = fix_contractions(bot_response.strip())
-        bot_response = wrap_action_phrases(bot_response)
-        final_reply = f"{bot_name}: {bot_response}"
-        yield f"{final_reply.strip()}\n\n"
+            if bot_response and text[0].isalnum() and (
+                bot_response[-1].isalnum() or bot_response[-1] in ".!?"
+            ):
+                bot_response += " "
+
+            bot_response += text
+            yield f"{bot_name}: {bot_response}\n\n"
+
+        # Final cleanup and formatting
+        final_clean = fix_contractions(bot_response.strip())
+        final_clean = wrap_action_phrases(final_clean)
+        yield f"{bot_name}: {final_clean}\n\n"
 
     except Exception as e:
         print("❌ Streaming failed:", e)
         yield f"{bot_name}: Sorry, I had trouble responding.\n\n"
 
-    # 🔒 Save session
+    # 🔒 Save session to Firestore
     try:
         now = datetime.now(timezone.utc).isoformat()
         history.append({"sender": "User", "message": user_msg, "timestamp": now})
@@ -1010,10 +1018,6 @@ Avoid repeating the user's name in every reply."""
 
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
-
-
-
-
 
 
 
