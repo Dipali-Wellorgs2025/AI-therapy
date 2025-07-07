@@ -906,8 +906,8 @@ def handle_message(data):
     bot_name = data.get("botName")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
-    issue = data.get("issue_description", "")
-    style = data.get("preferred_style", "Balanced")
+    issue_description = data.get("issue_description", "")
+    preferred_style = data.get("preferred_style", "Balanced")
     session_id = f"{user_id}_{bot_name}"
     history = []
 
@@ -922,13 +922,13 @@ def handle_message(data):
     # Fill prompt
     raw_prompt = BOT_PROMPTS.get(bot_name, "")
     filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
-                              .replace("{{issue_description}}", issue)\
-                              .replace("{{preferred_style}}", style)
+                              .replace("{{issue_description}}", issue_description)\
+                              .replace("{{preferred_style}}", preferred_style)
 
-    system_prompt = f"""You're {bot_name}, a therapist helping with {issue}.
+    system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
 Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
-User: {user_name}, Style: {style}."""
+User: {user_name}, Style: {preferred_style}.This therapist uses a {preferred_style} tone with the user.You will support them step by step through this situation. Your tone should match their preferred style."""
 
     last_sent_time = time.time()
     bot_response = ""
@@ -988,7 +988,9 @@ User: {user_name}, Style: {style}."""
             "user_id": user_id,
             "bot_name": bot_name,
             "messages": history,
-            "last_updated": timestamp
+            "last_updated": timestamp,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style
         })
     except Exception as e:
         print("❌ Firestore .set() failed:", e)
@@ -1089,7 +1091,9 @@ Issue: "{issue_description}"
             "user_id": user_id,
             "bot_name": bot_name,
             "messages": history,
-            "last_updated": timestamp
+            "last_updated": timestamp,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style
         })
 
         return jsonify({"botReply": reply})
@@ -1126,7 +1130,9 @@ def get_recent_sessions():
                 "bot_name": data.get("bot_name", ""),
                 "status": status,
                 "date": data.get("last_updated", ""),
-                "user_id": data.get("user_id", "")
+                "user_id": data.get("user_id", ""),
+                "issue_description": data.get("issue_description", ""),
+                "preferred_style": data.get("preferred_style", "")
             })
 
         return jsonify(session_list)
