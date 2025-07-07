@@ -983,6 +983,7 @@ def handle_message(data):
     session_id = f"{user_id}_{bot_name}"
     history = []
 
+    # Get session history from Firestore
     session_ref = db.collection("sessions").document(session_id)
     try:
         doc = session_ref.get()
@@ -995,11 +996,16 @@ def handle_message(data):
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
 Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
-User: {user_name}, Style: {preferred_style}. You will support them step by step through this situation. Your tone should match their preferred style."""
+User: {user_name}, Style: {preferred_style}. You will support them step by step through this situation. 
+Your tone should match their preferred style.
 
-    bot_response = ""
+Important Formatting Rules:
+1. Use **double asterisks** for emphasis (not *single* or <b>tags</b>)
+2. For actions use: [breathe in for 4] (with clear spacing)
+3. Keep responses concise and properly punctuated"""
 
     try:
+        # Stream the response from DeepSeek
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
@@ -1009,6 +1015,7 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
             stream=True
         )
 
+        bot_response = ""
         for chunk in response:
             if not chunk.choices:
                 continue
@@ -1020,25 +1027,36 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
             text = delta.content
             bot_response += text  # Accumulate the response
 
-        # Final processing
-        final_clean = fix_contractions(bot_response.strip())
-        final_clean = wrap_action_phrases(final_clean)
-        final_clean = convert_starred_to_bold(final_clean)
-        final_clean = final_clean.replace("<b>", "**").replace("</b>", "**")  # Additional safety
+        # Comprehensive response cleaning
+        def clean_response(text: str) -> str:
+            """Normalize all formatting in the response"""
+            # Convert all bold formats to **markdown**
+            text = re.sub(r'(<b>|\*{1,3})(.*?)(</b>|\*{1,3})', r'**\2**', text)
+            
+            # Clean action phrases
+            text = re.sub(r'\[([^]]+)\]', lambda m: f"[{m.group(1).strip()}]", text)
+            text = re.sub(r'\s*\[\s*', ' [', text)
+            text = re.sub(r'\s*\]\s*', '] ', text)
+            
+            # Fix contractions and spacing
+            text = re.sub(r"\b([A-Za-z]+)\s+[''`]\s+([a-zA-Z]+)\b", r"\1'\2", text)
+            text = ' '.join(text.split())  # Remove extra whitespace
+            
+            return text.strip()
 
-        # Validate response format
-        if not validate_response(final_clean):
-            final_clean = re.sub(r'<b>(.*?)</b>', r'**\1**', final_clean)
-            final_clean = re.sub(r'\*(.*?)\*', r'**\1**', final_clean)
+        final_clean = clean_response(bot_response)
+        
+        # Final validation
+        if not re.search(r'\*\*.+?\*\*', final_clean):  # Ensure we have proper bold formatting
+            final_clean = re.sub(r'(important|crucial|key)\b', r'**\1**', final_clean, flags=re.IGNORECASE)
 
+        # Add proper spacing after punctuation if missing
+        final_clean = re.sub(r'([,.!?])([^\s])', r'\1 \2', final_clean)
+
+        # Yield the cleaned response
         yield f"{bot_name}: {final_clean}\n\n"
 
-    except Exception as e:
-        print("❌ Streaming failed:", e)
-        yield f"{bot_name}: Sorry, I had trouble responding.\n\n"
-
-    # Save session to Firestore
-    try:
+        # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
         history.append({"sender": "User", "message": user_msg, "timestamp": now})
         history.append({"sender": bot_name, "message": final_clean, "timestamp": now})
@@ -1053,15 +1071,9 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
         }, merge=True)
 
     except Exception as e:
-        print("❌ Firestore .set() failed:", e)
-
-def validate_response(response: str) -> bool:
-    """Check for common formatting errors"""
-    if re.search(r'<b>.*?</b>', response):
-        return False
-    if re.search(r'\*.*\*', response) and not re.search(r'\*\*.*\*\*', response):
-        return False
-    return True
+        print("❌ Error in handle_message:", e)
+        traceback.print_exc()
+        yield f"{bot_name}: Sorry, I encountered an error. Please try again.\n\n"
 
 # 🌐 SSE streaming endpoint
 @app.route("/api/stream", methods=["GET"]) 
