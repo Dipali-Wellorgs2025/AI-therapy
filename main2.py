@@ -955,12 +955,7 @@ def handle_message(data):
     except Exception as e:
         print("❌ Firestore get failed:", e)
 
-    # Fill prompt
-    raw_prompt = BOT_PROMPTS.get(bot_name, "")
-    filled_prompt = raw_prompt.replace("{{user_name}}", user_name)\
-                              .replace("{{issue_description}}", issue_description)\
-                              .replace("{{preferred_style}}", preferred_style)
-
+    # Build prompt
     system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
 Use a warm, practical tone. Respond like a human.
 Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
@@ -990,9 +985,8 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
                 bot_response += " "
 
             bot_response += text
-            yield f"{bot_name}: {bot_response}\n\n"
 
-        # Final cleanup and formatting
+        # ✅ Final response only
         final_clean = fix_contractions(bot_response.strip())
         final_clean = wrap_action_phrases(final_clean)
         yield f"{bot_name}: {final_clean}\n\n"
@@ -1001,7 +995,7 @@ User: {user_name}, Style: {preferred_style}. You will support them step by step 
         print("❌ Streaming failed:", e)
         yield f"{bot_name}: Sorry, I had trouble responding.\n\n"
 
-    # 🔒 Save session to Firestore
+    # 🔒 Save session
     try:
         now = datetime.now(timezone.utc).isoformat()
         history.append({"sender": "User", "message": user_msg, "timestamp": now})
