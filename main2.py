@@ -1263,6 +1263,7 @@ Instructions:
         traceback.print_exc()
         return jsonify({"botReply": "An error occurred. Please try again."}), 500
 
+# @app.route("/api/session_summary", methods=["GET"])
 @app.route("/api/session_summary", methods=["GET"])
 def generate_session_summary():
     try:
@@ -1306,15 +1307,19 @@ Now write the session summary:
             max_tokens=300
         )
 
-        summary = response.choices[0].message.content.strip()
+        summary_raw = response.choices[0].message.content.strip()
 
-        # Save to Firestore (optional)
+        # Clean and format summary into bullet points (remove \n\n)
+        summary_lines = [line.strip().lstrip("- ") for line in summary_raw.split("\n") if line.strip()]
+        formatted_summary = "🧠 Session Summary: " + " ".join([f"• {line}" for line in summary_lines])
+
+        # Save to Firestore
         db.collection("sessions").document(session_id).update({
-            "summary": summary,
+            "summary": formatted_summary,
             "ended_at": firestore.SERVER_TIMESTAMP
         })
 
-        return jsonify({"summary": summary})
+        return jsonify({"summary": formatted_summary})
 
     except Exception as e:
         print("❌ Error generating session summary:", e)
