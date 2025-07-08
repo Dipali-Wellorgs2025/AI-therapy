@@ -1003,9 +1003,9 @@ def handle_message(data):
     try:
         # --- 🧠 Classification: determine correct issue category
         classification_prompt = f"""
-You are a classifier. Based on the user's message, return one label from the following:
+You are a text classifier that identifies the **main therapy topic** from user messages.
 
-Categories:
+Available categories:
 - anxiety
 - breakup
 - self-worth
@@ -1017,10 +1017,11 @@ Categories:
 Message: "{user_msg}"
 
 Instructions:
-- If the message is a greeting (e.g., "hi", "hello", "good morning") or does not describe any emotional or psychological issue, return **none**.
-- Otherwise, return the most relevant category.
-- Do not explain your answer. Return only the label.
+- If the message is a greeting (e.g., "hi", "hello", "good morning") or doesn't express any issue, return **none**
+- Return only the most relevant category — nothing else.
+- Don't explain your reasoning — just reply with the label.
 """
+
 
 
         classification = client.chat.completions.create(
@@ -1259,7 +1260,7 @@ Instructions:
     except Exception as e:
         print("Error in message processing:", e)
         traceback.print_exc()
-        return jsonify({"botReply": "An error occurred. Please try again."}), 500
+        return jsonify({"botReply": "An error occurred. Please try again."}), 500"""
 
 
 
