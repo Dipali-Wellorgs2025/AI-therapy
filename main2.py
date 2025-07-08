@@ -1,10 +1,9 @@
-from flask import Flask, request, jsonify, Response, render_template,stream_with_context
+from flask import Flask, request, jsonify, Response, render_template, stream_with_context
 import firebase_admin
 import uuid
 import traceback
 from firebase_admin import credentials, firestore
-from datetime import datetime, timedelta
-# import datetime
+from datetime import datetime, timedelta, timezone
 import threading
 import time
 from uuid import uuid4
@@ -15,45 +14,22 @@ from queue import Queue
 import json
 import re
 
-
-
-
-def convert_starred_to_bold(text):
-    # Convert *text* to **text** (Markdown bold)
-    return re.sub(r'\*(.*?)\*', r'**\1**', text)
-
-
-task_queues = {}  # task_id -> Queue()
-
-load_dotenv()
+# Initialize Flask app
 app = Flask(__name__)
 
-
-# === OpenAI-Compatible DeepSeek Client ===
-client = OpenAI(
-    base_url="https://api.deepseek.com/v1",
-    api_key="sk-09e270ba6ccb42f9af9cbe92c6be24d8"
- 
-)
-
-chat_sessions = {}
-
-
+# Initialize Firebase
+load_dotenv()
 firebase_key = os.getenv("FIREBASE_KEY_JSON")
 if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(firebase_key))
     firebase_admin.initialize_app(cred)
 db = firestore.client()
-"""
-# === Firebase Setup ===
-cred = credentials.Certificate("ai-therapy-44682-firebase-adminsdk-fbsvc-9dd5f0f502.json")  # Replace with your Firebase key path
-firebase_admin.initialize_app(cred)
-db = firestore.client()"""
-# Local cache for sessions
-chat_sessions = {}
 
-
-app = Flask(__name__)
+# Initialize DeepSeek client
+client = OpenAI(
+    base_url="https://api.deepseek.com/v1",
+    api_key="sk-09e270ba6ccb42f9af9cbe92c6be24d8"
+)
 
 
 # ✅ Bot Prompt Templates (short demo versions, replace with full if needed)
@@ -911,6 +887,7 @@ OUT_OF_SCOPE_TOPICS = ["addiction", "suicide", "overdose", "bipolar", "self-harm
 TECH_KEYWORDS = ["algorithm", "training", "parameters", "architecture", "how are you trained"]
 FREE_SESSION_LIMIT = 2
 
+# Bot configurations
 TOPIC_TO_BOT = {
     "anxiety": "Sage",
     "breakup": "Jorden",
@@ -920,60 +897,89 @@ TOPIC_TO_BOT = {
     "crisis": "Raya"
 }
 
+# Questionnaire support
+QUESTIONNAIRES = {
+    "anxiety": [
+        {"question": "On a scale of 1-10, how would you rate your anxiety today?", "type": "scale"},
+        {"question": "What situations trigger your anxiety most?", "type": "open-ended"}
+    ],
+    "depression": [
+        {"question": "How often have you felt down or hopeless in the past week?", "type": "scale"},
+        {"question": "What activities have you lost interest in?", "type": "open-ended"}
+    ],
+    "relationships": [
+        {"question": "How satisfied are you with your current relationships?", "type": "scale"},
+        {"question": "What communication patterns would you like to improve?", "type": "open-ended"}
+    ]
+}
 
- 
-task_queues = {}
+# Helper functions
+def clean_response(text: str) -> str:
+    """Normalize all formatting in the response"""
+    # Convert all bold formats to proper markdown
+    text = re.sub(r'(<b>|\*{1,3})(.*?)(</b>|\*{1,3})', r'**\2**', text)
+    text = re.sub(r'\*(\w.*?\w)\*', r'**\1**', text)  # Convert single * to **
+    
+    # Clean action phrases
+    text = re.sub(r'\[([^]]+)\]', lambda m: f"[{m.group(1).strip()}]", text)
+    text = re.sub(r'\s*\[\s*', ' [', text)
+    text = re.sub(r'\s*\]\s*', '] ', text)
+    
+    # Fix contractions and spacing
+    text = re.sub(r"\b([A-Za-z]+)\s+[''`]\s+([a-zA-Z]+)\b", r"\1'\2", text)
+    text = ' '.join(text.split())  # Remove extra whitespace
+    text = re.sub(r'([,.!?])([^\s])', r'\1 \2', text)  # Add space after punctuation
+    
+    return text.strip()
 
-# 🔁 Streaming format
-def sse_format(message):
-    return f"{message}\n"
+def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
+    """Get or create session context with greeting handling"""
+    session_ref = db.collection("sessions").document(session_id)
+    doc = session_ref.get()
+    
+    if doc.exists:
+        history = doc.to_dict().get("messages", [])
+        is_new_session = False
+    else:
+        history = []
+        is_new_session = True
+    
+    return {
+        "history": history,
+        "is_new_session": is_new_session,
+        "session_ref": session_ref
+    }
 
+def build_system_prompt(bot_name: str, user_name: str, issue_description: str, 
+                       preferred_style: str, history: list, is_new_session: bool):
+    """Build the system prompt with context-aware greetings"""
+    base_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
+Use a warm, {preferred_style.lower()} tone. Respond like a human.
+User: {user_name}. You will support them step by step through this situation.
 
-# 🔄 Main Gemini Streaming Logic
-# import re  # Add this at the top if not already imported
-from firebase_admin import firestore
-from datetime import datetime, timezone
-
-
-import re
-
-# Only wrap action phrases, NOT emojis
-ACTION_PHRASES = [
-    r"take a (deep )?breath",
-    r"inhale (slowly)?",
-    r"exhale (gently)?",
-    r"let'?s (breathe|pause|reflect)",
-    r"slow down",
-    r"hold for \d+",
-    r"in for \d+",
-    r"out for \d+"
-]
-import re
-def validate_response(response: str) -> bool:
-    """Check for common formatting errors"""
-    if re.search(r'<b>.*?</b>', response):
-        return False
-    if re.search(r'\*.*\*', response) and not re.search(r'\*\*.*\*\*', response):
-        return False
-        return True
-def wrap_action_phrases(text: str) -> str:
-    for phrase in ACTION_PHRASES:
-        text = re.sub(
-            rf"\b({phrase})\b",
-            r"[\1]",
-            text,
-            flags=re.IGNORECASE
+Important Rules:
+1. Use **double asterisks** for emphasis
+2. For actions use: [breathe in for 4]
+3. Keep responses concise (1-3 sentences)"""
+    
+    # Add greeting only for new sessions
+    if is_new_session:
+        base_prompt += "\n\nThis is your first message. Start with a warm greeting."
+    else:
+        base_prompt += "\n\nContinue the conversation naturally without repeating greetings."
+    
+    # Add conversation history to avoid repetition
+    if len(history) > 0:
+        last_5_responses = "\n".join(
+            f"{msg['sender']}: {msg['message']}" 
+            for msg in history[-5:] if msg['sender'] != "User"
         )
-    return text
-def fix_contractions(text: str) -> str:
-    """
-    Fixes broken contractions like "you 're" to "you're"
-    and "let 's" to "let's"
-    """
-    text = re.sub(r"\b([A-Za-z]+)\s+['’`]\s+([a-zA-Z]+)\b", r"\1'\2", text)
-    text = re.sub(r"\b([A-Za-z]+)\s+['’`]\s*([a-zA-Z]+)", r"\1'\2", text)
-    return text
+        base_prompt += f"\n\nRecent responses to avoid repeating:\n{last_5_responses}"
+    
+    return base_prompt
+
 def handle_message(data):
+    """Handle incoming messages with streaming response"""
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
     user_name = data.get("user_name", "User")
@@ -981,103 +987,77 @@ def handle_message(data):
     issue_description = data.get("issue_description", "")
     preferred_style = data.get("preferred_style", "Balanced")
     session_id = f"{user_id}_{bot_name}"
-    history = []
-
-    # Get session history from Firestore
-    session_ref = db.collection("sessions").document(session_id)
-    try:
-        doc = session_ref.get()
-        if doc.exists:
-            history = doc.to_dict().get("messages", [])
-    except Exception as e:
-        print("❌ Firestore get failed:", e)
-
+    
+    # Check for out of scope topics
+    if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
+        yield "data: " + json.dumps({
+            "content": "That's an important issue, but it's beyond what our bots can safely support. Please reach out to a licensed professional or helpline.",
+            "complete": True
+        }) + "\n\n"
+        return
+    
+    # Get session context
+    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+    
     # Build system prompt
-    system_prompt = f"""You're {bot_name}, a therapist helping with {issue_description}.
-Use a warm, practical tone. Respond like a human.
-Use short sentences, show empathy, and use emojis (💙, 🧘, 🫂, ☀️) where helpful.
-User: {user_name}, Style: {preferred_style}. You will support them step by step through this situation. 
-Your tone should match their preferred style.
-
-Important Formatting Rules:
-1. Use **double asterisks** for emphasis (not *single* or <b>tags</b>)
-2. For actions use: [breathe in for 4] (with clear spacing)
-3. Keep responses concise and properly punctuated"""
-
+    system_prompt = build_system_prompt(
+        bot_name, user_name, issue_description, 
+        preferred_style, ctx["history"], ctx["is_new_session"]
+    )
+    
     try:
-        # Stream the response from DeepSeek
+        # Stream the response with limited tokens for faster response
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg}
             ],
-            stream=True
+            stream=True,
+            max_tokens=150,  # Limit response length
+            temperature=0.7,
+            presence_penalty=0.5,  # Reduce repetition
+            frequency_penalty=0.5   # Reduce repetitive phrases
         )
 
-        bot_response = ""
+        full_response = ""
         for chunk in response:
-            if not chunk.choices:
-                continue
-                
-            delta = chunk.choices[0].delta
-            if not delta or not delta.content:
-                continue
-
-            text = delta.content
-            bot_response += text  # Accumulate the response
-
-        # Comprehensive response cleaning
-        def clean_response(text: str) -> str:
-            """Normalize all formatting in the response"""
-            # Convert all bold formats to **markdown**
-            text = re.sub(r'(<b>|\*{1,3})(.*?)(</b>|\*{1,3})', r'**\2**', text)
-            
-            # Clean action phrases
-            text = re.sub(r'\[([^]]+)\]', lambda m: f"[{m.group(1).strip()}]", text)
-            text = re.sub(r'\s*\[\s*', ' [', text)
-            text = re.sub(r'\s*\]\s*', '] ', text)
-            
-            # Fix contractions and spacing
-            text = re.sub(r"\b([A-Za-z]+)\s+[''`]\s+([a-zA-Z]+)\b", r"\1'\2", text)
-            text = ' '.join(text.split())  # Remove extra whitespace
-            
-            return text.strip()
-
-        final_clean = clean_response(bot_response)
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                text = chunk.choices[0].delta.content
+                full_response += text
+                yield f"data: {json.dumps({'content': text})}\n\n"
         
-        # Final validation
-        if not re.search(r'\*\*.+?\*\*', final_clean):  # Ensure we have proper bold formatting
-            final_clean = re.sub(r'(important|crucial|key)\b', r'**\1**', final_clean, flags=re.IGNORECASE)
-
-        # Add proper spacing after punctuation if missing
-        final_clean = re.sub(r'([,.!?])([^\s])', r'\1 \2', final_clean)
-
-        # Yield the cleaned response
-        yield f"{bot_name}: {final_clean}\n\n"
-
-        # Save to Firestore
+        # Clean and save the response
+        cleaned_response = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
-        history.append({"sender": "User", "message": user_msg, "timestamp": now})
-        history.append({"sender": bot_name, "message": final_clean, "timestamp": now})
-
-        session_ref.set({
+        
+        # Update session history
+        ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
+        ctx["history"].append({"sender": bot_name, "message": cleaned_response, "timestamp": now})
+        
+        ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": bot_name,
-            "messages": history,
+            "messages": ctx["history"],
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
-            "preferred_style": preferred_style
+            "preferred_style": preferred_style,
+            "is_active": True
         }, merge=True)
+        
+        yield "data: " + json.dumps({"content": "", "complete": True}) + "\n\n"
 
     except Exception as e:
-        print("❌ Error in handle_message:", e)
+        print("Error in streaming:", e)
         traceback.print_exc()
-        yield f"{bot_name}: Sorry, I encountered an error. Please try again.\n\n"
+        yield "data: " + json.dumps({
+            "content": "Sorry, I encountered an error processing your request. Please try again.",
+            "complete": True
+        }) + "\n\n"
 
-# 🌐 SSE streaming endpoint
-@app.route("/api/stream", methods=["GET"]) 
+@app.route("/api/stream", methods=["GET"])
 def stream():
+    """Streaming endpoint for real-time conversation"""
     data = {
         "message": request.args.get("message", ""),
         "botName": request.args.get("botName"),
@@ -1088,157 +1068,197 @@ def stream():
     }
     return Response(handle_message(data), mimetype="text/event-stream")
 
-# 📜 Get session history
-@app.route("/api/history", methods=["GET"])
-def get_history():
-    user_id = request.args.get("user_id")
-    bot_name = request.args.get("botName")
-    session_id = f"{user_id}_{bot_name}"
-    doc = db.collection("sessions").document(session_id).get()
-    return jsonify(doc.to_dict().get("messages", [])) if doc.exists else jsonify([])
-
-# 📍 Root
-@app.route("/")
-def home():
-    return "Server is running ✅"
-
-# 🧠 One-shot classification + bot message
 @app.route("/api/message", methods=["POST"])
 def classify_and_respond():
+    """Endpoint for classification and bot routing"""
     try:
         data = request.json
         user_message = data.get("message", "")
-        bot_name = data.get("botName")
+        current_bot = data.get("botName")
         user_name = data.get("user_name", "User")
         user_id = data.get("user_id", "unknown")
         issue_description = data.get("issue_description", "")
         preferred_style = data.get("preferred_style", "Balanced")
 
-        if any(term in user_message.lower() for term in OUT_OF_SCOPE_TOPICS):
-            return jsonify({"botReply": "That’s an important issue, but it's beyond what our bots can safely support. Please reach out to a licensed professional or helpline."})
-
-        if any(term in user_message.lower() for term in TECH_KEYWORDS):
-            return jsonify({"botReply": "That’s a technical question. Please contact the developers for details about training or architecture."})
-
+        # Enhanced classification with better context
         classification_prompt = f"""
-You are a smart AI assistant that classifies therapy-related messages into categories.
-Return only one word from this list: ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
-Message: "{user_message}"
-Issue: "{issue_description}"
-""".strip()
+Analyze this message and classify its primary therapeutic need:
+User message: "{user_message}"
+Current issue: "{issue_description}"
 
+Options with descriptions:
+1. anxiety - General anxiety, stress, panic attacks
+2. breakup - Relationship endings, heartbreak, divorce
+3. self-worth - Low self-esteem, confidence issues
+4. trauma - PTSD, abuse, traumatic experiences  
+5. family - Family conflicts, parenting issues
+6. crisis - Urgent emotional distress, life transitions
+
+Return ONLY the single most relevant keyword from the list above.
+"""
         classification = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": classification_prompt}]
+            messages=[{"role": "user", "content": classification_prompt}],
+            temperature=0.3  # More deterministic
         )
-
+        
         category = classification.choices[0].message.content.strip().lower()
+        
+        # Handle unknown categories
         if category not in TOPIC_TO_BOT:
-            return jsonify({"botReply": "That’s an important issue, but it's beyond what our bots can safely support."})
-
+            return jsonify({
+                "botReply": "I'm not the best specialist for this. Would you like me to connect you with a more suitable therapist?",
+                "needsRedirect": True
+            })
+        
         correct_bot = TOPIC_TO_BOT[category]
-        if correct_bot != bot_name:
-            return jsonify({"botReply": f"This fits better with our specialist {correct_bot}. Please switch bots."})
+        
+        # Suggest bot switch if needed
+        if correct_bot != current_bot:
+            return jsonify({
+                "botReply": f"This seems related to {category}. I recommend switching to {correct_bot} who specializes in this area.",
+                "suggestedBot": correct_bot,
+                "needsRedirect": True
+            })
 
-        # Prepare final prompt
-        raw_prompt = BOT_PROMPTS[bot_name]
-        prompt_filled = raw_prompt.replace("{{user_name}}", user_name)\
-                                  .replace("{{issue_description}}", issue_description)\
-                                  .replace("{{preferred_style}}", preferred_style)
+        # Get session context
+        session_id = f"{user_id}_{current_bot}"
+        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+        
+        # Prepare prompt with bot-specific rules
+        bot_prompt = BOT_PROMPTS[current_bot]
+        prompt_filled = bot_prompt.replace("{{user_name}}", user_name)\
+                                 .replace("{{issue_description}}", issue_description)\
+                                 .replace("{{preferred_style}}", preferred_style)
+        
+        # Add conversation history to context
+        if len(ctx["history"]) > 0:
+            last_5_messages = "\n".join(
+                f"{msg['sender']}: {msg['message']}" 
+                for msg in ctx["history"][-5:]
+            )
+            prompt_filled += f"\n\nRecent conversation history:\n{last_5_messages}"
+        
+        full_prompt = prompt_filled + "\n\nUser message:\n" + user_message
 
-        full_prompt = prompt_filled + "\n" + user_message
-
+        # Get response
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": full_prompt}]
+            messages=[{"role": "user", "content": full_prompt}],
+            temperature=0.7,
+            max_tokens=200,
+            presence_penalty=0.5,
+            frequency_penalty=0.5
         )
 
-        reply = response.choices[0].message.content.strip()
-        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+        reply = clean_response(response.choices[0].message.content.strip())
+        timestamp = datetime.now(timezone.utc).isoformat()
 
-        session_id = f"{user_id}_{bot_name}"
-        session_ref = db.collection("sessions").document(session_id)
-        doc = session_ref.get()
-        history = doc.to_dict().get("messages", []) if doc.exists else []
-
-        history.append({"sender": "User", "message": user_message, "timestamp": timestamp})
-        history.append({"sender": bot_name, "message": reply, "timestamp": timestamp})
-
-        session_ref.set({
+        # Update session history
+        ctx["history"].append({"sender": "User", "message": user_message, "timestamp": timestamp})
+        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": timestamp})
+        
+        ctx["session_ref"].set({
             "user_id": user_id,
-            "bot_name": bot_name,
-            "messages": history,
+            "bot_name": current_bot,
+            "messages": ctx["history"],
             "last_updated": timestamp,
             "issue_description": issue_description,
-            "preferred_style": preferred_style
-        })
+            "preferred_style": preferred_style,
+            "is_active": True
+        }, merge=True)
 
         return jsonify({"botReply": reply})
+
     except Exception as e:
-        print("Error:", e)
+        print("Error in message processing:", e)
         traceback.print_exc()
-        return jsonify({"botReply": "An unexpected error occurred."}), 500
+        return jsonify({"botReply": "An error occurred. Please try again."}), 500
 
+@app.route("/api/start_questionnaire", methods=["POST"])
+def start_questionnaire():
+    """Endpoint to start a new questionnaire"""
+    try:
+        data = request.json
+        topic = data.get("topic", "").lower()
+        user_id = data.get("user_id", "unknown")
+        
+        if topic not in QUESTIONNAIRES:
+            return jsonify({"error": "Questionnaire not available for this topic"}), 404
+        
+        # Create a new questionnaire session
+        questionnaire_id = str(uuid4())
+        db.collection("questionnaires").document(questionnaire_id).set({
+            "user_id": user_id,
+            "topic": topic,
+            "current_index": 0,
+            "answers": [],
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+        
+        return jsonify({
+            "questionnaire_id": questionnaire_id,
+            "questions": QUESTIONNAIRES[topic],
+            "current_index": 0
+        })
+    except Exception as e:
+        print("Questionnaire error:", e)
+        return jsonify({"error": "Failed to start questionnaire"}), 500
 
-
+@app.route("/api/history", methods=["GET"])
+def get_history():
+    """Endpoint to get conversation history"""
+    try:
+        user_id = request.args.get("user_id")
+        bot_name = request.args.get("botName")
+        if not user_id or not bot_name:
+            return jsonify({"error": "Missing parameters"}), 400
+            
+        session_id = f"{user_id}_{bot_name}"
+        doc = db.collection("sessions").document(session_id).get()
+        return jsonify(doc.to_dict().get("messages", [])) if doc.exists else jsonify([])
+    except Exception as e:
+        print("History error:", e)
+        return jsonify({"error": "Failed to retrieve history"}), 500
+    
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
+    """Return the last session from each bot for the given user"""
     try:
         user_id = request.args.get("user_id")
         if not user_id:
-            return jsonify({"error": "Missing user_id"}), 400
+            return jsonify({"error": "Missing user_id parameter"}), 400
 
-        # 🔧 Therapist bot mapping: Firestore doc ID => Display Name
-        bots = {
-            "anxiety": "Sage",
-            "trauma": "Phoenix",
-            "family": "Ava",
-            "crisis": "Raya",
-            "couples": "River",
-            "depression": "Jorden"
-        }
+        sessions = db.collection("sessions").where("user_id", "==", user_id).get()
+        latest_per_bot = {}
 
-        sessions = []
-
-        for bot_doc_id, bot_name in bots.items():
-            session_ref = db.collection("ai_therapists").document(bot_doc_id).collection("sessions") \
-                .where("userId", "==", user_id) \
-                .order_by("createdAt", direction=firestore.Query.DESCENDING) \
-                .limit(1)
-
-            docs = session_ref.stream()
-
-            for doc in docs:
-                data = doc.to_dict()
-                raw_status = data.get("status", "").strip().lower()
-
-                if raw_status == "end":
-                    status = "completed"
-                elif raw_status in ("exit", "active"):
-                    status = "in_progress"
-                else:
-                    continue  # skip invalid or missing status
-
-                sessions.append({
-                    "session_id": doc.id,
+        for doc in sessions:
+            data = doc.to_dict()
+            bot_name = data.get("bot_name")
+            timestamp = data.get("last_updated")
+            if bot_name not in latest_per_bot or (
+                timestamp and latest_per_bot[bot_name]["last_updated"] < timestamp
+            ):
+                latest_per_bot[bot_name] = {
                     "bot_name": bot_name,
-                    "problem": data.get("title", "Therapy Session"),
-                    "status": status,
-                    "date": str(data.get("createdAt", "")),
-                    "user_id": data.get("userId", ""),
-                    "preferred_style": data.get("therapyStyle", "")
-                })
+                    "problem": data.get("issue_description", ""),
+                    "status": "active" if data.get("is_active") else "inactive",
+                    "date": timestamp.isoformat() if timestamp else None,
+                    "user_id": user_id,
+                    "preferred_style": data.get("preferred_style", ""),
+                    "document_id": doc.id
+                }
 
-        return jsonify(sessions)
-
+        return jsonify(list(latest_per_bot.values()))
     except Exception as e:
-        import traceback
-        print("[❌] Error in /api/recent_sessions:", e)
-        traceback.print_exc()
-        return jsonify({"error": "Server error retrieving sessions"}), 500
+        print("Recent session error:", e)
+        return jsonify({"error": "Failed to retrieve recent sessions"}), 500
 
-# ✅ Recap
-# ✅ Run
+
+@app.route("/")
+def home():
+    return "Therapy Bot Server is running ✅"
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
