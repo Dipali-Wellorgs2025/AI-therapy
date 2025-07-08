@@ -1167,7 +1167,7 @@ def classify_and_respond():
 
         # Classify message
         classification_prompt = f"""
-Analyze this message and classify its primary therapeutic need:
+Analyze this message and classify its primary therapeutic need ignore greetings (like Hi, Hello):
 User message: \"{user_message}\"
 Current issue: \"{issue_description}\"
 
@@ -1275,7 +1275,7 @@ def get_recent_sessions():
             "family": "Ava",
             "crisis": "Raya",
             "couples": "River",
-            "depression": "Jorden"
+            "depression": "Jordan"
         }
 
         sessions = []
