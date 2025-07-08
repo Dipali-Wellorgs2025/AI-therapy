@@ -979,7 +979,7 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
-    """Handle incoming messages with final clean response"""
+    """Handle incoming messages with a final clean text-only output"""
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
     user_name = data.get("user_name", "User")
@@ -988,15 +988,10 @@ def handle_message(data):
     preferred_style = data.get("preferred_style", "Balanced")
     session_id = f"{user_id}_{bot_name}"
 
-    # Check for out-of-scope topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "data: " + json.dumps({
-            "content": "That's an important issue, but it's beyond what our bots can safely support. Please reach out to a licensed professional or helpline.",
-            "complete": True
-        }) + "\n\n"
+        yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
         return
 
-    # Session context and system prompt
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     system_prompt = build_system_prompt(
         bot_name, user_name, issue_description,
@@ -1004,7 +999,6 @@ def handle_message(data):
     )
 
     try:
-        # Stream response from DeepSeek
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
@@ -1023,16 +1017,22 @@ def handle_message(data):
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 full_response += chunk.choices[0].delta.content
 
-        # Clean and log the response
+        # Clean: remove asterisks, decode Unicode, trim
         cleaned_response = clean_response(full_response)
+        cleaned_response = cleaned_response.replace("**", "").replace("***", "").strip()
+
+        # Decode unicode sequences (optional)
+        decoded_text = bytes(cleaned_response, "utf-8").decode("unicode_escape")
+
         now = datetime.now(timezone.utc).isoformat()
 
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": bot_name, "message": cleaned_response, "timestamp": now})
+        ctx["history"].append({"sender": bot_name, "message": decoded_text, "timestamp": now})
 
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": bot_name,
+            "bot_id": issue_description,  # bot_id stored for recent_sessions
             "messages": ctx["history"],
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
@@ -1040,15 +1040,13 @@ def handle_message(data):
             "is_active": True
         }, merge=True)
 
-        yield "data: " + json.dumps({"content": cleaned_response, "complete": True}) + "\n\n"
+        yield decoded_text + "\n\n"
 
     except Exception as e:
         print("Error in streaming:", e)
         traceback.print_exc()
-        yield "data: " + json.dumps({
-            "content": "Sorry, I encountered an error processing your request. Please try again.",
-            "complete": True
-        }) + "\n\n"
+        yield "Sorry, I encountered an error processing your request. Please try again.\n\n"
+
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
