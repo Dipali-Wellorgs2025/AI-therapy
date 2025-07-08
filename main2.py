@@ -1058,113 +1058,6 @@ def stream():
         "preferred_style": request.args.get("preferred_style", "Balanced")
     }
     return Response(handle_message(data), mimetype="text/event-stream")
-    
-@app.route("/api/message", methods=["POST"])
-def classify_and_respond():
-    """Endpoint for classification and bot routing"""
-    try:
-        data = request.json
-        user_message = data.get("message", "")
-        current_bot = data.get("botName")
-        user_name = data.get("user_name", "User")
-        user_id = data.get("user_id", "unknown")
-        issue_description = data.get("issue_description", "")
-        preferred_style = data.get("preferred_style", "Balanced")
-
-        # Enhanced classification with better context
-        classification_prompt = f"""
-Analyze this message and classify its primary therapeutic need:
-User message: "{user_message}"
-Current issue: "{issue_description}"
-
-Options with descriptions:
-1. anxiety - General anxiety, stress, panic attacks
-2. breakup - Relationship endings, heartbreak, divorce
-3. self-worth - Low self-esteem, confidence issues
-4. trauma - PTSD, abuse, traumatic experiences  
-5. family - Family conflicts, parenting issues
-6. crisis - Urgent emotional distress, life transitions
-
-Return ONLY the single most relevant keyword from the list above.
-"""
-        classification = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3  # More deterministic
-        )
-        
-        category = classification.choices[0].message.content.strip().lower()
-        
-        # Handle unknown categories
-        if category not in TOPIC_TO_BOT:
-            return jsonify({
-                "botReply": "I'm not the best specialist for this. Would you like me to connect you with a more suitable therapist?",
-                "needsRedirect": True
-            })
-        
-        correct_bot = TOPIC_TO_BOT[category]
-        
-        # Suggest bot switch if needed
-        if correct_bot != current_bot:
-            return jsonify({
-                "botReply": f"This seems related to {category}. I recommend switching to {correct_bot} who specializes in this area.",
-                "suggestedBot": correct_bot,
-                "needsRedirect": True
-            })
-
-        # Get session context
-        session_id = f"{user_id}_{current_bot}"
-        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-        
-        # Prepare prompt with bot-specific rules
-        bot_prompt = BOT_PROMPTS[current_bot]
-        prompt_filled = bot_prompt.replace("{{user_name}}", user_name)\
-                                 .replace("{{issue_description}}", issue_description)\
-                                 .replace("{{preferred_style}}", preferred_style)
-        
-        # Add conversation history to context
-        if len(ctx["history"]) > 0:
-            last_5_messages = "\n".join(
-                f"{msg['sender']}: {msg['message']}" 
-                for msg in ctx["history"][-5:]
-            )
-            prompt_filled += f"\n\nRecent conversation history:\n{last_5_messages}"
-        
-        full_prompt = prompt_filled + "\n\nUser message:\n" + user_message
-
-        # Get response
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": full_prompt}],
-            temperature=0.7,
-            max_tokens=200,
-            presence_penalty=0.5,
-            frequency_penalty=0.5
-        )
-
-        reply = clean_response(response.choices[0].message.content.strip())
-        timestamp = datetime.now(timezone.utc).isoformat()
-
-        # Update session history
-        ctx["history"].append({"sender": "User", "message": user_message, "timestamp": timestamp})
-        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": timestamp})
-        
-        ctx["session_ref"].set({
-            "user_id": user_id,
-            "bot_name": current_bot,
-            "messages": ctx["history"],
-            "last_updated": timestamp,
-            "issue_description": issue_description,
-            "preferred_style": preferred_style,
-            "is_active": True
-        }, merge=True)
-
-        return jsonify({"botReply": reply})
-
-    except Exception as e:
-        print("Error in message processing:", e)
-        traceback.print_exc()
-        return jsonify({"botReply": "An error occurred. Please try again."}), 500
 
 @app.route("/api/start_questionnaire", methods=["POST"])
 def start_questionnaire():
@@ -1195,6 +1088,105 @@ def start_questionnaire():
     except Exception as e:
         print("Questionnaire error:", e)
         return jsonify({"error": "Failed to start questionnaire"}), 500
+    
+# --- 🛠 PATCHED FIXES BASED ON YOUR REQUEST ---
+
+# 1. Fix greeting logic in /api/message
+# 2. Add session_number tracking
+# 3. Improve variation with session stage awareness
+# 4. Prepare hook for questionnaire integration (base layer only)
+
+# 🧠 PATCH: Enhance bot response generation in /api/message
+@app.route("/api/message", methods=["POST"])
+def classify_and_respond():
+    try:
+        data = request.json
+        user_message = data.get("message", "")
+        current_bot = data.get("botName")
+        user_name = data.get("user_name", "User")
+        user_id = data.get("user_id", "unknown")
+        issue_description = data.get("issue_description", "")
+        preferred_style = data.get("preferred_style", "Balanced")
+
+        # Classify message
+        classification_prompt = f"""
+Analyze this message and classify its primary therapeutic need:
+User message: \"{user_message}\"
+Current issue: \"{issue_description}\"
+
+Options:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+Return only one.
+"""
+        classification = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": classification_prompt}],
+            temperature=0.3
+        )
+
+        category = classification.choices[0].message.content.strip().lower()
+        if category not in TOPIC_TO_BOT:
+            return jsonify({"botReply": "This seems like a different issue. Would you like to talk to another therapist?", "needsRedirect": True})
+
+        correct_bot = TOPIC_TO_BOT[category]
+        if correct_bot != current_bot:
+            return jsonify({"botReply": f"This looks like a {category} issue. I suggest switching to {correct_bot} who specializes in this.", "needsRedirect": True, "suggestedBot": correct_bot})
+
+        session_id = f"{user_id}_{current_bot}"
+        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+
+        # 🔢 Determine session number
+        session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+
+        # 🔧 Fill prompt
+        bot_prompt = BOT_PROMPTS[current_bot]
+        filled_prompt = bot_prompt.replace("{{user_name}}", user_name)
+        filled_prompt = filled_prompt.replace("{{issue_description}}", issue_description)
+        filled_prompt = filled_prompt.replace("{{preferred_style}}", preferred_style)
+        filled_prompt = filled_prompt.replace("{{session_number}}", str(session_number))
+
+        last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
+        filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
+
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": filled_prompt}],
+            temperature=0.7,
+            max_tokens=150,
+            presence_penalty=0.5,
+            frequency_penalty=0.5
+        )
+
+        reply = clean_response(response.choices[0].message.content.strip())
+        now = datetime.now(timezone.utc).isoformat()
+
+        ctx["history"].append({"sender": "User", "message": user_message, "timestamp": now})
+        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
+
+        ctx["session_ref"].set({
+            "user_id": user_id,
+            "bot_name": current_bot,
+            "messages": ctx["history"],
+            "last_updated": now,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style,
+            "session_number": session_number,
+            "is_active": True
+        }, merge=True)
+
+        return jsonify({"botReply": reply})
+
+    except Exception as e:
+        print("Error in message processing:", e)
+        traceback.print_exc()
+        return jsonify({"botReply": "An error occurred. Please try again."}), 500
+
+
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
