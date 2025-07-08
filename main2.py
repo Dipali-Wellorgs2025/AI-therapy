@@ -1045,7 +1045,7 @@ Instructions:
                                   .replace("{{issue_description}}", issue_description)\
                                   .replace("{{preferred_style}}", preferred_style)\
                                   .replace("{{session_number}}", str(session_number))
-
+        filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
         # --- 🧠 Add recent messages for continuity
         if ctx["history"]:
             last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
@@ -1200,7 +1200,7 @@ Return only one.
         filled_prompt = filled_prompt.replace("{{issue_description}}", issue_description)
         filled_prompt = filled_prompt.replace("{{preferred_style}}", preferred_style)
         filled_prompt = filled_prompt.replace("{{session_number}}", str(session_number))
-
+        filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
         last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
         filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
 
