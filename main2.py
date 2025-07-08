@@ -1003,11 +1003,9 @@ def handle_message(data):
     try:
         # --- 🧠 Classification: determine correct issue category
         classification_prompt = f"""
-Based on the message below, identify the user's **current primary therapeutic issue**.
+You are a classifier. Based on the user's message, return one label from the following:
 
-Message: "{user_msg}"
-
-Available categories:
+Categories:
 - anxiety
 - breakup
 - self-worth
@@ -1016,12 +1014,14 @@ Available categories:
 - crisis
 - none
 
+Message: "{user_msg}"
+
 Instructions:
-- If the message is a greeting or does not express an issue clearly, return **none**
-- If an issue is expressed, return only the most relevant one from the list
-- Ignore any prior sessions or labels
-- Choose based **only on the message above**
+- If the message is a greeting (e.g., "hi", "hello", "good morning") or does not describe any emotional or psychological issue, return **none**.
+- Otherwise, return the most relevant category.
+- Do not explain your answer. Return only the label.
 """
+
 
         classification = client.chat.completions.create(
             model="deepseek-chat",
@@ -1032,9 +1032,13 @@ Instructions:
         category = classification.choices[0].message.content.strip().lower()
 
         # --- ⚠️ Handle invalid categories
-        if category not in TOPIC_TO_BOT:
-            yield "This seems like a different issue. Would you like to talk to another therapist?\n\n"
-            return
+        if category == "none":
+           # Let the current bot respond normally using default issue_description
+            category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
+        elif category not in TOPIC_TO_BOT:
+             yield "This seems like a different issue. Would you like to talk to another therapist?"
+             return
+
 
         # --- ✅ Confirm or suggest better-fit therapist
         correct_bot = TOPIC_TO_BOT[category]
@@ -1170,19 +1174,25 @@ def classify_and_respond():
 
         # Classify message
         classification_prompt = f"""
-Analyze this message and classify its primary therapeutic need ignore greetings (like Hi, Hello):
-User message: \"{user_message}\"
-Current issue: \"{issue_description}\"
+You are a classifier. Based on the user's message, return one label from the following:
 
-Options:
+Categories:
 - anxiety
 - breakup
 - self-worth
 - trauma
 - family
 - crisis
-Return only one.
+- none
+
+Message: "{user_msg}"
+
+Instructions:
+- If the message is a greeting (e.g., "hi", "hello", "good morning") or does not describe any emotional or psychological issue, return **none**.
+- Otherwise, return the most relevant category.
+- Do not explain your answer. Return only the label.
 """
+
         classification = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": classification_prompt}],
@@ -1190,8 +1200,13 @@ Return only one.
         )
 
         category = classification.choices[0].message.content.strip().lower()
-        if category not in TOPIC_TO_BOT:
-            return jsonify({"botReply": "This seems like a different issue. Would you like to talk to another therapist?", "needsRedirect": True})
+        if category == "none":
+            # Let the current bot respond normally using default issue_description
+            category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
+        elif category not in TOPIC_TO_BOT:
+             yield "This seems like a different issue. Would you like to talk to another therapist?"
+             return
+
 
         correct_bot = TOPIC_TO_BOT[category]
         if correct_bot != current_bot:
