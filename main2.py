@@ -1005,7 +1005,7 @@ def handle_message(data):
         classification_prompt = f"""
 Based on the message below, identify the user's **current primary therapeutic issue**.
 
-Message: \"{user_msg}\"
+Message: "{user_msg}"
 
 Available categories:
 - anxiety
@@ -1014,12 +1014,15 @@ Available categories:
 - trauma
 - family
 - crisis
+- none
 
 Instructions:
-- Return only the most relevant one from the list above.
-- Ignore any prior issue labels or sessions.
-- Choose based **only on the content of the message.**
+- If the message is a greeting or does not express an issue clearly, return **none**
+- If an issue is expressed, return only the most relevant one from the list
+- Ignore any prior sessions or labels
+- Choose based **only on the message above**
 """
+
         classification = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": classification_prompt}],
