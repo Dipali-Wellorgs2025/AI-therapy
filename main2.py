@@ -979,7 +979,7 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
-    """Handle incoming messages with streaming response"""
+    """Handle incoming messages with final clean response"""
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
     user_name = data.get("user_name", "User")
@@ -987,26 +987,24 @@ def handle_message(data):
     issue_description = data.get("issue_description", "")
     preferred_style = data.get("preferred_style", "Balanced")
     session_id = f"{user_id}_{bot_name}"
-    
-    # Check for out of scope topics
+
+    # Check for out-of-scope topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "data: " + json.dumps({
             "content": "That's an important issue, but it's beyond what our bots can safely support. Please reach out to a licensed professional or helpline.",
             "complete": True
         }) + "\n\n"
         return
-    
-    # Get session context
+
+    # Session context and system prompt
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-    
-    # Build system prompt
     system_prompt = build_system_prompt(
-        bot_name, user_name, issue_description, 
+        bot_name, user_name, issue_description,
         preferred_style, ctx["history"], ctx["is_new_session"]
     )
-    
+
     try:
-        # Stream the response with limited tokens for faster response
+        # Stream response from DeepSeek
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
@@ -1014,27 +1012,24 @@ def handle_message(data):
                 {"role": "user", "content": user_msg}
             ],
             stream=True,
-            max_tokens=150,  # Limit response length
+            max_tokens=150,
             temperature=0.7,
-            presence_penalty=0.5,  # Reduce repetition
-            frequency_penalty=0.5   # Reduce repetitive phrases
+            presence_penalty=0.5,
+            frequency_penalty=0.5
         )
 
         full_response = ""
         for chunk in response:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                text = chunk.choices[0].delta.content
-                full_response += text
-                yield f"data: {json.dumps({'content': text})}\n\n"
-        
-        # Clean and save the response
+                full_response += chunk.choices[0].delta.content
+
+        # Clean and log the response
         cleaned_response = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Update session history
+
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": bot_name, "message": cleaned_response, "timestamp": now})
-        
+
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": bot_name,
@@ -1044,8 +1039,8 @@ def handle_message(data):
             "preferred_style": preferred_style,
             "is_active": True
         }, merge=True)
-        
-        yield "data: " + json.dumps({"content": "", "complete": True}) + "\n\n"
+
+        yield "data: " + json.dumps({"content": cleaned_response, "complete": True}) + "\n\n"
 
     except Exception as e:
         print("Error in streaming:", e)
@@ -1067,7 +1062,7 @@ def stream():
         "preferred_style": request.args.get("preferred_style", "Balanced")
     }
     return Response(handle_message(data), mimetype="text/event-stream")
-
+    
 @app.route("/api/message", methods=["POST"])
 def classify_and_respond():
     """Endpoint for classification and bot routing"""
