@@ -979,7 +979,10 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
-    """🧠 PATCHED: Stream-based bot response with classification, session flow, and context awareness"""
+    """🧠 Unified: Stream-based bot response with classification, redirect logic, and session tracking"""
+
+    import re
+    from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
@@ -1001,11 +1004,11 @@ def handle_message(data):
         return
 
     try:
-        # --- 🧠 Classification: determine correct issue category
+        # --- 🧠 Classification
         classification_prompt = f"""
-You are a text classifier that identifies the **main therapy topic** from user messages.
+You are a classifier. Based on the user's message, return one label from the following:
 
-Available categories:
+Categories:
 - anxiety
 - breakup
 - self-worth
@@ -1017,57 +1020,55 @@ Available categories:
 Message: "{user_msg}"
 
 Instructions:
-- If the message is a greeting (e.g., "hi", "hello", "good morning") or doesn't express any issue, return **none**
-- Return only the most relevant category — nothing else.
-- Don't explain your reasoning — just reply with the label.
+- If the message is a greeting (e.g., \"hi\", \"hello\", \"good morning\") or does not describe any emotional or psychological issue, return **none**.
+- Otherwise, return the most relevant category.
+- Do not explain your answer. Return only the label.
 """
-
-
 
         classification = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3
+            messages=[
+                {"role": "system", "content": "You are a strict classifier. You will only return a single word from a known category."},
+                {"role": "user", "content": classification_prompt}
+            ],
+            temperature=0.0
         )
 
         category = classification.choices[0].message.content.strip().lower()
+        print("🧠 CLASSIFIED:", category)
 
-        # --- ⚠️ Handle invalid categories
         if category == "none":
-           # Let the current bot respond normally using default issue_description
             category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
         elif category not in TOPIC_TO_BOT:
-             yield "This seems like a different issue. Would you like to talk to another therapist?"
-             return
+            yield "This seems like a different issue. Would you like to talk to another therapist?"
+            return
 
-
-        # --- ✅ Confirm or suggest better-fit therapist
         correct_bot = TOPIC_TO_BOT[category]
         if correct_bot != current_bot:
             yield f"This looks like a **{category}** issue. I suggest switching to **{correct_bot}**, who specializes in this.\n\n"
             return
 
-        # --- 🧾 Retrieve or create session
+        # --- 🔁 Session context
         ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
         # --- 🔢 Session number tracking
         session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-        # --- 📜 Fill bot prompt with placeholders
-        bot_prompt = BOT_PROMPTS.get(current_bot, "")
-        filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
-                                  .replace("{{issue_description}}", issue_description)\
-                                  .replace("{{preferred_style}}", preferred_style)\
-                                  .replace("{{session_number}}", str(session_number))
+        # --- 📜 Fill prompt
+        bot_prompt = BOT_PROMPTS[current_bot]
+        filled_prompt = bot_prompt.replace("{{user_name}}", user_name) \
+                                 .replace("{{issue_description}}", issue_description) \
+                                 .replace("{{preferred_style}}", preferred_style) \
+                                 .replace("{{session_number}}", str(session_number))
         filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
-        # --- 🧠 Add recent messages for continuity
+
         if ctx["history"]:
             last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
             filled_prompt += f"\n\nRecent conversation:\n{last_msgs}"
 
         filled_prompt += f"\n\nUser message:\n{user_msg}"
 
-        # --- 🧵 Stream response from LLM
+        # --- 🧵 Stream LLM response
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": filled_prompt}],
@@ -1083,11 +1084,10 @@ Instructions:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 full_response += chunk.choices[0].delta.content
 
-        # --- 🎨 Clean and preserve formatting
+        # --- 🎨 Clean response
         reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
-        # --- 🧾 Save session history
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
 
@@ -1109,6 +1109,7 @@ Instructions:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry, I encountered an error processing your request. Please try again.\n\n"
+
 
 
 @app.route("/api/stream", methods=["GET"])
@@ -1163,104 +1164,7 @@ def start_questionnaire():
 
 # 🧠 PATCH: Enhance bot response generation in /api/message
 @app.route("/api/message", methods=["POST"])
-def classify_and_respond():
-    try:
-        data = request.json
-        user_message = data.get("message", "")
-        current_bot = data.get("botName")
-        user_name = data.get("user_name", "User")
-        user_id = data.get("user_id", "unknown")
-        issue_description = data.get("issue_description", "")
-        preferred_style = data.get("preferred_style", "Balanced")
 
-        # Classify message
-        classification_prompt = f"""
-You are a classifier. Based on the user's message, return one label from the following:
-
-Categories:
-- anxiety
-- breakup
-- self-worth
-- trauma
-- family
-- crisis
-- none
-
-Message: "{user_msg}"
-
-Instructions:
-- If the message is a greeting (e.g., "hi", "hello", "good morning") or does not describe any emotional or psychological issue, return **none**.
-- Otherwise, return the most relevant category.
-- Do not explain your answer. Return only the label.
-"""
-
-        classification = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3
-        )
-
-        category = classification.choices[0].message.content.strip().lower()
-        if category == "none":
-            # Let the current bot respond normally using default issue_description
-            category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
-        elif category not in TOPIC_TO_BOT:
-             yield "This seems like a different issue. Would you like to talk to another therapist?"
-             return
-
-
-        correct_bot = TOPIC_TO_BOT[category]
-        if correct_bot != current_bot:
-            return jsonify({"botReply": f"This looks like a {category} issue. I suggest switching to {correct_bot} who specializes in this.", "needsRedirect": True, "suggestedBot": correct_bot})
-
-        session_id = f"{user_id}_{current_bot}"
-        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-
-        # 🔢 Determine session number
-        session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
-
-        # 🔧 Fill prompt
-        bot_prompt = BOT_PROMPTS[current_bot]
-        filled_prompt = bot_prompt.replace("{{user_name}}", user_name)
-        filled_prompt = filled_prompt.replace("{{issue_description}}", issue_description)
-        filled_prompt = filled_prompt.replace("{{preferred_style}}", preferred_style)
-        filled_prompt = filled_prompt.replace("{{session_number}}", str(session_number))
-        filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
-        last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
-        filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
-
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": filled_prompt}],
-            temperature=0.7,
-            max_tokens=150,
-            presence_penalty=0.5,
-            frequency_penalty=0.5
-        )
-
-        reply = clean_response(response.choices[0].message.content.strip())
-        now = datetime.now(timezone.utc).isoformat()
-
-        ctx["history"].append({"sender": "User", "message": user_message, "timestamp": now})
-        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
-
-        ctx["session_ref"].set({
-            "user_id": user_id,
-            "bot_name": current_bot,
-            "messages": ctx["history"],
-            "last_updated": now,
-            "issue_description": issue_description,
-            "preferred_style": preferred_style,
-            "session_number": session_number,
-            "is_active": True
-        }, merge=True)
-
-        return jsonify({"botReply": reply})
-
-    except Exception as e:
-        print("Error in message processing:", e)
-        traceback.print_exc()
-        return jsonify({"botReply": "An error occurred. Please try again."}), 500"""
 
 
 
