@@ -1263,6 +1263,64 @@ Instructions:
         traceback.print_exc()
         return jsonify({"botReply": "An error occurred. Please try again."}), 500
 
+@app.route("/api/session_summary", methods=["GET"])
+def generate_session_summary():
+    try:
+        user_id = request.args.get("user_id")
+        bot_name = request.args.get("botName")
+        if not user_id or not bot_name:
+            return jsonify({"error": "Missing user_id or botName"}), 400
+
+        session_id = f"{user_id}_{bot_name}"
+        doc = db.collection("sessions").document(session_id).get()
+        if not doc.exists:
+            return jsonify({"error": "Session not found"}), 404
+
+        messages = doc.to_dict().get("messages", [])
+        if not messages:
+            return jsonify({"error": "No messages to summarize"}), 404
+
+        # Build transcript
+        transcript = "\n".join([f"{m['sender']}: {m['message']}" for m in messages])
+
+        # LLM prompt
+        summary_prompt = f"""
+You are a clinical note generator for therapy sessions. Based on the conversation below, summarize the session in 5-6 bullet points.
+
+Rules:
+- Focus on emotions, insights, and key themes
+- Do NOT include therapist questions unless important
+- Avoid quotes, just describe the emotional/psychological arc
+- Use neutral, clinical tone
+
+Conversation transcript:
+{transcript}
+
+Now write the session summary:
+"""
+
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": summary_prompt}],
+            temperature=0.5,
+            max_tokens=300
+        )
+
+        summary = response.choices[0].message.content.strip()
+
+        # Save to Firestore (optional)
+        db.collection("sessions").document(session_id).update({
+            "summary": summary,
+            "ended_at": firestore.SERVER_TIMESTAMP
+        })
+
+        return jsonify({"summary": summary})
+
+    except Exception as e:
+        print("❌ Error generating session summary:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Server error generating summary"}), 500
+
 
 
 @app.route("/api/history", methods=["GET"])
