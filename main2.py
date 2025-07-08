@@ -958,8 +958,9 @@ User: {user_name}. You will support them step by step through this situation.
 
 Important Rules:
 1. Use **double asterisks** for emphasis
-2. For actions use: [breathe in for 4]
-3. Keep responses concise (1-3 sentences)"""
+2. For actions use: [breathe in for 4] and do not use this ( Holding gentle space—next steps will follow Alex’s lead toward either exploring triggers or grounding first.) type of responses,act like a human .
+3. Keep responses concise (1-3 sentences)
+4. Don't write instructions of bot"""
     
     # Add greeting only for new sessions
     if is_new_session:
