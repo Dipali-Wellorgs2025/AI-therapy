@@ -1223,36 +1223,60 @@ def get_history():
     
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
-    """Return the last session from each bot for the given user"""
     try:
         user_id = request.args.get("user_id")
         if not user_id:
-            return jsonify({"error": "Missing user_id parameter"}), 400
+            return jsonify({"error": "Missing user_id"}), 400
 
-        sessions = db.collection("sessions").where("user_id", "==", user_id).get()
-        latest_per_bot = {}
+        # 🔧 Therapist bot mapping: Firestore doc ID => Display Name
+        bots = {
+            "anxiety": "Sage",
+            "trauma": "Phoenix",
+            "family": "Ava",
+            "crisis": "Raya",
+            "couples": "River",
+            "depression": "Jorden"
+        }
 
-        for doc in sessions:
-            data = doc.to_dict()
-            bot_name = data.get("bot_name")
-            timestamp = data.get("last_updated")
-            if bot_name not in latest_per_bot or (
-                timestamp and latest_per_bot[bot_name]["last_updated"] < timestamp
-            ):
-                latest_per_bot[bot_name] = {
+        sessions = []
+
+        for bot_id, bot_name in bots.items():
+            session_ref = db.collection("ai_therapists").document(bot_id).collection("sessions") \
+                .where("userId", "==", user_id) \
+                .order_by("createdAt", direction=firestore.Query.DESCENDING) \
+                .limit(1)
+
+            docs = session_ref.stream()
+
+            for doc in docs:
+                data = doc.to_dict()
+                raw_status = data.get("status", "").strip().lower()
+
+                if raw_status == "end":
+                    status = "completed"
+                elif raw_status in ("exit", "active"):
+                    status = "in_progress"
+                else:
+                    continue  # skip unknown status
+
+                sessions.append({
+                    "session_id": doc.id,
+                    "bot_id": bot_id,  # ✅ Added bot document ID
                     "bot_name": bot_name,
-                    "problem": data.get("issue_description", ""),
-                    "status": "active" if data.get("is_active") else "inactive",
-                    "date": timestamp.isoformat() if timestamp else None,
-                    "user_id": user_id,
-                    "preferred_style": data.get("preferred_style", ""),
-                    "document_id": doc.id
-                }
+                    "problem": data.get("title", "Therapy Session"),
+                    "status": status,
+                    "date": str(data.get("createdAt", "")),
+                    "user_id": data.get("userId", ""),
+                    "preferred_style": data.get("therapyStyle", "")
+                })
 
-        return jsonify(list(latest_per_bot.values()))
+        return jsonify(sessions)
+
     except Exception as e:
-        print("Recent session error:", e)
-        return jsonify({"error": "Failed to retrieve recent sessions"}), 500
+        import traceback
+        print("[❌] Error in /api/recent_sessions:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Server error retrieving sessions"}), 500
 
 
 @app.route("/")
