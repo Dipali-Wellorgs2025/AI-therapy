@@ -1164,7 +1164,104 @@ def start_questionnaire():
 
 # 🧠 PATCH: Enhance bot response generation in /api/message
 @app.route("/api/message", methods=["POST"])
+def classify_and_respond():
+    try:
+        data = request.json
+        user_message = data.get("message", "")
+        current_bot = data.get("botName")
+        user_name = data.get("user_name", "User")
+        user_id = data.get("user_id", "unknown")
+        issue_description = data.get("issue_description", "")
+        preferred_style = data.get("preferred_style", "Balanced")
 
+        # Classify message
+        classification_prompt = f"""
+You are a classifier. Based on the user's message, return one label from the following:
+
+Categories:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+- none
+
+Message: "{user_msg}"
+
+Instructions:
+- If the message is a greeting (e.g., "hi", "hello", "good morning") or does not describe any emotional or psychological issue, return **none**.
+- Otherwise, return the most relevant category.
+- Do not explain your answer. Return only the label.
+"""
+
+        classification = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": classification_prompt}],
+            temperature=0.3
+        )
+
+        category = classification.choices[0].message.content.strip().lower()
+        if category == "none":
+            # Let the current bot respond normally using default issue_description
+            category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
+        elif category not in TOPIC_TO_BOT:
+             yield "This seems like a different issue. Would you like to talk to another therapist?"
+             return
+
+
+        correct_bot = TOPIC_TO_BOT[category]
+        if correct_bot != current_bot:
+            return jsonify({"botReply": f"This looks like a {category} issue. I suggest switching to {correct_bot} who specializes in this.", "needsRedirect": True, "suggestedBot": correct_bot})
+
+        session_id = f"{user_id}_{current_bot}"
+        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+
+        # 🔢 Determine session number
+        session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+
+        # 🔧 Fill prompt
+        bot_prompt = BOT_PROMPTS[current_bot]
+        filled_prompt = bot_prompt.replace("{{user_name}}", user_name)
+        filled_prompt = filled_prompt.replace("{{issue_description}}", issue_description)
+        filled_prompt = filled_prompt.replace("{{preferred_style}}", preferred_style)
+        filled_prompt = filled_prompt.replace("{{session_number}}", str(session_number))
+        filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
+        last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
+        filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
+
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": filled_prompt}],
+            temperature=0.7,
+            max_tokens=150,
+            presence_penalty=0.5,
+            frequency_penalty=0.5
+        )
+
+        reply = clean_response(response.choices[0].message.content.strip())
+        now = datetime.now(timezone.utc).isoformat()
+
+        ctx["history"].append({"sender": "User", "message": user_message, "timestamp": now})
+        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
+
+        ctx["session_ref"].set({
+            "user_id": user_id,
+            "bot_name": current_bot,
+            "messages": ctx["history"],
+            "last_updated": now,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style,
+            "session_number": session_number,
+            "is_active": True
+        }, merge=True)
+
+        return jsonify({"botReply": reply})
+
+    except Exception as e:
+        print("Error in message processing:", e)
+        traceback.print_exc()
+        return jsonify({"botReply": "An error occurred. Please try again."}), 500
 
 
 
