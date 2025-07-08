@@ -973,40 +973,93 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
-    """Handle incoming messages and preserve formatting like bold, emoji, and actions"""
+    """🧠 PATCHED: Stream-based bot response with classification, session flow, and context awareness"""
+
     user_msg = data.get("message", "")
-    bot_name = data.get("botName")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
     issue_description = data.get("issue_description", "")
     preferred_style = data.get("preferred_style", "Balanced")
-    session_id = f"{user_id}_{bot_name}"
+    current_bot = data.get("botName")
+    session_id = f"{user_id}_{current_bot}"
 
-    # 🔐 Check for sensitive topics we can't support
+    # --- 🔐 Handle sensitive or unsupported topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
         return
 
-    # 🔁 Get or create session context
-    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-
-    # 🧠 Build system prompt with context and tone
-    system_prompt = build_system_prompt(
-        bot_name, user_name, issue_description,
-        preferred_style, ctx["history"], ctx["is_new_session"]
-    )
+    # --- 🤖 Handle technical/training questions
+    tech_keywords = ["algorithm", "training", "parameters", "architecture", "how are you trained", "how do you work"]
+    if any(term in user_msg.lower() for term in tech_keywords):
+        yield "I'm here to support your emotional well-being. For questions about how I was built or trained, please contact our development team.\n\n"
+        return
 
     try:
-        # 🧵 Stream response from DeepSeek
+        # --- 🧠 Classification: determine correct issue category
+        classification_prompt = f"""
+Based on the message below, identify the user's **current primary therapeutic issue**.
+
+Message: \"{user_msg}\"
+
+Available categories:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+
+Instructions:
+- Return only the most relevant one from the list above.
+- Ignore any prior issue labels or sessions.
+- Choose based **only on the content of the message.**
+"""
+        classification = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": classification_prompt}],
+            temperature=0.3
+        )
+
+        category = classification.choices[0].message.content.strip().lower()
+
+        # --- ⚠️ Handle invalid categories
+        if category not in TOPIC_TO_BOT:
+            yield "This seems like a different issue. Would you like to talk to another therapist?\n\n"
+            return
+
+        # --- ✅ Confirm or suggest better-fit therapist
+        correct_bot = TOPIC_TO_BOT[category]
+        if correct_bot != current_bot:
+            yield f"This looks like a **{category}** issue. I suggest switching to **{correct_bot}**, who specializes in this.\n\n"
+            return
+
+        # --- 🧾 Retrieve or create session
+        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+
+        # --- 🔢 Session number tracking
+        session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+
+        # --- 📜 Fill bot prompt with placeholders
+        bot_prompt = BOT_PROMPTS.get(current_bot, "")
+        filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
+                                  .replace("{{issue_description}}", issue_description)\
+                                  .replace("{{preferred_style}}", preferred_style)\
+                                  .replace("{{session_number}}", str(session_number))
+
+        # --- 🧠 Add recent messages for continuity
+        if ctx["history"]:
+            last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
+            filled_prompt += f"\n\nRecent conversation:\n{last_msgs}"
+
+        filled_prompt += f"\n\nUser message:\n{user_msg}"
+
+        # --- 🧵 Stream response from LLM
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg}
-            ],
+            messages=[{"role": "user", "content": filled_prompt}],
             stream=True,
-            max_tokens=150,
             temperature=0.7,
+            max_tokens=200,
             presence_penalty=0.5,
             frequency_penalty=0.5
         )
@@ -1016,32 +1069,30 @@ def handle_message(data):
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 full_response += chunk.choices[0].delta.content
 
-        # ✅ Clean output — preserve bold, emojis, and action phrases
-        cleaned_response = clean_response(full_response)
-
+        # --- 🎨 Clean and preserve formatting
+        reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
-        # 📝 Save messages to session history
+        # --- 🧾 Save session history
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": bot_name, "message": cleaned_response, "timestamp": now})
+        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
 
-        # 📦 Update Firestore
         ctx["session_ref"].set({
             "user_id": user_id,
-            "bot_name": bot_name,
-            "bot_id": issue_description,  # saved for recent_sessions
+            "bot_name": current_bot,
+            "bot_id": category,
             "messages": ctx["history"],
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
+            "session_number": session_number,
             "is_active": True
         }, merge=True)
 
-        # 🎉 Final response
-        yield cleaned_response + "\n\n"
+        yield reply + "\n\n"
 
     except Exception as e:
-        print("Error in streaming:", e)
+        print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry, I encountered an error processing your request. Please try again.\n\n"
 
