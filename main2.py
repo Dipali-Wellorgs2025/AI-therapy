@@ -913,15 +913,20 @@ QUESTIONNAIRES = {
     ]
 }
 
-# Helper functions
 def clean_response(text: str) -> str:
-    """Preserve bold, emoji, and actions like [breathe in for 4]"""
     import re
-    text = re.sub(r"\s*\[\s*", " [", text)  # normalize spacing before [
-    text = re.sub(r"\s*\]\s*", "] ", text)  # normalize spacing after ]
-    text = re.sub(r"\s{2,}", " ", text)     # remove extra spaces
-    text = text.strip()
-    return text
+    # 🔧 Remove instructions like [If yes: ...], [If no: ...]
+    text = re.sub(r"\[.*?if.*?\]", "", text, flags=re.IGNORECASE)
+    # 🔧 Remove all bracketed instructions like [gently guide], [reflect:], etc.
+    text = re.sub(r"\[[^\]]+\]", "", text)
+    # 🔧 Remove developer notes like (Note: ...)
+    text = re.sub(r"\(Note:.*?\)", "", text)
+    # 🔧 Remove any leftover template placeholders
+    text = re.sub(r"\{\{.*?\}\}", "", text)
+    # 🔧 Remove extra white space
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
+
 
     
     
