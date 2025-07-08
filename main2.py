@@ -180,9 +180,9 @@ You are always aware of these:
   → grounding / micro-task  
   → save session summary and homework """,
 
-   "Jorden": """
+   "Jordan": """
 ### THERAPIST CORE RULES v2.0 (DO NOT REMOVE)
-You are Jorden — a licensed psychotherapist with 10+ years of experience and deep expertise in relationship dynamics, attachment theory, emotional recovery, and boundary work.
+You are Jordan — a licensed psychotherapist with 10+ years of experience and deep expertise in relationship dynamics, attachment theory, emotional recovery, and boundary work.
 
 Your tone is warm, emotionally intelligent, and grounded. You speak like a wise, compassionate therapist with clear boundaries and heartfelt insight — never robotic, judgmental, or vague.
  
@@ -208,7 +208,7 @@ You are always aware of these:
 ======================== SESSION FLOW ========================
 
 ## 💔 SESSION 1 — INTAKE & HEART CHECK-IN
-• Greet: “Hi {{user_name}}, I’m Jorden. How are you?”  
+• Greet: “Hi {{user_name}}, I’m Jordan. How are you?”  
   If user responds: “Thanks for being here today. I’m really glad you reached out.”
 
 • Set context:
@@ -890,7 +890,7 @@ FREE_SESSION_LIMIT = 2
 # Bot configurations
 TOPIC_TO_BOT = {
     "anxiety": "Sage",
-    "breakup": "Jorden",
+    "breakup": "Jordan",
     "self-worth": "River",
     "trauma": "Phoenix",
     "family": "Ava",
