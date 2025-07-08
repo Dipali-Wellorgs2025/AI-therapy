@@ -915,22 +915,16 @@ QUESTIONNAIRES = {
 
 # Helper functions
 def clean_response(text: str) -> str:
-    """Normalize all formatting in the response"""
-    # Convert all bold formats to proper markdown
-    text = re.sub(r'(<b>|\*{1,3})(.*?)(</b>|\*{1,3})', r'**\2**', text)
-    text = re.sub(r'\*(\w.*?\w)\*', r'**\1**', text)  # Convert single * to **
+    """Preserve bold, emoji, and actions like [breathe in for 4]"""
+    import re
+    text = re.sub(r"\s*\[\s*", " [", text)  # normalize spacing before [
+    text = re.sub(r"\s*\]\s*", "] ", text)  # normalize spacing after ]
+    text = re.sub(r"\s{2,}", " ", text)     # remove extra spaces
+    text = text.strip()
+    return text
+
     
-    # Clean action phrases
-    text = re.sub(r'\[([^]]+)\]', lambda m: f"[{m.group(1).strip()}]", text)
-    text = re.sub(r'\s*\[\s*', ' [', text)
-    text = re.sub(r'\s*\]\s*', '] ', text)
     
-    # Fix contractions and spacing
-    text = re.sub(r"\b([A-Za-z]+)\s+[''`]\s+([a-zA-Z]+)\b", r"\1'\2", text)
-    text = ' '.join(text.split())  # Remove extra whitespace
-    text = re.sub(r'([,.!?])([^\s])', r'\1 \2', text)  # Add space after punctuation
-    
-    return text.strip()
 
 def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
     """Get or create session context with greeting handling"""
@@ -979,7 +973,7 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
-    """Handle incoming messages with a final clean text-only output"""
+    """Handle incoming messages and preserve formatting like bold, emoji, and actions"""
     user_msg = data.get("message", "")
     bot_name = data.get("botName")
     user_name = data.get("user_name", "User")
@@ -988,17 +982,22 @@ def handle_message(data):
     preferred_style = data.get("preferred_style", "Balanced")
     session_id = f"{user_id}_{bot_name}"
 
+    # 🔐 Check for sensitive topics we can't support
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
         return
 
+    # 🔁 Get or create session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+
+    # 🧠 Build system prompt with context and tone
     system_prompt = build_system_prompt(
         bot_name, user_name, issue_description,
         preferred_style, ctx["history"], ctx["is_new_session"]
     )
 
     try:
+        # 🧵 Stream response from DeepSeek
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
@@ -1017,22 +1016,20 @@ def handle_message(data):
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 full_response += chunk.choices[0].delta.content
 
-        # Clean: remove asterisks, decode Unicode, trim
+        # ✅ Clean output — preserve bold, emojis, and action phrases
         cleaned_response = clean_response(full_response)
-        cleaned_response = cleaned_response.replace("**", "").replace("***", "").strip()
-
-        # Decode unicode sequences (optional)
-        decoded_text = bytes(cleaned_response, "utf-8").decode("unicode_escape")
 
         now = datetime.now(timezone.utc).isoformat()
 
+        # 📝 Save messages to session history
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": bot_name, "message": decoded_text, "timestamp": now})
+        ctx["history"].append({"sender": bot_name, "message": cleaned_response, "timestamp": now})
 
+        # 📦 Update Firestore
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": bot_name,
-            "bot_id": issue_description,  # bot_id stored for recent_sessions
+            "bot_id": issue_description,  # saved for recent_sessions
             "messages": ctx["history"],
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
@@ -1040,7 +1037,8 @@ def handle_message(data):
             "is_active": True
         }, merge=True)
 
-        yield decoded_text + "\n\n"
+        # 🎉 Final response
+        yield cleaned_response + "\n\n"
 
     except Exception as e:
         print("Error in streaming:", e)
