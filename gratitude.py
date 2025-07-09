@@ -62,3 +62,17 @@ def gratitude_details():
         data = doc.to_dict()
         return jsonify({'userid': str(data.get('userid', '')), 'text': str(data.get('text', '')), 'timestamp': str(data.get('timestamp', ''))}), 200
     return jsonify({'status': False, 'message': 'No gratitude found for this userid'}), 404
+
+@app.route('/deletegratitude', methods=['DELETE'])
+def delete_gratitude():
+    gratitude_id = request.args.get('gratitude_id')
+    if not gratitude_id:
+        return jsonify({'status': False, 'message': 'gratitude_id required'}), 400
+
+    db = firestore.client()
+    doc_ref = db.collection('gratitude').document(gratitude_id)
+    if not doc_ref.get().exists:
+        return jsonify({'status': False, 'message': 'Gratitude entry not found'}), 404
+
+    doc_ref.delete()
+    return jsonify({'status': True, 'message': 'Gratitude deleted successfully'}), 200
