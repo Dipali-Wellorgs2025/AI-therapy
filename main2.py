@@ -996,7 +996,7 @@ def handle_message(data):
     session_id = f"{user_id}_{current_bot}"
     # 🔺 1. Check for crisis keywords and trigger SOS
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "__SOS__"  # Frontend will redirect to SOS screen
+        yield "I'm feeling sorry for you! Please don't take harsh decision. I request to please contact __SOS__"  # Frontend will redirect to SOS screen
         return
     # --- 🔐 Handle sensitive or unsupported topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
