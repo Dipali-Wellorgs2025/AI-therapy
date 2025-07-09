@@ -1264,8 +1264,6 @@ Instructions:
         return jsonify({"botReply": "An error occurred. Please try again."}), 500
         
 @app.route("/api/session_summary", methods=["GET"])
-import re
-
 def clean_clinical_summary(summary_raw: str) -> str:
     section_map = {
         "1. Therapeutic Effectiveness": "💡 Therapeutic Effectiveness",
