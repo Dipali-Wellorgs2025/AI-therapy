@@ -63,7 +63,7 @@ def gratitude_details():
         return jsonify({'userid': str(data.get('userid', '')), 'text': str(data.get('text', '')), 'timestamp': str(data.get('timestamp', ''))}), 200
     return jsonify({'status': False, 'message': 'No gratitude found for this userid'}), 404
 
-@app.route('/deletegratitude', methods=['DELETE'])
+@gratitude_bp.route('/deletegratitude', methods=['DELETE'])
 def delete_gratitude():
     gratitude_id = request.args.get('gratitude_id')
     if not gratitude_id:
