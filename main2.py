@@ -1575,6 +1575,20 @@ def get_journal_data():
         }), 200
     return jsonify({'message': 'Journal not found'}), 404
 
+@app.route('/deletejournal', methods=['DELETE'])
+def delete_journal():
+    journal_id = request.args.get('journal_id')
+    if not journal_id:
+        return jsonify({'status': False, 'message': 'journal_id required'}), 400
+
+    db = firestore.client()
+    doc_ref = db.collection('journals').document(journal_id)
+    if not doc_ref.get().exists:
+        return jsonify({'status': False, 'message': 'Journal not found'}), 404
+
+    doc_ref.delete()
+    return jsonify({'status': True, 'message': 'Journal deleted successfully'}), 200
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
