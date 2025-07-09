@@ -1489,7 +1489,8 @@ def add_journal():
     if not all([uid, name, message]):
         print("[DEBUG] Missing required fields")
         return jsonify({'status': False, 'message': 'Missing required fields'}), 400
-    timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+    # timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     image_url = ""
     print("[DEBUG] request.files:", request.files)
     # Accept keys with accidental whitespace, e.g., 'image ' or ' image'
