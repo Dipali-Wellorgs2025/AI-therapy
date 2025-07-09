@@ -16,7 +16,7 @@ import re
 # Import profile management blueprint
 from profile_manager import profile_bp
 from gratitude import gratitude_bp
-from subscription import subscription_bp
+# from subscription import subscription_bp
 # Load environment variables
 load_dotenv()
 
@@ -26,7 +26,7 @@ app = Flask(__name__)
 # Register profile management blueprint
 app.register_blueprint(profile_bp, url_prefix='/api')
 app.register_blueprint(gratitude_bp)
-app.register_blueprint(subscription_bp)
+# app.register_blueprint(subscription_bp)
 
 # Initialize Firebase
 load_dotenv()
