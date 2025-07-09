@@ -1262,8 +1262,7 @@ Instructions:
         print("Error in message processing:", e)
         traceback.print_exc()
         return jsonify({"botReply": "An error occurred. Please try again."}), 500
-
-# @app.route("/api/session_summary", methods=["GET"])
+        
 @app.route("/api/session_summary", methods=["GET"])
 def generate_session_summary():
     try:
@@ -1284,42 +1283,40 @@ def generate_session_summary():
         # Build transcript
         transcript = "\n".join([f"{m['sender']}: {m['message']}" for m in messages])
 
-        # LLM prompt
-        summary_prompt = f"""
-You are a clinical note generator for therapy sessions. Based on the conversation below, summarize the session in 5-6 bullet points.
+        # Prompt LLM to return insights in the desired 4-section format
+        prompt = f"""
+You are a clinical insights generator. Based on the conversation transcript below, return a 4-part structured analysis with the following section headings:
 
-Rules:
-- Focus on emotions, insights, and key themes
-- Do NOT include therapist questions unless important
-- Avoid quotes, just describe the emotional/psychological arc
-- Use neutral, clinical tone
+1. Therapeutic Effectiveness
+2. Risk Assessment
+3. Treatment Recommendations
+4. Progress Indicators
 
-Conversation transcript:
+Each section should contain 3–5 concise bullet points.
+Avoid quoting directly—use clinical, evidence-based tone. Do not include therapist questions unless they reveal emotional insight.
+
+Transcript:
 {transcript}
 
-Now write the session summary:
+Generate the report now:
 """
 
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": summary_prompt}],
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=300
+            max_tokens=500
         )
 
         summary_raw = response.choices[0].message.content.strip()
 
-        # Clean and format summary into bullet points (remove \n\n)
-        summary_lines = [line.strip().lstrip("- ") for line in summary_raw.split("\n") if line.strip()]
-        formatted_summary = "🧠 Session Summary: " + " ".join([f"• {line}" for line in summary_lines])
-
-        # Save to Firestore
+        # Save formatted summary directly
         db.collection("sessions").document(session_id).update({
-            "summary": formatted_summary,
+            "summary": summary_raw,
             "ended_at": firestore.SERVER_TIMESTAMP
         })
 
-        return jsonify({"summary": formatted_summary})
+        return jsonify({"summary": summary_raw})
 
     except Exception as e:
         print("❌ Error generating session summary:", e)
