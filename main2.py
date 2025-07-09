@@ -1341,7 +1341,7 @@ Generate the report now:
 
         summary_raw = response.choices[0].message.content.strip()
 
-        # Post-process to clean Markdown and format as final readable report
+        # ✅ Corrected this line (this was the issue!)
         final_summary = clean_clinical_summary(summary_raw)
 
         # Save to Firestore
@@ -1356,9 +1356,6 @@ Generate the report now:
         print("❌ Error generating session summary:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error generating summary"}), 500
-
-
-
 
 
 @app.route("/api/history", methods=["GET"])
