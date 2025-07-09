@@ -13,9 +13,20 @@ from openai import OpenAI
 from queue import Queue
 import json
 import re
+# Import profile management blueprint
+from profile_manager import profile_bp
+from gratitude import gratitude_bp
+from subscription import subscription_bp
+# Load environment variables
+load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Register profile management blueprint
+app.register_blueprint(profile_bp, url_prefix='/api')
+app.register_blueprint(gratitude_bp)
+app.register_blueprint(subscription_bp)
 
 # Initialize Firebase
 load_dotenv()
@@ -1441,6 +1452,118 @@ def get_recent_sessions():
 @app.route("/")
 def home():
     return "Therapy Bot Server is running ✅"
+
+
+# ================= JOURNAL APIs =================
+import uuid
+from werkzeug.utils import secure_filename
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def upload_image_to_firebase(file, uid):
+    print("[DEBUG] upload_image_to_firebase called")
+    print("[DEBUG] file.filename:", file.filename)
+    bucket = storage.bucket()
+    filename = secure_filename(file.filename)
+    ext = filename.rsplit('.', 1)[1].lower()
+    unique_filename = f"journals/{uid}/{uuid.uuid4()}.{ext}"
+    print("[DEBUG] unique_filename:", unique_filename)
+    blob = bucket.blob(unique_filename)
+    file.seek(0)  # Ensure pointer is at start before upload
+    blob.upload_from_file(file, content_type=file.content_type)
+    blob.make_public()
+    print("[DEBUG] blob.public_url:", blob.public_url)
+    return blob.public_url
+
+# POST /addjournal (multipart)
+@app.route('/addjournal', methods=['POST'])
+def add_journal():
+    print("[DEBUG] /addjournal called")
+    uid = request.form.get('uid')
+    name = request.form.get('name')
+    message = request.form.get('message')
+    print("[DEBUG] uid:", uid, "name:", name, "message:", message)
+    if not all([uid, name, message]):
+        print("[DEBUG] Missing required fields")
+        return jsonify({'status': False, 'message': 'Missing required fields'}), 400
+    timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+    image_url = ""
+    print("[DEBUG] request.files:", request.files)
+    # Accept keys with accidental whitespace, e.g., 'image ' or ' image'
+    image_file = None
+    for k in request.files:
+        if k.strip() == 'image':
+            image_file = request.files[k]
+            break
+    if image_file:
+        print("[DEBUG] image file received:", image_file.filename)
+        if image_file and allowed_file(image_file.filename):
+            image_url = upload_image_to_firebase(image_file, uid)
+        else:
+            print("[DEBUG] Invalid image file:", image_file.filename)
+            return jsonify({'status': False, 'message': 'Invalid image file'}), 400
+    else:
+        print("[DEBUG] No image file in request.files (after normalization)")
+    # Ensure image is always a non-null string
+    if not image_url:
+        image_url = ""
+    print("[DEBUG] Final image_url:", image_url)
+    journal_data = {
+        'uid': str(uid),
+        'name': str(name),
+        'message': str(message),
+        'timestamp': str(timestamp),
+        'image': str(image_url)
+    }
+    print("[DEBUG] journal_data to store:", journal_data)
+    db.collection('journals').add(journal_data)
+    print("[DEBUG] Journal added to Firestore")
+    return jsonify({'status': True, 'message': 'Journal added successfully', 'timestamp': str(timestamp)}), 200
+
+# GET /journallist?uid=...
+@app.route('/journallist', methods=['GET'])
+def journal_list():
+    uid = request.args.get('uid')
+    if not uid:
+        return jsonify([])
+    journals = db.collection('journals').where('uid', '==', uid).order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
+    result = []
+    print("\n--- DEBUG: Journals fetched for uid=", uid, "---")
+    for doc in journals:
+        data = doc.to_dict()
+        print("Journal doc:", data)
+        # Ensure all fields are strings and image is always a non-null string
+        result.append({
+            'uid': str(data.get('uid', "")),
+            'name': str(data.get('name', "")),
+            'message': str(data.get('message', "")),
+            'timestamp': str(data.get('timestamp', "")),
+            'image': str(data.get('image', "")) if data.get('image') is not None else ""
+        })
+    print("--- END DEBUG ---\n")
+    return jsonify(result), 200
+
+# GET /getjournaldata?uid=...&timestamp=...
+@app.route('/getjournaldata', methods=['GET'])
+def get_journal_data():
+    uid = request.args.get('uid')
+    timestamp = request.args.get('timestamp')
+    if not uid or not timestamp:
+        return jsonify({'message': 'uid and timestamp required'}), 400
+    query = db.collection('journals').where('uid', '==', uid).where('timestamp', '==', timestamp).limit(1).stream()
+    for doc in query:
+        data = doc.to_dict()
+        return jsonify({
+            'uid': str(data.get('uid', "")),
+            'name': str(data.get('name', "")),
+            'message': str(data.get('message', "")),
+            'timestamp': str(data.get('timestamp', "")),
+            'image': str(data.get('image', "")) if data.get('image') is not None else ""
+        }), 200
+    return jsonify({'message': 'Journal not found'}), 404
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
