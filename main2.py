@@ -1264,6 +1264,38 @@ Instructions:
         return jsonify({"botReply": "An error occurred. Please try again."}), 500
         
 @app.route("/api/session_summary", methods=["GET"])
+import re
+
+def clean_clinical_summary(summary_raw: str) -> str:
+    section_map = {
+        "1. Therapeutic Effectiveness": "💡 Therapeutic Effectiveness",
+        "2. Risk Assessment": "⚠️ Risk Assessment",
+        "3. Treatment Recommendations": "📝 Treatment Recommendations",
+        "4. Progress Indicators": "📊 Progress Indicators"
+    }
+
+    # Remove Markdown bold, italic, and headers
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", summary_raw)  # **bold**
+    cleaned = re.sub(r"\*(.*?)\*", r"\1", cleaned)          # *italic*
+    cleaned = re.sub(r"#+\s*", "", cleaned)                 # remove markdown headers like ###
+
+    # Normalize line breaks
+    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = re.sub(r"\n{2,}", "\n\n", cleaned.strip())
+
+    # Replace section headers
+    for md_header, emoji_header in section_map.items():
+        cleaned = cleaned.replace(md_header, emoji_header)
+
+    # Replace bullet characters
+    cleaned = re.sub(r"[-•]\s+", "• ", cleaned)
+
+    # Remove markdown dividers like ---
+    cleaned = re.sub(r"-{3,}", "", cleaned)
+
+    return cleaned.strip()
+
+
 def generate_session_summary():
     try:
         user_id = request.args.get("user_id")
@@ -1283,7 +1315,7 @@ def generate_session_summary():
         # Build transcript
         transcript = "\n".join([f"{m['sender']}: {m['message']}" for m in messages])
 
-        # Prompt for 4-section clinical summary
+        # LLM prompt
         prompt = f"""
 You are a clinical insights generator. Based on the conversation transcript below, return a 4-part structured analysis with the following section headings:
 
@@ -1294,6 +1326,7 @@ You are a clinical insights generator. Based on the conversation transcript belo
 
 Each section should contain 3–5 concise bullet points.
 Avoid quoting directly—use clinical, evidence-based tone. Do not include therapist questions unless they reveal emotional insight.
+Use plain text, no Markdown formatting.
 
 Transcript:
 {transcript}
@@ -1310,35 +1343,10 @@ Generate the report now:
 
         summary_raw = response.choices[0].message.content.strip()
 
-        # --- Postprocess the Markdown into desired format ---
-        section_map = {
-            "Therapeutic Effectiveness": "💡 Therapeutic Effectiveness",
-            "Risk Assessment": "⚠️ Risk Assessment",
-            "Treatment Recommendations": "📝 Treatment Recommendations",
-            "Progress Indicators": "📊 Progress Indicators"
-        }
+        # Post-process to clean Markdown and format as final readable report
+        final_summary = clean_clinical_summary(summary_raw)
 
-        # Remove markdown headers like ###, ####
-        cleaned = re.sub(r"#+\s*", "", summary_raw)
-
-        # Break into sections
-        sections = re.split(r"\n{2,}", cleaned)
-        formatted_sections = []
-
-        for section in sections:
-            if not section.strip():
-                continue
-            lines = section.strip().split("\n")
-            header = lines[0].strip()
-            bullets = lines[1:]
-            title = section_map.get(header, header)
-            bullet_lines = ["• " + re.sub(r"^[-•]\s*", "", line.strip()) for line in bullets if line.strip()]
-            formatted_section = f"{title}\n" + "\n".join(bullet_lines)
-            formatted_sections.append(formatted_section)
-
-        final_summary = "\n\n".join(formatted_sections)
-
-        # Save formatted summary to Firestore
+        # Save to Firestore
         db.collection("sessions").document(session_id).update({
             "summary": final_summary,
             "ended_at": firestore.SERVER_TIMESTAMP
@@ -1350,6 +1358,7 @@ Generate the report now:
         print("❌ Error generating session summary:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error generating summary"}), 500
+
 
 
 
