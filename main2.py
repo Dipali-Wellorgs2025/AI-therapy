@@ -1530,22 +1530,31 @@ def journal_list():
     uid = request.args.get('uid')
     if not uid:
         return jsonify([])
-    journals = db.collection('journals').where('uid', '==', uid).order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
+
+    db = firestore.client()
+    journals = db.collection('journals')\
+                 .where('uid', '==', uid)\
+                 .order_by('timestamp', direction=firestore.Query.DESCENDING)\
+                 .stream()
+
     result = []
-    print("\n--- DEBUG: Journals fetched for uid=", uid, "---")
+    print("\n--- DEBUG: Journals fetched for uid =", uid, "---")
     for doc in journals:
         data = doc.to_dict()
         print("Journal doc:", data)
-        # Ensure all fields are strings and image is always a non-null string
+
         result.append({
+            'journal_id': doc.id,  # ✅ Added document ID here
             'uid': str(data.get('uid', "")),
             'name': str(data.get('name', "")),
             'message': str(data.get('message', "")),
             'timestamp': str(data.get('timestamp', "")),
             'image': str(data.get('image', "")) if data.get('image') is not None else ""
         })
+
     print("--- END DEBUG ---\n")
     return jsonify(result), 200
+
 
 # GET /getjournaldata?uid=...&timestamp=...
 @app.route('/getjournaldata', methods=['GET'])
