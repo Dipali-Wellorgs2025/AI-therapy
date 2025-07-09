@@ -25,21 +25,29 @@ def add_gratitude():
     return jsonify({'status': True, 'message': 'Gratitude added successfully'}), 200
 
 # 2. List gratitude (GET /listgratitude?userid=...)
+# @gratitude_bp.route('/listgratitude', methods=['GET'])
 @gratitude_bp.route('/listgratitude', methods=['GET'])
 def list_gratitude():
     userid = request.args.get('userid')
     if not userid:
         return jsonify({'status': False, 'message': 'userid required'}), 400
+
     db = firestore.client()
-    docs = db.collection('gratitude').where('userid', '==', userid).order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
+    docs = db.collection('gratitude')\
+             .where('userid', '==', userid)\
+             .order_by('timestamp', direction=firestore.Query.DESCENDING)\
+             .stream()
+
     result = []
     for doc in docs:
         data = doc.to_dict()
         result.append({
+            'gratitude_id': doc.id,  # ✅ Firestore document ID
             'userid': str(data.get('userid', '')),
             'text': str(data.get('text', '')),
             'timestamp': str(data.get('timestamp', ''))
         })
+
     return jsonify(result), 200
 
 # 3. Gratitude details (GET /grattitudedetails?userid=...)
