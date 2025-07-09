@@ -1283,7 +1283,7 @@ def generate_session_summary():
         # Build transcript
         transcript = "\n".join([f"{m['sender']}: {m['message']}" for m in messages])
 
-        # Prompt LLM to return insights in the desired 4-section format
+        # Prompt for 4-section clinical summary
         prompt = f"""
 You are a clinical insights generator. Based on the conversation transcript below, return a 4-part structured analysis with the following section headings:
 
@@ -1305,23 +1305,52 @@ Generate the report now:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=500
+            max_tokens=600
         )
 
         summary_raw = response.choices[0].message.content.strip()
 
-        # Save formatted summary directly
+        # --- Postprocess the Markdown into desired format ---
+        section_map = {
+            "Therapeutic Effectiveness": "💡 Therapeutic Effectiveness",
+            "Risk Assessment": "⚠️ Risk Assessment",
+            "Treatment Recommendations": "📝 Treatment Recommendations",
+            "Progress Indicators": "📊 Progress Indicators"
+        }
+
+        # Remove markdown headers like ###, ####
+        cleaned = re.sub(r"#+\s*", "", summary_raw)
+
+        # Break into sections
+        sections = re.split(r"\n{2,}", cleaned)
+        formatted_sections = []
+
+        for section in sections:
+            if not section.strip():
+                continue
+            lines = section.strip().split("\n")
+            header = lines[0].strip()
+            bullets = lines[1:]
+            title = section_map.get(header, header)
+            bullet_lines = ["• " + re.sub(r"^[-•]\s*", "", line.strip()) for line in bullets if line.strip()]
+            formatted_section = f"{title}\n" + "\n".join(bullet_lines)
+            formatted_sections.append(formatted_section)
+
+        final_summary = "\n\n".join(formatted_sections)
+
+        # Save formatted summary to Firestore
         db.collection("sessions").document(session_id).update({
-            "summary": summary_raw,
+            "summary": final_summary,
             "ended_at": firestore.SERVER_TIMESTAMP
         })
 
-        return jsonify({"summary": summary_raw})
+        return jsonify({"summary": final_summary})
 
     except Exception as e:
         print("❌ Error generating session summary:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error generating summary"}), 500
+
 
 
 
