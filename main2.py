@@ -881,7 +881,10 @@ You are always aware of these:
 """
 }
 
-
+ESCALATION_TERMS = [
+    "suicide", "kill myself", "end my life", "take my life",
+    "i want to die", "don’t want to live", "self-harm", "cut myself", "overdose"
+]
 # Constants
 OUT_OF_SCOPE_TOPICS = ["addiction", "suicide", "overdose", "bipolar", "self-harm"]
 TECH_KEYWORDS = ["algorithm", "training", "parameters", "architecture", "how are you trained"]
@@ -991,7 +994,10 @@ def handle_message(data):
     preferred_style = data.get("preferred_style", "Balanced")
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
-
+    # 🔺 1. Check for crisis keywords and trigger SOS
+    if any(term in user_msg.lower() for term in ESCALATION_TERMS):
+        yield "__SOS__"  # Frontend will redirect to SOS screen
+        return
     # --- 🔐 Handle sensitive or unsupported topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
