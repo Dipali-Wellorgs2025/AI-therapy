@@ -80,12 +80,12 @@ def delete_gratitude():
 
 @gratitude_bp.route('/editgratitude', methods=['PUT'])
 def edit_gratitude():
-    data = request.get_json() or request.form
-    userid = data.get('userid')
-    gratitude_id = data.get('gratitude_id')
+    userid = request.args.get('userid')
+    gratitude_id = request.args.get('gratitude_id')
+    new_text = request.form.get('text') or request.get_json(silent=True, force=True, cache=False).get('text')
 
     if not userid or not gratitude_id:
-        return jsonify({'status': False, 'message': 'userid and gratitude_id are required'}), 400
+        return jsonify({'status': False, 'message': 'userid and gratitude_id are required as query parameters'}), 400
 
     db = firestore.client()
     doc_ref = db.collection('gratitude').document(gratitude_id)
@@ -98,13 +98,16 @@ def edit_gratitude():
     if gratitude_data.get('userid') != userid:
         return jsonify({'status': False, 'message': 'Unauthorized: userid mismatch'}), 403
 
-    # ✅ Sample Update: Reset timestamp to now or add a fixed edit message
+    if not new_text:
+        return jsonify({'status': False, 'message': 'No new text provided'}), 400
+
     update_data = {
-        'text': gratitude_data.get('text', '') + " (edited)",  # optional change
+        'text': new_text,
         'timestamp': datetime.utcnow().isoformat()
     }
-    doc_ref.update(update_data)
 
+    doc_ref.update(update_data)
     return jsonify({'status': True, 'message': 'Gratitude updated successfully'}), 200
+
 
 
