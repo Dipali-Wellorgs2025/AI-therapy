@@ -30,11 +30,11 @@ app = Flask(__name__)
 # Register profile management blueprint
 
 app.register_blueprint(insights_bp)
-app.register_blueprint(progress_bp, url_prefix='/api') # Register progress report blueprint
+app.register_blueprint(progress_bp) # Register progress report blueprint , url_prefix='/api'
 app.register_blueprint(gratitude_bp)
 app.register_blueprint(model_effectiveness_bp)
-app.register_blueprint(combined_bp, url_prefix='/api')
-app.register_blueprint(profile_bp, url_prefix='/api')
+app.register_blueprint(combined_bp) #, url_prefix='/api'
+app.register_blueprint(profile_bp)  #, url_prefix='/api'
 
 # app.register_blueprint(subscription_bp)
 
