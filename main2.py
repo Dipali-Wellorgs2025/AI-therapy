@@ -1054,8 +1054,6 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
-    """🧠 Unified: Stream-based bot response with classification, redirect logic, and session tracking"""
-
     import re
     from datetime import datetime, timezone
 
@@ -1067,53 +1065,26 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # 🔺 1. Check for crisis keywords and trigger SOS
+    # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm feeling sorry for you! Please don't take harsh decision. I request to please contact __SOS__"
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this."
         return
 
-    # 🔒 2. Check known out-of-scope topics
+    # 🚫 Out-of-scope topic check
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
+        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
-    # 🧠 3. Fallback LLM-based out-of-scope check
-    scope_check_prompt = f"""
-You are a scope safety filter for a therapy AI chatbot.
+    # ⚙️ Get context
+    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+    session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-Your job is to determine if a message is emotionally appropriate and safe for an AI assistant, or if it needs a licensed mental health professional.
+    # 👂 Detect preferences
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-Respond with just one word:
-- "in-scope" if the message can be handled by a therapist chatbot trained in emotional support and self-reflection (e.g., breakups, anxiety, grief, boundaries, burnout)
-- "out-of-scope" if the message requires medical diagnosis, psychosis support, suicidal intent, eating disorder intervention, hallucinations, or delusional thinking.
-
-User Message:
-\"{user_msg}\"
-
-Answer only with: in-scope or out-of-scope.
-"""
-
+    # 🔍 Classify topic
     try:
-        scope_classification = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": scope_check_prompt}],
-            temperature=0
-        ).choices[0].message.content.strip().lower()
-
-        if scope_classification == "out-of-scope":
-            yield "This might be something best handled by a licensed mental health professional.\n\nI'm here to support emotional reflection, not clinical or diagnostic support.\n\nPlease consider speaking with someone qualified — you deserve safe, expert help."
-            return
-    except Exception as e:
-        print("Scope check failed:", e)
-
-    # 🤖 4. Handle technical questions
-    tech_keywords = ["algorithm", "training", "parameters", "architecture", "how are you trained", "how do you work"]
-    if any(term in user_msg.lower() for term in tech_keywords):
-        yield "I'm here to support your emotional well-being. For questions about how I was built or trained, please contact our development team.\n\n"
-        return
-
-    try:
-        # 🧠 5. Classification
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
 
@@ -1128,76 +1099,88 @@ Categories:
 
 Message: \"{user_msg}\"
 
-Instructions:
-- If the message is a greeting (e.g., \"hi\", \"hello\", \"good morning\") or does not describe any emotional or psychological issue, return **none**.
-- Otherwise, return the most relevant category.
-- Do not explain your answer. Return only the label.
+Respond only with one category from the list. Do not explain.
 """
-
         classification = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": "You are a strict classifier. You will only return a single word from a known category."},
+                {"role": "system", "content": "Strict one-word classification only."},
                 {"role": "user", "content": classification_prompt}
             ],
             temperature=0.0
         )
-
         category = classification.choices[0].message.content.strip().lower()
-        print("🧠 CLASSIFIED:", category)
-
         if category == "none":
             category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
-        elif category not in TOPIC_TO_BOT:
-            yield "This seems like a different issue. Would you like to talk to another therapist?"
+        if category not in TOPIC_TO_BOT:
+            yield "This feels like something outside what I can best support. Want to switch to a specialist bot?"
             return
 
         correct_bot = TOPIC_TO_BOT[category]
+
+        # ⛔ Block bot-switch loop
         if correct_bot != current_bot:
-            yield f"This looks like a **{category}** issue. I suggest switching to **{correct_bot}**, who specializes in this.\n\n"
-            return
+            if wants_to_stay:
+                correct_bot = current_bot  # honor user preference
+            else:
+                yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
+                return
 
-        # 🔁 6. Session context
-        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-        session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+    except Exception as e:
+        print("Classification failed:", e)
 
-        # 📜 7. Prompt preparation
-        bot_prompt = BOT_PROMPTS[current_bot]
-        filled_prompt = bot_prompt.replace("{{user_name}}", user_name) \
-                                 .replace("{{issue_description}}", issue_description) \
-                                 .replace("{{preferred_style}}", preferred_style) \
-                                 .replace("{{session_number}}", str(session_number))
-        filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
+    # 🧱 Prompt composition
+    bot_prompt = BOT_PROMPTS[current_bot]
+    filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
+                              .replace("{{issue_description}}", issue_description)\
+                              .replace("{{preferred_style}}", preferred_style)\
+                              .replace("{{session_number}}", str(session_number))
+    filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-        if ctx["history"]:
-            last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
-            filled_prompt += f"\n\nRecent conversation:\n{last_msgs}"
+    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
-        filled_prompt += f"\n\nUser message:\n{user_msg}"
+    prompt = f"""You are a therapist bot named {current_bot}.
+User: {user_name}
+Preferred style: {preferred_style}
+Session number: {session_number}
+Main issue: {issue_description}
 
-        # 🧵 8. Stream response
+User's current message:
+\"{user_msg}\"
+
+{"Note: The user wants to keep this light — avoid emotional depth or reflective questions." if skip_deep else ""}
+
+Recent conversation:
+{recent}
+
+Respond in a natural, grounded, human way.
+"""
+
+    final_prompt = prompt + "\n\n" + filled_prompt
+
+    # 💬 Stream response
+    try:
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": filled_prompt}],
+            messages=[{"role": "user", "content": final_prompt}],
             stream=True,
             temperature=0.7,
-            max_tokens=200,
+            max_tokens=300,
             presence_penalty=0.5,
             frequency_penalty=0.5
         )
 
         full_response = ""
         for chunk in response:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                full_response += chunk.choices[0].delta.content
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                full_response += delta.content
 
-        # 🎨 9. Clean and save
         reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
-
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -1215,10 +1198,7 @@ Instructions:
     except Exception as e:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
-        yield "Sorry, I encountered an error processing your request. Please try again.\n\n"
-
-
-
+        yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
