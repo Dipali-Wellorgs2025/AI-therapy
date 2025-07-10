@@ -1173,8 +1173,8 @@ Your reply must:
 - Avoid repeating the user's words
 - Reflect gently if the user is vulnerable
 - Avoid all stage directions or instructional parentheticals like (pauses), (leans in), or (if tears follow). Just speak plainly and naturally.
-
-
+- Use emoji where needed
+-use ** to bold 
 - If the user seems overwhelmed, **don’t ask any question**
 
 Format your response as a real conversation moment, not a scripted checklist.
