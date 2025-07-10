@@ -76,3 +76,28 @@ def delete_gratitude():
 
     doc_ref.delete()
     return jsonify({'status': True, 'message': 'Gratitude deleted successfully'}), 200
+
+
+# 4. Edit gratitude (PUT /editgratitude)
+@gratitude_bp.route('/editgratitude', methods=['PUT'])
+def edit_gratitude():
+    data = request.get_json() or request.form
+    gratitude_id = data.get('gratitude_id')
+    new_text = data.get('text')
+
+    if not gratitude_id or not new_text:
+        return jsonify({'status': False, 'message': 'gratitude_id and new text are required'}), 400
+
+    db = firestore.client()
+    doc_ref = db.collection('gratitude').document(gratitude_id)
+
+    if not doc_ref.get().exists:
+        return jsonify({'status': False, 'message': 'Gratitude entry not found'}), 404
+
+    doc_ref.update({
+        'text': new_text,
+        'timestamp': datetime.utcnow().isoformat()  # Optionally update timestamp
+    })
+
+    return jsonify({'status': True, 'message': 'Gratitude updated successfully'}), 200
+
