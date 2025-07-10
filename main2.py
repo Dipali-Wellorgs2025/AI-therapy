@@ -958,7 +958,7 @@ ESCALATION_TERMS = [
     "i want to die", "don’t want to live", "self-harm", "cut myself", "overdose", "SOS", "sos", "SOs"
 ]
 # Constants
-OUT_OF_SCOPE_TOPICS = ["addiction", "suicide", "overdose", "bipolar", "self-harm",'Acidity']
+OUT_OF_SCOPE_TOPICS = ["addiction", "suicide", "overdose", "bipolar", "self-harm","acidity"]
 TECH_KEYWORDS = ["algorithm", "training", "parameters", "architecture", "how are you trained"]
 FREE_SESSION_LIMIT = 2
 
