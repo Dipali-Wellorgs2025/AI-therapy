@@ -1177,7 +1177,7 @@ Your reply must:
 - use ** to bold for some ponits or words to force 
 - Use pointers if needed like 1. 
 - If the user seems overwhelmed, **don’t ask any question**
-
+- Don't add the text in the paranthesis skip
 Format your response as a real conversation moment, not a scripted checklist.
 """
 
