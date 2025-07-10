@@ -1118,7 +1118,6 @@ Respond only with one category from the list. Do not explain.
 
         correct_bot = TOPIC_TO_BOT[category]
 
-        # ⛔ Block bot-switch loop
         if correct_bot != current_bot:
             if wants_to_stay:
                 correct_bot = current_bot  # honor user preference
@@ -1129,7 +1128,7 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # 🧱 Prompt composition
+    # 🧱 Build prompt
     bot_prompt = BOT_PROMPTS[current_bot]
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -1139,35 +1138,43 @@ Respond only with one category from the list. Do not explain.
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
-    prompt = f"""You are a therapist bot named {current_bot}.
-User: {user_name}
-Preferred style: {preferred_style}
-Session number: {session_number}
-Main issue: {issue_description}
+    # 🧠 Core Instructions for short, single-question replies
+    guidance = """
+You are a licensed therapist having a 1-to-1 conversation.
 
-User's current message:
-\"{user_msg}\"
+Your reply must:
+- Be natural, warm, and human
+- Be **only 2 to 3 lines max**
+- Contain **no more than one open-ended question**
+- Avoid repeating the user's words
+- Reflect gently if the user is vulnerable
+- If the user seems overwhelmed, **don’t ask any question**
 
-{"Note: The user wants to keep this light — avoid emotional depth or reflective questions." if skip_deep else ""}
-
-Recent conversation:
-{recent}
-
-Respond in a natural, grounded, human way.
+Format your response as a real conversation moment, not a scripted checklist.
 """
 
-    final_prompt = prompt + "\n\n" + filled_prompt
+    prompt = f"""{guidance}
 
-    # 💬 Stream response
+User: "{user_msg}"
+{"Note: User prefers light conversation — avoid going deep." if skip_deep else ""}
+
+Recent messages:
+{recent}
+
+Therapist prompt:
+{filled_prompt}
+"""
+
+    # 💬 Stream reply
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": final_prompt}],
+            messages=[{"role": "user", "content": prompt}],
             stream=True,
-            temperature=0.7,
-            max_tokens=300,
-            presence_penalty=0.5,
-            frequency_penalty=0.5
+            temperature=0.65,
+            max_tokens=350,
+            presence_penalty=0.3,
+            frequency_penalty=0.4
         )
 
         full_response = ""
@@ -1199,6 +1206,7 @@ Respond in a natural, grounded, human way.
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
+
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
