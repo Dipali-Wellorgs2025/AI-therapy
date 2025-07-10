@@ -1066,23 +1066,54 @@ def handle_message(data):
     preferred_style = data.get("preferred_style", "Balanced")
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
+
     # 🔺 1. Check for crisis keywords and trigger SOS
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm feeling sorry for you! Please don't take harsh decision. I request to please contact __SOS__"  # Frontend will redirect to SOS screen
+        yield "I'm feeling sorry for you! Please don't take harsh decision. I request to please contact __SOS__"
         return
-    # --- 🔐 Handle sensitive or unsupported topics
+
+    # 🔒 2. Check known out-of-scope topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
         return
 
-    # --- 🤖 Handle technical/training questions
+    # 🧠 3. Fallback LLM-based out-of-scope check
+    scope_check_prompt = f"""
+You are a scope safety filter for a therapy AI chatbot.
+
+Your job is to determine if a message is emotionally appropriate and safe for an AI assistant, or if it needs a licensed mental health professional.
+
+Respond with just one word:
+- "in-scope" if the message can be handled by a therapist chatbot trained in emotional support and self-reflection (e.g., breakups, anxiety, grief, boundaries, burnout)
+- "out-of-scope" if the message requires medical diagnosis, psychosis support, suicidal intent, eating disorder intervention, hallucinations, or delusional thinking.
+
+User Message:
+\"{user_msg}\"
+
+Answer only with: in-scope or out-of-scope.
+"""
+
+    try:
+        scope_classification = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": scope_check_prompt}],
+            temperature=0
+        ).choices[0].message.content.strip().lower()
+
+        if scope_classification == "out-of-scope":
+            yield "This might be something best handled by a licensed mental health professional.\n\nI'm here to support emotional reflection, not clinical or diagnostic support.\n\nPlease consider speaking with someone qualified — you deserve safe, expert help."
+            return
+    except Exception as e:
+        print("Scope check failed:", e)
+
+    # 🤖 4. Handle technical questions
     tech_keywords = ["algorithm", "training", "parameters", "architecture", "how are you trained", "how do you work"]
     if any(term in user_msg.lower() for term in tech_keywords):
         yield "I'm here to support your emotional well-being. For questions about how I was built or trained, please contact our development team.\n\n"
         return
 
     try:
-        # --- 🧠 Classification
+        # 🧠 5. Classification
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
 
@@ -1095,7 +1126,7 @@ Categories:
 - crisis
 - none
 
-Message: "{user_msg}"
+Message: \"{user_msg}\"
 
 Instructions:
 - If the message is a greeting (e.g., \"hi\", \"hello\", \"good morning\") or does not describe any emotional or psychological issue, return **none**.
@@ -1126,13 +1157,11 @@ Instructions:
             yield f"This looks like a **{category}** issue. I suggest switching to **{correct_bot}**, who specializes in this.\n\n"
             return
 
-        # --- 🔁 Session context
+        # 🔁 6. Session context
         ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-
-        # --- 🔢 Session number tracking
         session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-        # --- 📜 Fill prompt
+        # 📜 7. Prompt preparation
         bot_prompt = BOT_PROMPTS[current_bot]
         filled_prompt = bot_prompt.replace("{{user_name}}", user_name) \
                                  .replace("{{issue_description}}", issue_description) \
@@ -1146,7 +1175,7 @@ Instructions:
 
         filled_prompt += f"\n\nUser message:\n{user_msg}"
 
-        # --- 🧵 Stream LLM response
+        # 🧵 8. Stream response
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": filled_prompt}],
@@ -1162,7 +1191,7 @@ Instructions:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 full_response += chunk.choices[0].delta.content
 
-        # --- 🎨 Clean response
+        # 🎨 9. Clean and save
         reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
@@ -1187,6 +1216,7 @@ Instructions:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry, I encountered an error processing your request. Please try again.\n\n"
+
 
 
 
