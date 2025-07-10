@@ -1671,47 +1671,61 @@ def delete_journal():
 # PUT /editjournal
 @app.route('/editjournal', methods=['PUT'])
 def edit_journal():
+    print("[DEBUG] /editjournal called")
     data = request.form or request.get_json()
+    uid = data.get('uid')  # ✅ changed from userid
     journal_id = data.get('journal_id')
     name = data.get('name')
     message = data.get('message')
 
-    if not journal_id or not any([name, message]):
-        return jsonify({'status': False, 'message': 'journal_id and at least one of name or message required'}), 400
+    if not uid or not journal_id:
+        print("[DEBUG] Missing uid or journal_id")
+        return jsonify({'status': False, 'message': 'uid and journal_id are required'}), 400
 
     db = firestore.client()
     doc_ref = db.collection('journals').document(journal_id)
     doc = doc_ref.get()
+
     if not doc.exists:
+        print("[DEBUG] Journal not found")
         return jsonify({'status': False, 'message': 'Journal entry not found'}), 404
 
-    # Handle optional image update
-    image_file = None
-    image_url = None
-    for k in request.files:
-        if k.strip() == 'image':
-            image_file = request.files[k]
-            break
-
-    if image_file:
-        if allowed_file(image_file.filename):
-            uid = doc.to_dict().get('uid', 'unknown')
-            image_url = upload_image_to_firebase(image_file, uid)
-        else:
-            return jsonify({'status': False, 'message': 'Invalid image file'}), 400
+    journal_data = doc.to_dict()
+    if journal_data.get('uid') != uid:
+        print("[DEBUG] UID mismatch")
+        return jsonify({'status': False, 'message': 'Unauthorized: uid mismatch'}), 403
 
     update_data = {}
     if name:
         update_data['name'] = name
     if message:
         update_data['message'] = message
-    if image_url is not None:
-        update_data['image'] = image_url
-    update_data['timestamp'] = datetime.now(timezone.utc).isoformat()
 
-    doc_ref.update(update_data)
+    # Handle optional image update
+    image_file = None
+    for k in request.files:
+        if k.strip() == 'image':
+            image_file = request.files[k]
+            break
 
-    return jsonify({'status': True, 'message': 'Journal updated successfully'}), 200
+    if image_file:
+        print("[DEBUG] New image provided")
+        if allowed_file(image_file.filename):
+            image_url = upload_image_to_firebase(image_file, uid)
+            update_data['image'] = image_url
+        else:
+            print("[DEBUG] Invalid image format")
+            return jsonify({'status': False, 'message': 'Invalid image file'}), 400
+
+    if update_data:
+        update_data['timestamp'] = datetime.now(timezone.utc).isoformat()
+        doc_ref.update(update_data)
+        print("[DEBUG] Journal updated:", update_data)
+        return jsonify({'status': True, 'message': 'Journal updated successfully'}), 200
+    else:
+        print("[DEBUG] No changes detected")
+        return jsonify({'status': False, 'message': 'No updates provided'}), 400
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
