@@ -101,3 +101,33 @@ def edit_gratitude():
 
     return jsonify({'status': True, 'message': 'Gratitude updated successfully'}), 200
 
+@gratitude_bp.route('/editgratitude', methods=['PUT'])
+def edit_gratitude():
+    data = request.get_json() or request.form
+    userid = data.get('userid')
+    gratitude_id = data.get('gratitude_id')
+    new_text = data.get('text')
+
+    if not userid or not gratitude_id:
+        return jsonify({'status': False, 'message': 'userid and gratitude_id are required'}), 400
+
+    db = firestore.client()
+    doc_ref = db.collection('gratitude').document(gratitude_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        return jsonify({'status': False, 'message': 'Gratitude entry not found'}), 404
+
+    gratitude_data = doc.to_dict()
+    if gratitude_data.get('userid') != userid:
+        return jsonify({'status': False, 'message': 'Unauthorized: userid mismatch'}), 403
+
+    update_data = {}
+    if new_text:
+        update_data['text'] = new_text
+        update_data['timestamp'] = datetime.utcnow().isoformat()
+        doc_ref.update(update_data)
+        return jsonify({'status': True, 'message': 'Gratitude updated successfully'}), 200
+    else:
+        return jsonify({'status': False, 'message': 'No new text provided'}), 400
+
