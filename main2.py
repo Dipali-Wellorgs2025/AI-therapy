@@ -1035,7 +1035,8 @@ Important Rules:
 1. Use **double asterisks** for emphasis
 2. For actions use: [breathe in for 4] and do not use this ( Holding gentle space—next steps will follow Alex’s lead toward either exploring triggers or grounding first.) type of responses,act like a human .
 3. Keep responses concise (1-3 sentences)
-4. Don't write instructions of bot"""
+4.Avoid all stage directions or instructional parentheticals like (pauses), (leans in), or (if tears follow). Just speak plainly and naturally.
+5. Don't write instructions of bot"""
     
     # Add greeting only for new sessions
     if is_new_session:
@@ -1148,7 +1149,8 @@ Your reply must:
 - Contain **no more than one open-ended question**
 - Avoid repeating the user's words
 - Reflect gently if the user is vulnerable
-- Avoid stage directions or tone cues (e.g., "(pauses)", "(leans in)") and respond naturally in 2–3 lines, asking only one clear question if needed.
+- Avoid all stage directions or instructional parentheticals like (pauses), (leans in), or (if tears follow). Just speak plainly and naturally.
+
 
 - If the user seems overwhelmed, **don’t ask any question**
 
