@@ -78,14 +78,11 @@ def delete_gratitude():
     return jsonify({'status': True, 'message': 'Gratitude deleted successfully'}), 200
 
 
-# 4. Edit gratitude (PUT /editgratitude)
-
 @gratitude_bp.route('/editgratitude', methods=['PUT'])
 def edit_gratitude():
     data = request.get_json() or request.form
     userid = data.get('userid')
     gratitude_id = data.get('gratitude_id')
-    new_text = data.get('text')
 
     if not userid or not gratitude_id:
         return jsonify({'status': False, 'message': 'userid and gratitude_id are required'}), 400
@@ -101,12 +98,13 @@ def edit_gratitude():
     if gratitude_data.get('userid') != userid:
         return jsonify({'status': False, 'message': 'Unauthorized: userid mismatch'}), 403
 
-    update_data = {}
-    if new_text:
-        update_data['text'] = new_text
-        update_data['timestamp'] = datetime.utcnow().isoformat()
-        doc_ref.update(update_data)
-        return jsonify({'status': True, 'message': 'Gratitude updated successfully'}), 200
-    else:
-        return jsonify({'status': False, 'message': 'No new text provided'}), 400
+    # ✅ Sample Update: Reset timestamp to now or add a fixed edit message
+    update_data = {
+        'text': gratitude_data.get('text', '') + " (edited)",  # optional change
+        'timestamp': datetime.utcnow().isoformat()
+    }
+    doc_ref.update(update_data)
+
+    return jsonify({'status': True, 'message': 'Gratitude updated successfully'}), 200
+
 
