@@ -1084,9 +1084,7 @@ Important Rules:
     
     return base_prompt
 
-def handle_message(data):
-    import re
-    from datetime import datetime, timezone
+def handle_message(data):    
 
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
@@ -1095,6 +1093,16 @@ def handle_message(data):
     preferred_style = data.get("preferred_style", "Balanced")
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
+
+    # 🔸 Static bot greeting dictionary
+    BOT_STATIC_GREETINGS = {
+        "Sage": "Hi, I'm **Sage** 🌿 Let's take a calming breath and ease your anxiety together.",
+        "Jordan": "Hey, I’m really glad you’re here today. **How’s your heart feeling right now?** We can take it slow — whatever feels okay to share. 🌼",
+        "River": "Hey, I'm **River** 💖 Let's talk about self-worth and build confidence from within.",
+        "Phoenix": "Hi, I'm **Phoenix** 🔥 I'll walk beside you as we rise through trauma, together.",
+        "Ava": "Hello, I'm **Ava** 🏡 Let's strengthen the ties that matter — your family.",
+        "Raya": "Hi, I'm **Raya** 🚨 You're safe now. I'm here to support you through this crisis."
+    }
 
     # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
@@ -1109,6 +1117,12 @@ def handle_message(data):
     # ⚙️ Get context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+
+    # ✅ Show bot greeting only at session start
+    if session_number == 1:
+        greeting = BOT_STATIC_GREETINGS.get(current_bot)
+        if greeting:
+            yield greeting + "\n\n"
 
     # 👂 Detect preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
@@ -1169,7 +1183,6 @@ Respond only with one category from the list. Do not explain.
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
-    # 🧠 Core Instructions for short, single-question replies
     guidance = """
 You are a licensed therapist having a 1-to-1 conversation.
 
@@ -1200,7 +1213,7 @@ Therapist prompt:
 {filled_prompt}
 """
 
-    # 💬 Stream reply
+    # ✅ Stream reply in chunks
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -1217,7 +1230,9 @@ Therapist prompt:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 full_response += delta.content
+                yield delta.content  # ✅ Stream each word/chunk as it comes
 
+        # ⏺ Save complete reply after streaming
         reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
@@ -1235,12 +1250,11 @@ Therapist prompt:
             "is_active": True
         }, merge=True)
 
-        yield reply + "\n\n"
-
     except Exception as e:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
+
 
 
 @app.route("/api/stream", methods=["GET"])
