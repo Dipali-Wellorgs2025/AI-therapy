@@ -1096,7 +1096,6 @@ Important Rules:
 
 def handle_message(data):
     import re
-    import traceback
     from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
@@ -1107,34 +1106,25 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    def clean_response(text):
-        text = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', text)
-        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)
-        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
-        text = re.sub(r"([a-zA-Z])([^\w\s])", r"\1 \2", text)
-        text = re.sub(r"([^\w\s])([a-zA-Z])", r"\1 \2", text)
-        text = re.sub(r"\s{2,}", " ", text)
-        return text.strip()
-
-    # Escalation check
+    # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this or reach out to SOS."
         return
 
-    # Out-of-scope topic check
+    # 🚫 Out-of-scope topic check
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
-    # Get context
+    # ⚙️ Session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # Preferences
+    # 👂 User intent flags
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-    # Classification
+    # 🧠 Classify topic
     try:
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
@@ -1168,77 +1158,70 @@ Respond only with one category from the list. Do not explain.
             return
 
         correct_bot = TOPIC_TO_BOT[category]
-
         if correct_bot != current_bot:
             if wants_to_stay:
                 correct_bot = current_bot
             else:
                 yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
                 return
-
     except Exception as e:
         print("Classification failed:", e)
 
-    # Bot context
-    BOT_SPECIALTIES = {
-        "Jordan": "You help users struggling with breakups and heartbreak. Offer comforting and validating support. Ask meaningful, open-ended relationship-related questions.",
-        "Sage": "You help users with anxiety. Focus on calming, grounding, and emotional regulation. Use breath, body, and present-moment focus.",
-        "Phoenix": "You specialize in trauma support. Keep responses slow, non-triggering, validating. Invite safety and space, don’t dig too fast.",
-        "River": "You support users with self-worth and identity issues. Build confidence gently, reflect strengths, normalize doubt.",
-        "Ava": "You assist with family issues — tension, expectation, conflict. Focus on roles, boundaries, belonging.",
-        "Raya": "You support users in crisis. Be calm, direct, and stabilizing. Make them feel safe and not alone."
-    }
-
-    # Session greeting if new session
-    if session_number == 1 and not ctx["history"]:
-        greeting = BOT_GREETINGS.get(current_bot, "")
-        greeting = greeting.replace("{{user_name}}", user_name)
-        yield greeting.strip()
-        return
-
-    # Fill prompt
-    bot_prompt = BOT_PROMPTS[current_bot]
+    # 🧱 Prompt structure
+    bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
-                              .replace("{{preferred_style}}", preferred_style)\
-                              .replace("{{session_number}}", str(session_number))
+                              .replace("{{preferred_style}}", preferred_style)
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
-    # Core prompt
+    # 🧭 Therapy guidance
     guidance = """
-You are a licensed therapist having a 1-to-1 conversation.
-
+You are a warm, supportive mental health guide.
 Your reply must:
-- Be natural, warm, and human
-- Be **only 2 to 4 lines max**
-- Contain **no more than one open-ended question**
-- Reflect gently if the user is vulnerable
-- Avoid repeating the user's words
-- Avoid all parentheticals like (pauses), (leans in), etc.
-- Use emojis where needed but no greeting in every reply
-- Use ** for bold emphasis, or 1. if listing
-- If the user seems overwhelmed, avoid any questions
-- Format naturally like a conversation — not a script
+- Be **natural, warm, and brief** (2–3 lines)
+- Use **bold** formatting using **double asterisks**
+- Ask **at most one open-ended question**
+- Skip any instructions or actions in parentheses
+- Avoid repeating user words
+- Gently reflect if user is vulnerable
+- Use emojis where helpful (🌱💛✨🧘‍♀️)
+- Do not greet in every reply
+- If the user seems overwhelmed, **don’t ask any question**
 """
 
-    specialty = BOT_SPECIALTIES.get(current_bot, "")
-    messages = [
-        {"role": "system", "content": guidance.strip()},
-        {"role": "system", "content": specialty.strip()},
-        {"role": "system", "content": filled_prompt.strip()},
-        {"role": "user", "content": user_msg.strip()}
-    ]
+    # ⛲ Prompt body
+    prompt = f"""{guidance}
 
-    # Streaming reply
+{filled_prompt}
+
+User: "{user_msg}"
+{"Note: User prefers light conversation — avoid going deep." if skip_deep else ""}
+
+Recent messages:
+{recent}
+
+Reply:
+"""
+
+    # 🚿 Clean function for streamed text
+    def clean_response(text):
+        text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)
+        text = re.sub(r'(?<=[a-zA-Z])(?=[^\w\s])', ' ', text)
+        text = re.sub(r'(?<=[^\w\s])(?=[a-zA-Z])', ' ', text)
+        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
+
+    # 🌊 Streamed response with per-chunk cleanup
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=messages,
+            messages=[{"role": "user", "content": prompt}],
             stream=True,
             temperature=0.65,
-            max_tokens=450,
+            max_tokens=350,
             presence_penalty=0.3,
             frequency_penalty=0.4
         )
@@ -1250,16 +1233,22 @@ Your reply must:
             if delta and delta.content:
                 buffer += delta.content
                 full_response += delta.content
-                if len(buffer) >= 8 or any(c in buffer for c in ".,!? \n"):
+
+                if any(p in buffer for p in [' ', '\n', '.', '?', '!', ',']):
                     cleaned = clean_response(buffer)
-                    yield cleaned + " "
+                    if cleaned:
+                        yield cleaned + " "
                     buffer = ""
+
         if buffer.strip():
             yield clean_response(buffer)
 
+        # Store final response
+        final_reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
+
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": current_bot, "message": clean_response(full_response), "timestamp": now})
+        ctx["history"].append({"sender": current_bot, "message": final_reply, "timestamp": now})
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -1274,8 +1263,10 @@ Your reply must:
 
     except Exception as e:
         print("❌ Error in handle_message:", e)
+        import traceback
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
+
 
 
 
