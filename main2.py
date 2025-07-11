@@ -1085,6 +1085,9 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
+    import re
+    import traceback
+    from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
@@ -1124,7 +1127,6 @@ def handle_message(data):
         if greeting:
             yield greeting + "\n\n"
 
-            # Optional: Save greeting to session history
             now = datetime.now(timezone.utc).isoformat()
             ctx["history"].append({"sender": current_bot, "message": greeting, "timestamp": now})
             ctx["session_ref"].set({
@@ -1138,8 +1140,7 @@ def handle_message(data):
                 "session_number": 1,
                 "is_active": True
             }, merge=True)
-
-        return  # Stop here — don't classify or generate anything
+        return
 
     # 👂 User preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
@@ -1179,13 +1180,9 @@ Respond only with one category from the list. Do not explain.
             return
 
         correct_bot = TOPIC_TO_BOT[category]
-
-        if correct_bot != current_bot:
-            if wants_to_stay:
-                correct_bot = current_bot
-            else:
-                yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
-                return
+        if correct_bot != current_bot and not wants_to_stay:
+            yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
+            return
 
     except Exception as e:
         print("Classification failed:", e)
@@ -1195,7 +1192,7 @@ Respond only with one category from the list. Do not explain.
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)\
-                              .replace("{{session_number}}", "1")  # Optional: dummy value
+                              .replace("{{session_number}}", "1")
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
@@ -1230,7 +1227,13 @@ Therapist prompt:
 {filled_prompt}
 """
 
-    # 💬 Stream model reply
+    def clean_response(text):
+        text = re.sub(r"(?<=[a-zA-Z])(?=[,.!?])", " ", text)
+        text = re.sub(r"([a-z])(?=[A-Z])", r"\1 ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    # 💬 Stream model reply with buffer
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -1243,11 +1246,21 @@ Therapist prompt:
         )
 
         full_response = ""
+        buffer = ""
         for chunk in response:
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                full_response += delta.content
-                yield delta.content  # 🔁 stream each token
+                text = delta.content
+                full_response += text
+                buffer += text
+                if " " in buffer:
+                    parts = buffer.split(" ")
+                    for part in parts[:-1]:
+                        yield part + " "
+                    buffer = parts[-1]
+
+        if buffer.strip():
+            yield buffer
 
         reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
@@ -1270,7 +1283,6 @@ Therapist prompt:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
-
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
