@@ -974,6 +974,16 @@ You are always aware of:
 """
 
 }
+
+BOT_SPECIALTIES = {
+    "Jordan": "You help users struggling with breakups and heartbreak. Offer comforting and validating support. Ask meaningful, open-ended relationship-related questions.",
+    "Sage": "You help users with anxiety. Focus on calming, grounding, and emotional regulation. Use breath, body, and present-moment focus.",
+    "Phoenix": "You specialize in trauma support. Keep responses slow, non-triggering, validating. Invite safety and space, don’t dig too fast.",
+    "River": "You support users with self-worth and identity issues. Build confidence gently, reflect strengths, normalize doubt.",
+    "Ava": "You assist with family issues — tension, expectation, conflict. Focus on roles, boundaries, belonging.",
+    "Raya": "You support users in crisis. Be calm, direct, and stabilizing. Make them feel safe and not alone."
+}
+
 BOT_STATIC_GREETINGS = {
     "Sage": "Hi, I'm **Sage** 🌿 Let's take a calming breath and ease your anxiety together.",
     "Jordan": "Hey, I’m really glad you’re here today. **How’s your heart feeling right now?** We can take it slow — whatever feels okay to share. 🌼 No need to push — just know this space is yours. We can sit with whatever’s here together. 💛",
@@ -1086,9 +1096,15 @@ Important Rules:
 
 def handle_message(data):
     import re
-    import traceback
-    import time
     from datetime import datetime, timezone
+
+    def clean_response(text):
+        text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
+        text = re.sub(r"(?<=[.,!?;])(?=\S)", r" ", text)
+        text = re.sub(r"([a-zA-Z])([^\w\s])", r"\1 \2", text)
+        text = re.sub(r"([^\w\s])([a-zA-Z])", r"\1 \2", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
 
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
@@ -1098,54 +1114,20 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    BOT_STATIC_GREETINGS = {
-        "Sage": "Hi, I'm **Sage** 🌿 Let's take a calming breath and ease your anxiety together.",
-        "Jordan": "Hey, I’m really glad you’re here today. **How’s your heart feeling right now?** We can take it slow — whatever feels okay to share. 🌼",
-        "River": "Hey, I'm **River** 💖 Let's talk about self-worth and build confidence from within.",
-        "Phoenix": "Hi, I'm **Phoenix** 🔥 I'll walk beside you as we rise through trauma, together.",
-        "Ava": "Hello, I'm **Ava** 🏡 Let's strengthen the ties that matter — your family.",
-        "Raya": "Hi, I'm **Raya** 🚨 You're safe now. I'm here to support you through this crisis."
-    }
-
-    # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this or reach out to SOS."
         return
 
-    # 🚫 Out-of-scope topic check
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
-    # ⚙️ Get session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-    is_first_message = len(ctx["history"]) == 0
+    session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # 🎉 Static greeting if first time
-    if is_first_message and user_msg.strip() == "":
-        greeting = BOT_STATIC_GREETINGS.get(current_bot)
-        if greeting:
-            yield greeting + "\n\n"
-            now = datetime.now(timezone.utc).isoformat()
-            ctx["history"].append({"sender": current_bot, "message": greeting, "timestamp": now})
-            ctx["session_ref"].set({
-                "user_id": user_id,
-                "bot_name": current_bot,
-                "bot_id": current_bot,
-                "messages": ctx["history"],
-                "last_updated": firestore.SERVER_TIMESTAMP,
-                "issue_description": issue_description,
-                "preferred_style": preferred_style,
-                "session_number": 1,
-                "is_active": True
-            }, merge=True)
-        return
-
-    # 👂 Preference detection
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-    # 🔍 Topic classification
     try:
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
@@ -1186,46 +1168,36 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # 🤖 Get bot prompt and clean
     bot_prompt = BOT_PROMPTS[current_bot]
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)\
-                              .replace("{{session_number}}", "1")
+                              .replace("{{session_number}}", str(session_number))
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
-
+    specialty = BOT_SPECIALTIES.get(current_bot, "")
     guidance = """
 You are a licensed therapist having a 1-to-1 conversation.
 
 Your reply must:
 - Be natural, warm, and human
-- Be **only 2 to 3 lines max** if needed you can add more too
+- Be only 2 to 4 lines max, more only if deeply needed
 - Contain **no more than one open-ended question**
 - Avoid repeating the user's words
 - Reflect gently if the user is vulnerable
-- Avoid all stage directions or instructional parentheticals like (pauses), (leans in), or (if tears follow). Just speak plainly and naturally.
-- Use different emojis where needed and do not greet in every reply 
-- use ** to bold for some points or words to force 
-- Use pointers if needed like 1. 
-- If the user seems overwhelmed, **don’t ask any question**
-- Don't add the text in the parenthesis — skip them.
-Format your response as a real conversation moment, not a scripted checklist.
+- Avoid all stage directions like (pauses), (leans in)
+- Use emoji only if it feels warm and meaningful
+- Never copy the user’s message back
 """
+    if skip_deep:
+        guidance += "\nNote: User prefers light conversation — avoid going deep."
 
-    # 🧠 Proper structured prompt
     messages = [
-        {"role": "system", "content": guidance},
-        {"role": "system", "content": filled_prompt},
-        {"role": "user", "content": user_msg}
+        {"role": "system", "content": guidance.strip()},
+        {"role": "system", "content": specialty.strip()},
+        {"role": "system", "content": filled_prompt.strip()},
+        {"role": "user", "content": user_msg.strip()}
     ]
-
-    def clean_response(text):
-        text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
-        text = re.sub(r"(?<=[a-zA-Z])(?=[.,!?;])", r" ", text)
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()
 
     try:
         response = client.chat.completions.create(
@@ -1233,7 +1205,7 @@ Format your response as a real conversation moment, not a scripted checklist.
             messages=messages,
             stream=True,
             temperature=0.65,
-            max_tokens=350,
+            max_tokens=450,
             presence_penalty=0.3,
             frequency_penalty=0.4
         )
@@ -1243,21 +1215,19 @@ Format your response as a real conversation moment, not a scripted checklist.
         for chunk in response:
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                text = delta.content
-                full_response += text
-                buffer += text
-                if any(p in buffer for p in [".", "!", "?", ";", "\n"]) or len(buffer) > 20:
-                    yield buffer
+                buffer += delta.content
+                full_response += delta.content
+                if len(buffer) >= 4 or any(c in buffer for c in ".,!?; \n"):
+                    yield clean_response(buffer)
                     buffer = ""
 
         if buffer.strip():
-            yield buffer
+            yield clean_response(buffer)
 
-        reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
-
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
+        ctx["history"].append({"sender": current_bot, "message": clean_response(full_response), "timestamp": now})
+
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -1266,12 +1236,13 @@ Format your response as a real conversation moment, not a scripted checklist.
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
-            "session_number": 1,
+            "session_number": session_number,
             "is_active": True
         }, merge=True)
 
     except Exception as e:
         print("❌ Error in handle_message:", e)
+        import traceback
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
 
