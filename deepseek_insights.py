@@ -1,3 +1,4 @@
+
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from datetime import datetime, timedelta
@@ -5,6 +6,8 @@ import os
 import re
 from openai import OpenAI
 from dotenv import load_dotenv
+import asyncio
+from functools import wraps
 
 insights_bp = Blueprint('insights', __name__)
 
@@ -28,6 +31,7 @@ def get_user_sessions(user_id):
     for doc in sessions_ref:
         session_data = doc.to_dict()
         if session_data:
+            
             sessions.append(session_data)
 
     # Also check direct document IDs (as seen in Firebase)
@@ -271,3 +275,48 @@ def get_insights():
         
     except Exception as e:
         return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+def async_route(f):
+    """Decorator to enable async support in Flask routes"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            # Get or create event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("Event loop is closed")
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Run the async function
+            return loop.run_until_complete(f(*args, **kwargs))
+        except Exception as e:
+            print(f"Async route error: {e}")
+            return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+    return wrapper
+
+async def call_function_async(func, *args, **kwargs):
+    """Helper to run synchronous functions in async context"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, func, *args, **kwargs)
+
+# Async version of get_insights for combined_analytics
+async def get_insights_async(user_id):
+    """Async version of get_insights"""
+    try:
+        db = await call_function_async(get_firestore_client)
+        doc = await call_function_async(lambda: db.collection('analytics').document(user_id).get())
+        
+        if not doc.exists:
+            return {'error': 'No analytics found'}
+            
+        data = doc.to_dict()
+        insights = data.get('deepseek_insights', {})
+        
+        return insights
+        
+    except Exception as e:
+        print(f"Async get insights error: {e}")
+        return {'error': f'Server error: {str(e)}'}
