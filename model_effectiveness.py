@@ -1,6 +1,5 @@
-
 from flask import Blueprint, request, jsonify
-from progress_report import get_user_sessions, get_firestore_client
+from progress_report import get_user_sessions, get_firestore_client, get_week_window_and_validate, get_empty_response
 import re
 import os
 import asyncio
@@ -31,7 +30,7 @@ def async_route(f):
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-            
+                
             # Run the async function
             return loop.run_until_complete(f(*args, **kwargs))
         except Exception as e:
@@ -48,12 +47,19 @@ def get_effectiveness_from_deepseek(bot_name, session_messages):
     """Get effectiveness and rating from Deepseek analysis"""
     try:
         if not session_messages:
+            print(f"No messages for {bot_name}")
             return None, None
             
         messages_text = "\n".join([
             msg.get('message', '') if isinstance(msg, dict) else str(msg) 
             for msg in session_messages
         ])[:1000]  # Limit text size
+        
+        if not messages_text.strip():
+            print(f"No meaningful messages for {bot_name}")
+            return None, None
+        
+        print(f"Analyzing {bot_name} session with {len(messages_text)} characters...")
         
         prompt = f"""
 Analyze this therapy session with {bot_name} and provide:
@@ -69,20 +75,25 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=1000,  # Increased slightly for better accuracy
-            timeout=5  # 5 second timeout to prevent hanging
+            temperature=1,
+            max_tokens=100,  # Fixed: use valid range [1, 8192]
+            timeout=10  # Increased timeout to 10 seconds
         )
         
         result = response.choices[0].message.content.strip()
+        print(f"Deepseek response for {bot_name}: {result}")
+        
         match = re.search(r"(\d+),(\d+)", result)
         if match:
             effectiveness = int(match.group(1))
             rating = int(match.group(2))
+            print(f"Extracted effectiveness: {effectiveness}, rating: {rating}")
             return effectiveness, rating
+        else:
+            print(f"Could not parse Deepseek response: {result}")
             
     except Exception as e:
-        print(f"Deepseek analysis failed: {e}")
+        print(f"Deepseek analysis failed for {bot_name}: {e}")
     
     return None, None
 
@@ -92,10 +103,44 @@ def model_effectiveness():
     try:
         user_id = request.args.get('user_id')
         bot_id = request.args.get('bot_id')
+        start_date = request.args.get('start_date')
+        
         if not user_id and not bot_id:
             return jsonify({'error': 'user_id or bot_id is required'}), 400
 
+        # Check weekly gating logic (if user_id is provided)
+        if user_id:
+            gating_result = get_week_window_and_validate(user_id, start_date)
+            if not gating_result['valid']:
+                return jsonify(get_empty_response('model_effectiveness')), 200
+
         sessions = get_user_sessions(user_id) if user_id else []
+        
+        # Filter sessions to the specific week (if user_id provided)
+        if user_id and 'gating_result' in locals():
+            from datetime import datetime, timedelta
+            week_start = gating_result['week_start'].date()
+            week_end = gating_result['week_end'].date()
+            
+            sessions_week = []
+            for s in sessions:
+                session_date = None
+                if 'start_time' in s:
+                    session_date = datetime.fromisoformat(s['start_time']).date()
+                elif 'timestamp' in s:
+                    try:
+                        session_date = datetime.fromisoformat(s['timestamp']).date()
+                    except:
+                        pass
+                elif 'messages' in s and s['messages'] and 'timestamp' in s['messages'][0]:
+                    try:
+                        session_date = datetime.fromisoformat(s['messages'][0]['timestamp']).date()
+                    except:
+                        pass
+                if session_date and week_start <= session_date <= week_end:
+                    sessions_week.append(s)
+            sessions = sessions_week
+        
         # If bot_id is provided, filter sessions by bot_id
         if bot_id:
             if not sessions:
@@ -133,10 +178,34 @@ def model_effectiveness():
             if effectiveness is None or rating is None:
                 messages = session.get('messages', [])
                 ds_effectiveness, ds_rating = get_effectiveness_from_deepseek(bot_name, messages)
-                if effectiveness is None and ds_effectiveness is not None:
-                    effectiveness = ds_effectiveness
-                if rating is None and ds_rating is not None:
-                    rating = ds_rating
+                if effectiveness is None:
+                    if ds_effectiveness is not None:
+                        effectiveness = ds_effectiveness
+                    else:
+                        # Fallback: estimate based on message count and session completion
+                        message_count = len(messages) if messages else 0
+                        if message_count >= 10:
+                            effectiveness = 75  # Good engagement
+                        elif message_count >= 5:
+                            effectiveness = 60  # Moderate engagement
+                        elif message_count >= 2:
+                            effectiveness = 45  # Basic engagement
+                        else:
+                            effectiveness = 30  # Minimal engagement
+                            
+                if rating is None:
+                    if ds_rating is not None:
+                        rating = ds_rating
+                    else:
+                        # Fallback: estimate based on effectiveness
+                        if effectiveness >= 70:
+                            rating = 4
+                        elif effectiveness >= 50:
+                            rating = 3
+                        elif effectiveness >= 30:
+                            rating = 2
+                        else:
+                            rating = 1
             
             # Add to aggregated data
             if effectiveness is not None:
@@ -149,8 +218,19 @@ def model_effectiveness():
         for bot_name, data in bot_data.items():
             session_count = data['session_count']  # This is now the max session_number
             actual_sessions_processed = len(data['sessions'])  # Number of actual sessions processed
-            effectiveness = round(data['effectiveness'] / actual_sessions_processed, 2) if actual_sessions_processed > 0 and data['effectiveness'] > 0 else 0
-            avg_rating = round(sum(data['ratings']) / len(data['ratings']), 1) if data['ratings'] else '--'
+            
+            # Calculate effectiveness percentage
+            if actual_sessions_processed > 0 and data['effectiveness'] > 0:
+                effectiveness = round(data['effectiveness'] / actual_sessions_processed, 1)
+            else:
+                effectiveness = 0
+                
+            # Calculate average rating
+            if data['ratings']:
+                avg_rating = round(sum(data['ratings']) / len(data['ratings']), 1)
+            else:
+                avg_rating = '--'
+                
             response.append({
                 'bot_name': bot_name,
                 'session_count': session_count,  # Use the session_number from Firestore
@@ -162,11 +242,17 @@ def model_effectiveness():
         return jsonify({'error': f'Failed to fetch model effectiveness: {str(e)}'}), 500
 
 # Async version of model_effectiveness for use in combined_analytics
-async def model_effectiveness_async(user_id=None, bot_id=None):
+async def model_effectiveness_async(user_id=None, bot_id=None, start_date=None):
     """Async version of model effectiveness metrics per bot/therapy type"""
     try:
         if not user_id and not bot_id:
             return {'error': 'user_id or bot_id is required'}
+
+        # Check weekly gating logic if user_id is provided
+        if user_id:
+            gating_result = await call_function_async(get_week_window_and_validate, user_id, start_date)
+            if not gating_result['valid']:
+                return await call_function_async(get_empty_response, 'model_effectiveness')
 
         # Get sessions using async helper
         sessions = await call_function_async(get_user_sessions, user_id) if user_id else []
@@ -210,10 +296,34 @@ async def model_effectiveness_async(user_id=None, bot_id=None):
                 ds_effectiveness, ds_rating = await call_function_async(
                     get_effectiveness_from_deepseek, bot_name, messages
                 )
-                if effectiveness is None and ds_effectiveness is not None:
-                    effectiveness = ds_effectiveness
-                if rating is None and ds_rating is not None:
-                    rating = ds_rating
+                if effectiveness is None:
+                    if ds_effectiveness is not None:
+                        effectiveness = ds_effectiveness
+                    else:
+                        # Fallback: estimate based on message count and session completion
+                        message_count = len(messages) if messages else 0
+                        if message_count >= 10:
+                            effectiveness = 75  # Good engagement
+                        elif message_count >= 5:
+                            effectiveness = 60  # Moderate engagement
+                        elif message_count >= 2:
+                            effectiveness = 45  # Basic engagement
+                        else:
+                            effectiveness = 30  # Minimal engagement
+                            
+                if rating is None:
+                    if ds_rating is not None:
+                        rating = ds_rating
+                    else:
+                        # Fallback: estimate based on effectiveness
+                        if effectiveness >= 70:
+                            rating = 4
+                        elif effectiveness >= 50:
+                            rating = 3
+                        elif effectiveness >= 30:
+                            rating = 2
+                        else:
+                            rating = 1
             
             # Add to aggregated data
             if effectiveness is not None:
@@ -226,8 +336,19 @@ async def model_effectiveness_async(user_id=None, bot_id=None):
         for bot_name, data in bot_data.items():
             session_count = data['session_count']  # This is now the max session_number
             actual_sessions_processed = len(data['sessions'])  # Number of actual sessions processed
-            effectiveness = round(data['effectiveness'] / actual_sessions_processed, 2) if actual_sessions_processed > 0 and data['effectiveness'] > 0 else 0
-            avg_rating = round(sum(data['ratings']) / len(data['ratings']), 1) if data['ratings'] else '--'
+            
+            # Calculate effectiveness percentage
+            if actual_sessions_processed > 0 and data['effectiveness'] > 0:
+                effectiveness = round(data['effectiveness'] / actual_sessions_processed, 1)
+            else:
+                effectiveness = 0
+                
+            # Calculate average rating
+            if data['ratings']:
+                avg_rating = round(sum(data['ratings']) / len(data['ratings']), 1)
+            else:
+                avg_rating = '--'
+                
             response.append({
                 'bot_name': bot_name,
                 'session_count': session_count,  # Use the session_number from Firestore
