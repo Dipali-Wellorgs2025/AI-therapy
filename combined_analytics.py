@@ -1,3 +1,4 @@
+
 from flask import Blueprint, request, jsonify
 from model_effectiveness import model_effectiveness
 import asyncio
@@ -64,16 +65,33 @@ async def combined_analytics():
     - session_heatmap
     - model_effectiveness
     - clinical_insights_and_recommendations (includes progress_indicators and progress_insights)
-    Query params: user_id (required), bot_id (optional)
+    Query params: user_id (required), bot_id (optional), start_date (optional, YYYY-MM-DD)
     """
     user_id = request.args.get('user_id')
     bot_id = request.args.get('bot_id')
+    start_date = request.args.get('start_date')
     refresh_cache = request.args.get('refresh', 'false').lower() == 'true'
+    
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
 
+    # Check weekly gating logic first (centralized check)
+    from progress_report import get_week_window_and_validate, get_empty_response
+    gating_result = get_week_window_and_validate(user_id, start_date)
+    if not gating_result['valid']:
+        # Return empty response for all analytics
+        empty_response = {
+            'clinical_overview': get_empty_response('clinical_overview'),
+            'mood_trend_analysis': get_empty_response('mood_trend_analysis'),
+            'session_bar_chart': get_empty_response('session_bar_chart'),
+            'session_heatmap': get_empty_response('session_heatmap'),
+            'model_effectiveness': get_empty_response('model_effectiveness'),
+            'clinical_insights_and_recommendations': get_empty_response('insights')
+        }
+        return jsonify(empty_response)
+
     # Check cache first (unless refresh is requested)
-    cache_key = f"analytics_{user_id}_{bot_id or 'all'}"
+    cache_key = f"analytics_{user_id}_{bot_id or 'all'}_{start_date or 'auto'}"
     if not refresh_cache:
         cached_result = get_from_cache(cache_key)
         if cached_result:
@@ -110,12 +128,12 @@ async def combined_analytics():
         
         # Execute all async functions in parallel
         tasks = [
-            clinical_overview_async(user_id),
-            mood_trend_analysis_async(user_id),
-            session_bar_chart_async(user_id),
-            session_heatmap_async(user_id),
-            model_effectiveness_async(user_id, bot_id),
-            get_insights_async(user_id)
+            clinical_overview_async(user_id, start_date),
+            mood_trend_analysis_async(user_id, start_date),
+            session_bar_chart_async(user_id, start_date),
+            session_heatmap_async(user_id, start_date),
+            model_effectiveness_async(user_id, bot_id, start_date),
+            get_insights_async(user_id, start_date)
         ]
         
         # Wait for all tasks to complete
@@ -149,10 +167,11 @@ async def combined_analytics():
     # Flatten mood_trend_analysis
     mood_trend_data = mood_trend.get('mood_trend') if isinstance(mood_trend, dict) and 'mood_trend' in mood_trend else mood_trend
 
-    # Extract insights data properly (no more nested 'insights' key)
-    clinical_insights = get_insights_resp.get('Clinical_insights and Recommendations', {})
-    progress_indicators = get_insights_resp.get('progress_indicators', [])
-    progress_insights = get_insights_resp.get('progress_insights', [])
+    # Extract insights data properly (data is nested under 'insights' key)
+    insights_data = get_insights_resp.get('insights', {})
+    clinical_insights = insights_data.get('Clinical_insights and Recommendations', {})
+    progress_indicators = insights_data.get('progress_indicators', [])
+    progress_insights = insights_data.get('progress_insights', [])
 
     # Add progress_indicators and progress_insights to clinical_insights_and_recommendations
     if isinstance(clinical_insights, dict):
