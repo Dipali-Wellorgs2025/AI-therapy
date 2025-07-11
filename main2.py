@@ -1106,25 +1106,22 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # 🚨 Escalation check
+    # Escalation
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this or reach out to SOS."
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this."
         return
 
-    # 🚫 Out-of-scope topic check
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
-    # ⚙️ Session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # 👂 User intent flags
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-    # 🔍 Classify topic
+    # Classification
     try:
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
@@ -1158,16 +1155,13 @@ Respond only with one category from the list. Do not explain.
             return
 
         correct_bot = TOPIC_TO_BOT[category]
-        if correct_bot != current_bot:
-            if wants_to_stay:
-                correct_bot = current_bot
-            else:
-                yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
-                return
+        if correct_bot != current_bot and not wants_to_stay:
+            yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
+            return
     except Exception as e:
         print("Classification failed:", e)
 
-    # 💬 Therapist prompt
+    # Prompt building
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -1203,50 +1197,40 @@ Recent messages:
 Reply:
 """
 
-    # 🧽 Clean-up function
-    def clean_response(text: str) -> str:
-        text = re.sub(r'\s+', ' ', text)  # Normalize spaces
-        text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)  # Split camel case
-        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)  # Ensure space after punctuation
-        text = re.sub(r'(?<=[a-zA-Z])(?=[^\w\s])', r' ', text)  # Space before punctuation
-        text = re.sub(r'\s{2,}', ' ', text)  # Final spacing fix
+    # Clean response function
+    def clean_response(text):
+        text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)  # fix camelCase
+        text = re.sub(r"([.,!?])(?=\S)", r"\1 ", text)    # ensure space after punctuation
+        text = re.sub(r"\s{2,}", " ", text)               # collapse multiple spaces
         return text.strip()
 
-    # 🔄 Streaming logic
     try:
-        response = client.chat.completions.create(
+        # 💡 Get FULL response first (non-streaming)
+        completion = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            stream=True,
-            temperature=0.65,
+            temperature=0.6,
             max_tokens=350,
             presence_penalty=0.3,
             frequency_penalty=0.4
         )
 
-        full_response = ""
-        buffer = ""
-        for chunk in response:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                buffer += delta.content
-                full_response += delta.content
-
-                # Stream when punctuation or phrase ends
-                if len(buffer) > 20 or any(p in buffer for p in [' ', '.', '?', '!', ',']):
-                    cleaned = clean_response(buffer)
-                    if cleaned:
-                        yield cleaned + " "
-                    buffer = ""
-
-        # Final buffer cleanup
-        if buffer.strip():
-            yield clean_response(buffer)
-
+        full_response = completion.choices[0].message.content.strip()
         final_reply = clean_response(full_response)
-        now = datetime.now(timezone.utc).isoformat()
+
+        # 💬 Yield in chunks (every ~25 words or punctuation)
+        words = final_reply.split()
+        chunk = []
+        for word in words:
+            chunk.append(word)
+            if len(" ".join(chunk)) >= 40 or word.endswith(('.', '?', '!', ',')):
+                yield " ".join(chunk) + " "
+                chunk = []
+        if chunk:
+            yield " ".join(chunk)
 
         # 💾 Save session
+        now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": final_reply, "timestamp": now})
         ctx["session_ref"].set({
@@ -1262,10 +1246,9 @@ Reply:
         }, merge=True)
 
     except Exception as e:
-        print("❌ Error in handle_message:", e)
         import traceback
         traceback.print_exc()
-        yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
+        yield "Sorry — something went wrong mid-reply. Can we try again?"
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
