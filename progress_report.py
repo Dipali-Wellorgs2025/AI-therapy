@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import calendar
 import io
 import base64
+import asyncio
+from functools import wraps
 
 progress_bp = Blueprint('progress', __name__)
 
@@ -409,7 +411,8 @@ def mood_trend_analysis():
         if score is not None:
             category = 'Good' if score >= 7 else 'Okay' if score >= 4 else 'Difficult'
         else:
-            category = None
+            category = ""  # Use empty string instead of null
+            score = ""     # Use empty string instead of null
         trend.append({
             'date': day.strftime('%a'),
             'date_full': date_str,
@@ -418,3 +421,41 @@ def mood_trend_analysis():
         })
 
     return jsonify({'mood_trend': trend})
+
+async def call_function_async(func, *args, **kwargs):
+    """Helper to run synchronous functions in async context"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, func, *args, **kwargs)
+
+async def clinical_overview_async(user_id):
+    """Async version of clinical overview"""
+    # Get the synchronous function result
+    from flask import Flask
+    app = Flask(__name__)
+    with app.test_request_context(f'/clinical_overview?user_id={user_id}'):
+        result = clinical_overview()
+        return result.get_json()
+
+async def mood_trend_analysis_async(user_id):
+    """Async version of mood trend analysis"""
+    from flask import Flask
+    app = Flask(__name__)
+    with app.test_request_context(f'/mood_trend_analysis?user_id={user_id}'):
+        result = mood_trend_analysis()
+        return result.get_json()
+
+async def session_bar_chart_async(user_id):
+    """Async version of session bar chart"""
+    from flask import Flask
+    app = Flask(__name__)
+    with app.test_request_context(f'/session_bar_chart?user_id={user_id}'):
+        result = session_bar_chart()
+        return result.get_json()
+
+async def session_heatmap_async(user_id):
+    """Async version of session heatmap"""
+    from flask import Flask
+    app = Flask(__name__)
+    with app.test_request_context(f'/session_heatmap?user_id={user_id}'):
+        result = session_heatmap()
+        return result.get_json()
