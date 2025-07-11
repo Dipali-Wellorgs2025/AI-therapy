@@ -3,11 +3,8 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from datetime import datetime, timedelta
 import os
-import re
 from openai import OpenAI
 from dotenv import load_dotenv
-import asyncio
-from functools import wraps
 
 insights_bp = Blueprint('insights', __name__)
 
@@ -31,7 +28,6 @@ def get_user_sessions(user_id):
     for doc in sessions_ref:
         session_data = doc.to_dict()
         if session_data:
-            
             sessions.append(session_data)
 
     # Also check direct document IDs (as seen in Firebase)
@@ -46,148 +42,48 @@ def store_insights(user_id, insights):
 def generate_analytics_from_messages(messages_by_day):
     """
     messages_by_day: dict of {date_str: [msg1, msg2, ...]}
-    Returns: dict with comprehensive therapy insights matching UI format
+    Returns: dict with 'summary' and 'mood_scores' (per day)
     """
+    summary_bullets = []
     mood_scores = {}
-    all_messages = []
-    
-    # Process daily messages and get mood scores
     for date_str, messages in messages_by_day.items():
+        # Join messages for the dayf
         day_text = "\n".join(messages)
-        all_messages.extend(messages)
+        prompt = f"""
+You are a mental health analytics assistant. Given the following messages from a user's therapy session on {date_str}, estimate the user's overall mood for that day on a scale of 1 (very difficult) to 10 (excellent). Only output a single integer for the mood score.\n\nMessages:\n{day_text}\n\nMood score (1-10):
+"""
         try:
             response = deepseek_client.chat.completions.create(
                 model="deepseek-chat",
-                messages=[{
-                    "role": "user", 
-                    "content": f"Given these therapy messages from {date_str}, rate mood 1-10:\n{day_text}"
-                }],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=5
             )
             score_str = response.choices[0].message.content.strip()
+            # Extract integer mood score
+            import re
             m = re.search(r"(\d+)", score_str)
             if m:
                 mood_scores[date_str] = int(m.group(1))
         except Exception:
             continue
-
-    # Generate comprehensive insights
-    all_text = "\n".join(all_messages)
-    comprehensive_prompt = f"""
-As a mental health analytics assistant, analyze these therapy session messages and provide detailed insights in this EXACT format:
-
-Clinical Insights & Recommendations
-
-Therapeutic Effectiveness:
-- List 4 points about engagement, showing percentages (e.g. "CBT-focused sessions show 40% better engagement")
-- Focus on measurable improvements
-- Include session effectiveness metrics
-- Note specific therapeutic techniques that work well
-
-Risk Assessment:
-- List 4 points covering mood patterns
-- Include crisis support usage
-- Note overall trends
-- Identify stress peaks and timing
-
-Treatment Recommendations:
-- List 4 specific, actionable recommendations
-- Include timing suggestions
-- Mention specific therapeutic approaches
-- Include monitoring suggestions
-
-Progress Indicators:
-- List 4 measurable improvements with percentages
-- Include completion rates
-- Note engagement metrics
-- Highlight positive changes
-
-Progress Insights:
-- Note mood trends
-- Include session completion metrics
-- Mention consistency/streak information
-- Show total engagement numbers
-
-Messages for analysis:
-{all_text}
-
-Provide only the structured insights without any additional text.
+    # Also generate a summary for all messages
+    all_text = "\n".join([msg for msgs in messages_by_day.values() for msg in msgs])
+    prompt = f"""
+You are a mental health analytics assistant. Given the following messages from a user's therapy sessions, generate a concise summary of the user's therapy progress, engagement patterns, and any notable trends or recommendations. Use a clinical, supportive tone.\n\nMessages:\n{all_text}\n\nSummary (3-5 bullet points):
 """
-    
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": comprehensive_prompt}],
-            temperature=0.7,
-            max_tokens=1000
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=200
         )
-        analysis = response.choices[0].message.content.strip()
-        
-        # Calculate engagement metrics
-        total_sessions = len(set(messages_by_day.keys()))
-        streak = len(messages_by_day)
-        entries_logged = sum(len(msgs) for msgs in messages_by_day.values())
-        
-        # Extract sections using improved pattern matching
-        therapeutic_effectiveness = extract_section(analysis, "Therapeutic Effectiveness")
-        risk_assessment = extract_section(analysis, "Risk Assessment")
-        treatment_recommendations = extract_section(analysis, "Treatment Recommendations")
-        
-        # Generate custom progress indicators based on actual data
-        progress_indicators = [
-            f"Breathwork adoption shows {min(50 + len(mood_scores)*5, 80)}% improvement in managing overwhelm",
-            f"Session completion rates: {min(80 + total_sessions*2, 95)}% consistency maintained",
-            f"Client self-advocacy increases by {min(25 + entries_logged//10, 40)}% in expressing needs",
-            f"Engagement metrics: {min(60 + streak*5, 85)}% active participation in therapeutic exercises"
-        ]
-        
-        # Analyze mood trend
-        recent_moods = list(mood_scores.values())[-7:] if mood_scores else []
-        mood_improving = len(recent_moods) >= 2 and sum(recent_moods[-3:]) > sum(recent_moods[:-3])/2 if len(recent_moods) > 3 else False
-        
-        response_data = {
-            "Clinical_insights and Recommendations": {
-                "therapeutic_effectiveness": therapeutic_effectiveness,
-                "risk_assessment": risk_assessment,
-                "treatment_recommendations": treatment_recommendations,
-                "progress_indicators": progress_indicators,
-                "progress_insights": [
-                    {
-                        "title": "Mood trends showing improvement" if mood_improving else "Maintaining stable mood patterns",
-                        "subtitle": f"{total_sessions} sessions completed"
-                    },
-                    {
-                        "title": "Consistency is strong" if streak > 3 else "Building consistency",
-                        "subtitle": f"{streak} day streak"
-                    },
-                    {
-                        "title": "Regular engagement demonstrates commitment",
-                        "subtitle": f"{entries_logged} entries logged"
-                    }
-                ]
-            },
-            "mood_scores": mood_scores,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        
-        return response_data
-        
-    except Exception as e:
-        print(f"Error generating insights: {str(e)}")
-        return None
-
-def extract_section(text, section_name):
-    """Helper function to extract sections from the analysis text"""
-    try:
-        pattern = f"{section_name}.*?(?=\\d\\.\\s|$)"
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            points = re.findall(r'(?<=\n)[\s•]*(.+?)(?=\n|$)', match.group(0))
-            return [p.strip() for p in points if p.strip()]
-        return []
+        summary = response.choices[0].message.content.strip()
     except Exception:
-        return []
+        summary = ""
+    return {"summary": summary, "mood_scores": mood_scores}
+
 
 def generate_insights_for_user(user_id):
     sessions = get_user_sessions(user_id)
@@ -241,14 +137,11 @@ def generate_insights():
         if not sessions:
             return jsonify({'error': 'No sessions found'}), 404
             
-        insights = generate_insights_for_user(user_id)
-        if insights is None:
+        summary = generate_insights_for_user(user_id)
+        if summary is None:
             return jsonify({'error': 'Failed to generate insights'}), 500
         
-        # Store the insights in Firestore
-        store_insights(user_id, insights)
-        
-        return jsonify(insights)
+        return jsonify({'insights': summary})
         
     except Exception as e:
         return jsonify({'error': f'Server error: {str(e)}'}), 500
@@ -257,9 +150,16 @@ def generate_insights():
 def get_insights():
     try:
         user_id = request.args.get('user_id')
+        start_date = request.args.get('start_date')
         
         if not user_id:
             return jsonify({'error': 'user_id required'}), 400
+
+        # Check weekly gating logic
+        from progress_report import get_week_window_and_validate, get_empty_response
+        gating_result = get_week_window_and_validate(user_id, start_date)
+        if not gating_result['valid']:
+            return jsonify(get_empty_response('insights')), 200
             
         db = get_firestore_client()
         doc = db.collection('analytics').document(user_id).get()
@@ -268,55 +168,29 @@ def get_insights():
             return jsonify({'error': 'No analytics found'}), 404
             
         data = doc.to_dict()
-        insights = data.get('deepseek_insights', {})
+        insights = data.get('deepseek_insights', '')
         
-        # Return the insights directly without wrapping in 'insights' key
-        return jsonify(insights)
+        return jsonify({'insights': insights})
         
     except Exception as e:
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
-def async_route(f):
-    """Decorator to enable async support in Flask routes"""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            # Get or create event loop
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    raise RuntimeError("Event loop is closed")
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
-            # Run the async function
-            return loop.run_until_complete(f(*args, **kwargs))
-        except Exception as e:
-            print(f"Async route error: {e}")
-            return jsonify({'error': f'Internal server error: {str(e)}'}), 500
-    return wrapper
+# Async support
+import asyncio
+from functools import wraps
 
 async def call_function_async(func, *args, **kwargs):
     """Helper to run synchronous functions in async context"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, func, *args, **kwargs)
 
-# Async version of get_insights for combined_analytics
-async def get_insights_async(user_id):
+async def get_insights_async(user_id, start_date=None):
     """Async version of get_insights"""
-    try:
-        db = await call_function_async(get_firestore_client)
-        doc = await call_function_async(lambda: db.collection('analytics').document(user_id).get())
-        
-        if not doc.exists:
-            return {'error': 'No analytics found'}
-            
-        data = doc.to_dict()
-        insights = data.get('deepseek_insights', {})
-        
-        return insights
-        
-    except Exception as e:
-        print(f"Async get insights error: {e}")
-        return {'error': f'Server error: {str(e)}'}
+    from flask import Flask
+    app = Flask(__name__)
+    query_string = f'user_id={user_id}'
+    if start_date:
+        query_string += f'&start_date={start_date}'
+    with app.test_request_context(f'/get_insights?{query_string}'):
+        result = get_insights()
+        return result.get_json()
