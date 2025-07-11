@@ -1087,6 +1087,7 @@ Important Rules:
 def handle_message(data):
     import re
     import traceback
+    import time
     from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
@@ -1097,7 +1098,6 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # 🔰 Static greetings (per bot)
     BOT_STATIC_GREETINGS = {
         "Sage": "Hi, I'm **Sage** 🌿 Let's take a calming breath and ease your anxiety together.",
         "Jordan": "Hey, I’m really glad you’re here today. **How’s your heart feeling right now?** We can take it slow — whatever feels okay to share. 🌼",
@@ -1121,12 +1121,11 @@ def handle_message(data):
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     is_first_message = len(ctx["history"]) == 0
 
-    # 🎉 Show greeting if first time and no user message
+    # 🎉 Static greeting if first time
     if is_first_message and user_msg.strip() == "":
         greeting = BOT_STATIC_GREETINGS.get(current_bot)
         if greeting:
             yield greeting + "\n\n"
-
             now = datetime.now(timezone.utc).isoformat()
             ctx["history"].append({"sender": current_bot, "message": greeting, "timestamp": now})
             ctx["session_ref"].set({
@@ -1142,11 +1141,11 @@ def handle_message(data):
             }, merge=True)
         return
 
-    # 👂 User preferences
+    # 👂 Preference detection
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-    # 🔍 Classify topic
+    # 🔍 Topic classification
     try:
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
@@ -1187,7 +1186,7 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # 🧱 Build bot prompt
+    # 🤖 Get bot prompt and clean
     bot_prompt = BOT_PROMPTS[current_bot]
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -1208,36 +1207,30 @@ Your reply must:
 - Reflect gently if the user is vulnerable
 - Avoid all stage directions or instructional parentheticals like (pauses), (leans in), or (if tears follow). Just speak plainly and naturally.
 - Use different emojis where needed and do not greet in every reply 
-- use ** to bold for some ponits or words to force 
+- use ** to bold for some points or words to force 
 - Use pointers if needed like 1. 
 - If the user seems overwhelmed, **don’t ask any question**
-- Don't add the text in the paranthesis skip
+- Don't add the text in the parenthesis — skip them.
 Format your response as a real conversation moment, not a scripted checklist.
 """
 
-    prompt = f"""{guidance}
-
-User: "{user_msg}"
-{"Note: User prefers light conversation — avoid going deep." if skip_deep else ""}
-
-Recent messages:
-{recent}
-
-Therapist prompt:
-{filled_prompt}
-"""
+    # 🧠 Proper structured prompt
+    messages = [
+        {"role": "system", "content": guidance},
+        {"role": "system", "content": filled_prompt},
+        {"role": "user", "content": user_msg}
+    ]
 
     def clean_response(text):
-        text = re.sub(r"(?<=[a-zA-Z])(?=[,.!?])", " ", text)
-        text = re.sub(r"([a-z])(?=[A-Z])", r"\1 ", text)
+        text = re.sub(r"(?<=[a-z])(?=[A-Z])", r"\1 ", text)
+        text = re.sub(r"(?<=[a-zA-Z])(?=[.,!?;])", r" ", text)
         text = re.sub(r"\s+", " ", text)
         return text.strip()
 
-    # 💬 Stream model reply with buffer
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             stream=True,
             temperature=0.65,
             max_tokens=350,
@@ -1253,11 +1246,9 @@ Therapist prompt:
                 text = delta.content
                 full_response += text
                 buffer += text
-                if " " in buffer:
-                    parts = buffer.split(" ")
-                    for part in parts[:-1]:
-                        yield part + " "
-                    buffer = parts[-1]
+                if any(p in buffer for p in [".", "!", "?", ";", "\n"]) or len(buffer) > 20:
+                    yield buffer
+                    buffer = ""
 
         if buffer.strip():
             yield buffer
@@ -1283,6 +1274,7 @@ Therapist prompt:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
+
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
