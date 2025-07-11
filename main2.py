@@ -1106,7 +1106,7 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Escalation
+    # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this."
         return
@@ -1115,13 +1115,15 @@ def handle_message(data):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
+    # ⚙️ Get context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
+    # 👂 Detect user preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-    # Classification
+    # 🔍 Classify topic
     try:
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
@@ -1161,7 +1163,7 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # Prompt building
+    # 🧱 Prompt construction
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -1170,6 +1172,7 @@ Respond only with one category from the list. Do not explain.
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
+    # 🧭 Therapy guidance
     guidance = """
 You are a warm, supportive mental health guide.
 Your reply must:
@@ -1197,39 +1200,37 @@ Recent messages:
 Reply:
 """
 
-    # Clean response function
     def clean_response(text):
-        text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)  # fix camelCase
-        text = re.sub(r"([.,!?])(?=\S)", r"\1 ", text)    # ensure space after punctuation
-        text = re.sub(r"\s{2,}", " ", text)               # collapse multiple spaces
+        text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
+        text = re.sub(r"([.,!?])(?=\S)", r"\1 ", text)
+        text = re.sub(r"\s{2,}", " ", text)
         return text.strip()
 
     try:
-        # 💡 Get FULL response first (non-streaming)
+        # 🧠 Generate full response first
         completion = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.6,
+            temperature=0.65,
             max_tokens=350,
             presence_penalty=0.3,
             frequency_penalty=0.4
         )
-
         full_response = completion.choices[0].message.content.strip()
         final_reply = clean_response(full_response)
 
-        # 💬 Yield in chunks (every ~25 words or punctuation)
+        # 💬 Stream in 8-word chunks
         words = final_reply.split()
         chunk = []
         for word in words:
             chunk.append(word)
-            if len(" ".join(chunk)) >= 40 or word.endswith(('.', '?', '!', ',')):
+            if len(chunk) == 8:
                 yield " ".join(chunk) + " "
                 chunk = []
         if chunk:
-            yield " ".join(chunk)
+            yield " ".join(chunk) + " "
 
-        # 💾 Save session
+        # 💾 Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": final_reply, "timestamp": now})
@@ -1249,6 +1250,7 @@ Reply:
         import traceback
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try again?"
+
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
