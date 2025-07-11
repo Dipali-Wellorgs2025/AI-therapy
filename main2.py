@@ -1115,11 +1115,11 @@ def handle_message(data):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
-    # ⚙️ Get context
+    # ⚙️ Get session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # 👂 Detect user preferences
+    # 👂 Detect preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
@@ -1163,7 +1163,7 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # 🧱 Prompt construction
+    # 🧱 Prompt building
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -1172,7 +1172,7 @@ Respond only with one category from the list. Do not explain.
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
-    # 🧭 Therapy guidance
+    # 🎯 Guidance
     guidance = """
 You are a warm, supportive mental health guide.
 Your reply must:
@@ -1207,31 +1207,37 @@ Reply:
         return text.strip()
 
     try:
-        # 🧠 Generate full response first
-        completion = client.chat.completions.create(
+        # 🚀 Stream model response
+        response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
+            stream=True,
             temperature=0.65,
             max_tokens=350,
             presence_penalty=0.3,
             frequency_penalty=0.4
         )
-        full_response = completion.choices[0].message.content.strip()
-        final_reply = clean_response(full_response)
 
-        # 💬 Stream in 8-word chunks
-        words = final_reply.split()
-        chunk = []
-        for word in words:
-            chunk.append(word)
-            if len(chunk) == 8:
-                yield " ".join(chunk) + " "
-                chunk = []
-        if chunk:
-            yield " ".join(chunk) + " "
+        full_response = ""
+        buffer = []
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                words = delta.content.strip().split()
+                for word in words:
+                    buffer.append(word)
+                    full_response += word + " "
+                    if len(buffer) == 8:
+                        yield " ".join(buffer) + " "
+                        buffer = []
+
+        if buffer:
+            yield " ".join(buffer) + " "
 
         # 💾 Save to Firestore
+        final_reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
+
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": final_reply, "timestamp": now})
         ctx["session_ref"].set({
