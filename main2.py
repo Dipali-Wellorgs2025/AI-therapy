@@ -1084,7 +1084,7 @@ Important Rules:
     
     return base_prompt
 
-def handle_message(data):    
+def handle_message(data):
 
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
@@ -1094,7 +1094,7 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # 🔸 Static bot greeting dictionary
+    # 🔰 Static greetings (per bot)
     BOT_STATIC_GREETINGS = {
         "Sage": "Hi, I'm **Sage** 🌿 Let's take a calming breath and ease your anxiety together.",
         "Jordan": "Hey, I’m really glad you’re here today. **How’s your heart feeling right now?** We can take it slow — whatever feels okay to share. 🌼",
@@ -1114,17 +1114,34 @@ def handle_message(data):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
         return
 
-    # ⚙️ Get context
+    # ⚙️ Get session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-    session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+    is_first_message = len(ctx["history"]) == 0
 
-    # ✅ Show bot greeting only at session start
-    if session_number == 1:
+    # 🎉 Show greeting if first time and no user message
+    if is_first_message and user_msg.strip() == "":
         greeting = BOT_STATIC_GREETINGS.get(current_bot)
         if greeting:
             yield greeting + "\n\n"
 
-    # 👂 Detect preferences
+            # Optional: Save greeting to session history
+            now = datetime.now(timezone.utc).isoformat()
+            ctx["history"].append({"sender": current_bot, "message": greeting, "timestamp": now})
+            ctx["session_ref"].set({
+                "user_id": user_id,
+                "bot_name": current_bot,
+                "bot_id": current_bot,
+                "messages": ctx["history"],
+                "last_updated": firestore.SERVER_TIMESTAMP,
+                "issue_description": issue_description,
+                "preferred_style": preferred_style,
+                "session_number": 1,
+                "is_active": True
+            }, merge=True)
+
+        return  # Stop here — don't classify or generate anything
+
+    # 👂 User preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
@@ -1165,7 +1182,7 @@ Respond only with one category from the list. Do not explain.
 
         if correct_bot != current_bot:
             if wants_to_stay:
-                correct_bot = current_bot  # honor user preference
+                correct_bot = current_bot
             else:
                 yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
                 return
@@ -1173,12 +1190,12 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # 🧱 Build prompt
+    # 🧱 Build bot prompt
     bot_prompt = BOT_PROMPTS[current_bot]
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)\
-                              .replace("{{session_number}}", str(session_number))
+                              .replace("{{session_number}}", "1")  # Optional: dummy value
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
@@ -1213,7 +1230,7 @@ Therapist prompt:
 {filled_prompt}
 """
 
-    # ✅ Stream reply in chunks
+    # 💬 Stream model reply
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -1230,9 +1247,8 @@ Therapist prompt:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 full_response += delta.content
-                yield delta.content  # ✅ Stream each word/chunk as it comes
+                yield delta.content  # 🔁 stream each token
 
-        # ⏺ Save complete reply after streaming
         reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
@@ -1246,7 +1262,7 @@ Therapist prompt:
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
-            "session_number": session_number,
+            "session_number": 1,
             "is_active": True
         }, merge=True)
 
@@ -1254,7 +1270,6 @@ Therapist prompt:
         print("❌ Error in handle_message:", e)
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
-
 
 
 @app.route("/api/stream", methods=["GET"])
