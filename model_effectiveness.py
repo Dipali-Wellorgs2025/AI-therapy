@@ -76,8 +76,8 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=1,
-            max_tokens=100,  # Fixed: use valid range [1, 8192]
-            timeout=10  # Increased timeout to 10 seconds
+            max_tokens=10000,  # Fixed: use valid range [1, 8192]
+            timeout=5  # Increased timeout to 10 seconds
         )
         
         result = response.choices[0].message.content.strip()
