@@ -1222,7 +1222,7 @@ Format your response as a real conversation moment, not a scripted checklist.
     ]
 
     def clean_response(text):
-        text = re.sub(r"(?<=[a-z])(?=[A-Z])", r"\1 ", text)
+        text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
         text = re.sub(r"(?<=[a-zA-Z])(?=[.,!?;])", r" ", text)
         text = re.sub(r"\s+", " ", text)
         return text.strip()
