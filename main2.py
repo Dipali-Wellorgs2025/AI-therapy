@@ -974,6 +974,14 @@ You are always aware of:
 """
 
 }
+BOT_STATIC_GREETINGS = {
+    "Sage": "Hi, I'm **Sage** 🌿 Let's take a calming breath and ease your anxiety together.",
+    "Jordan": "Hey, I’m really glad you’re here today. **How’s your heart feeling right now?** We can take it slow — whatever feels okay to share. 🌼 No need to push — just know this space is yours. We can sit with whatever’s here together. 💛",
+    "River": "Hey, I'm **River** 💖 Let's talk about self-worth and build confidence from within.",
+    "Phoenix": "Hi, I'm **Phoenix** 🔥 I'll walk beside you as we rise through trauma, together.",
+    "Ava": "Hello, I'm **Ava** 🏡 Let's strengthen the ties that matter — your family.",
+    "Raya": "Hi, I'm **Raya** 🚨 You're safe now. I'm here to support you through this crisis."
+}
 
 ESCALATION_TERMS = [
     "suicide", "kill myself", "end my life", "take my life",
