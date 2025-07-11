@@ -13,13 +13,12 @@ from openai import OpenAI
 from queue import Queue
 import json
 import re
-# Import profile management blueprint
-# from subscription import subscription_bp
+
 from profile_manager import profile_bp
 from deepseek_insights import insights_bp
 from progress_report import progress_bp
 from gratitude import gratitude_bp
-from subscription import subscription_bp
+# from subscription import subscription_bp
 from model_effectiveness import model_effectiveness_bp
 from combined_analytics import combined_bp
 # Load environment variables
@@ -32,7 +31,7 @@ app = Flask(__name__)
 app.register_blueprint(profile_bp) #, url_prefix='/api'
 app.register_blueprint(insights_bp)
 app.register_blueprint(gratitude_bp)
-app.register_blueprint(subscription_bp)
+# app.register_blueprint(subscription_bp)
 app.register_blueprint(model_effectiveness_bp)
 app.register_blueprint(combined_bp)
 
