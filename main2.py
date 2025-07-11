@@ -1506,12 +1506,12 @@ def get_recent_sessions():
 
         # 🔧 Therapist bot mapping: Firestore doc ID => Display Name
         bots = {
-            "anxiety": "Sage",
-            "trauma": "Phoenix",
-            "family": "Ava",
-            "crisis": "Raya",
-            "couples": "River",
-            "depression": "Jordan"
+    "anxiety": "Sage",
+    "breakup": "Jordan",
+    "self-worth": "River",
+    "trauma": "Phoenix",
+    "family": "Ava",
+    "crisis": "Raya"
         }
 
         sessions = []
