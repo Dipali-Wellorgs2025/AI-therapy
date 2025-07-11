@@ -1124,7 +1124,7 @@ def handle_message(data):
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
 
-    # 🧠 Classify topic
+    # 🔍 Classify topic
     try:
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
@@ -1167,7 +1167,7 @@ Respond only with one category from the list. Do not explain.
     except Exception as e:
         print("Classification failed:", e)
 
-    # 🧱 Prompt structure
+    # 💬 Therapist prompt
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -1176,7 +1176,6 @@ Respond only with one category from the list. Do not explain.
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
 
-    # 🧭 Therapy guidance
     guidance = """
 You are a warm, supportive mental health guide.
 Your reply must:
@@ -1191,7 +1190,6 @@ Your reply must:
 - If the user seems overwhelmed, **don’t ask any question**
 """
 
-    # ⛲ Prompt body
     prompt = f"""{guidance}
 
 {filled_prompt}
@@ -1205,16 +1203,16 @@ Recent messages:
 Reply:
 """
 
-    # 🚿 Clean function for streamed text
-    def clean_response(text):
-        text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)
-        text = re.sub(r'(?<=[a-zA-Z])(?=[^\w\s])', ' ', text)
-        text = re.sub(r'(?<=[^\w\s])(?=[a-zA-Z])', ' ', text)
-        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+    # 🧽 Clean-up function
+    def clean_response(text: str) -> str:
+        text = re.sub(r'\s+', ' ', text)  # Normalize spaces
+        text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)  # Split camel case
+        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)  # Ensure space after punctuation
+        text = re.sub(r'(?<=[a-zA-Z])(?=[^\w\s])', r' ', text)  # Space before punctuation
+        text = re.sub(r'\s{2,}', ' ', text)  # Final spacing fix
         return text.strip()
 
-    # 🌊 Streamed response with per-chunk cleanup
+    # 🔄 Streaming logic
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -1234,19 +1232,21 @@ Reply:
                 buffer += delta.content
                 full_response += delta.content
 
-                if any(p in buffer for p in [' ', '\n', '.', '?', '!', ',']):
+                # Stream when punctuation or phrase ends
+                if len(buffer) > 20 or any(p in buffer for p in [' ', '.', '?', '!', ',']):
                     cleaned = clean_response(buffer)
                     if cleaned:
                         yield cleaned + " "
                     buffer = ""
 
+        # Final buffer cleanup
         if buffer.strip():
             yield clean_response(buffer)
 
-        # Store final response
         final_reply = clean_response(full_response)
         now = datetime.now(timezone.utc).isoformat()
 
+        # 💾 Save session
         ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": final_reply, "timestamp": now})
         ctx["session_ref"].set({
@@ -1266,9 +1266,6 @@ Reply:
         import traceback
         traceback.print_exc()
         yield "Sorry — something went wrong mid-reply. Can we try that again from here?"
-
-
-
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
