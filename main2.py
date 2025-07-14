@@ -538,7 +538,6 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
@@ -547,18 +546,15 @@ def handle_message(data):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
-    # ⚙️ Get context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # 👂 Detect user preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # 🔍 Topic classification
     def classify_topic_with_confidence(message):
         try:
-            classification_prompt = f"""
+            prompt = f"""
 You are a mental health topic classifier. Analyze the message and determine:
 1. The primary topic category
 2. Confidence level (high/medium/low)
@@ -580,52 +576,38 @@ CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
-            classification = client.chat.completions.create(
+            response = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
-                    {"role": "user", "content": classification_prompt}
+                    {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
                 max_tokens=100
             )
-            response = classification.choices[0].message.content.strip()
-            lines = response.split('\n')
-            category, confidence, is_generic = None, None, False
+            content = response.choices[0].message.content.strip()
+            lines = content.split("\n")
+            category, confidence, is_generic = "general", "low", False
             for line in lines:
-                if line.startswith('CATEGORY:'):
-                    category = line.split(':', 1)[1].strip().lower()
-                elif line.startswith('CONFIDENCE:'):
-                    confidence = line.split(':', 1)[1].strip().lower()
-                elif line.startswith('IS_GENERIC:'):
-                    is_generic = line.split(':', 1)[1].strip().lower() == 'yes'
+                if line.startswith("CATEGORY:"):
+                    category = line.split(":")[1].strip().lower()
+                elif line.startswith("CONFIDENCE:"):
+                    confidence = line.split(":")[1].strip().lower()
+                elif line.startswith("IS_GENERIC:"):
+                    is_generic = line.split(":")[1].strip().lower() == "yes"
             return category, confidence, is_generic
-        except Exception as e:
-            print("Classification failed:", e)
+        except Exception:
             return "general", "low", True
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # 🤖 Smart routing logic
     should_route = False
-    route_message = ""
-
-    if category and category != "general" and category in TOPIC_TO_BOT:
+    if category in TOPIC_TO_BOT and category != "general":
         correct_bot = TOPIC_TO_BOT[category]
-        if (
-            confidence == "high" and
-            not is_generic and
-            not wants_to_stay and
-            correct_bot != current_bot
-        ):
-            should_route = True
-            route_message = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+        if (confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot):
+            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            return
 
-    if should_route:
-        yield route_message
-        return
-
-    # 🧱 Prompt construction
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -676,7 +658,21 @@ User's message: "{user_msg}"
 Provide a comprehensive, standalone response that addresses their needs completely:
 """
 
-    # ✅ Stream with spacing fix
+    def format_response_with_emojis(text):
+        # Remove stage directions
+        text = re.sub(r'\([^)]*\)', '', text)
+
+        # Fix bold
+        text = re.sub(r'\*{2,}', '**', text)
+        text = re.sub(r'\s?\*{1,2}([^*]+?)\*{1,2}\s?', r' **\1** ', text)
+
+        # Emoji spacing
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💖⭐🍃🧡])'
+        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+
+        return re.sub(r'\s{2,}', ' ', text).strip()
+
     try:
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
@@ -687,6 +683,8 @@ Provide a comprehensive, standalone response that addresses their needs complete
             frequency_penalty=0.3,
             stream=True
         )
+
+        yield "\n"  # UI separation
 
         final_reply = ""
         buffer = ""
@@ -699,13 +697,14 @@ Provide a comprehensive, standalone response that addresses their needs complete
                 buffer += text
 
                 if any(buffer.endswith(p) for p in [' ', '.', '?', '!', ',', '\n']):
-                    yield buffer
+                    cleaned = format_response_with_emojis(buffer)
+                    if cleaned:
+                        yield cleaned + " "
                     buffer = ""
 
         if buffer.strip():
-            yield buffer
+            yield format_response_with_emojis(buffer)
 
-        # 💾 Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
             "sender": "User",
@@ -716,7 +715,7 @@ Provide a comprehensive, standalone response that addresses their needs complete
         })
         ctx["history"].append({
             "sender": current_bot,
-            "message": final_reply.strip(),
+            "message": format_response_with_emojis(final_reply.strip()),
             "timestamp": now,
             "session_number": session_number
         })
@@ -734,10 +733,10 @@ Provide a comprehensive, standalone response that addresses their needs complete
             "last_topic_confidence": confidence
         }, merge=True)
 
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
-        yield "I apologize, but I'm having trouble processing that right now. Let's try again - I'm here to support you. 💙"
+        yield "I apologize, but I'm having trouble processing that right now. Let's try again – I'm here to support you. 💙"
 
 
         
