@@ -1121,14 +1121,15 @@ def get_recent_sessions():
 def home():
     return "Therapy Bot Server is running ✅"
 
-# @app.route("/api/last_active_session", methods=["GET"])
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
     try:
         user_id = request.args.get("user_id")
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
+
         db = firestore.client()
+
         bots = {
             "anxiety": "Sage",
             "breakup": "Jordan",
@@ -1137,30 +1138,58 @@ def get_last_active_session():
             "family": "Ava",
             "crisis": "Raya"
         }
+
         for bot_id, bot_name in bots.items():
-            session_ref = db.collection("sessions") \
-                .where("user_id", "==", user_id) \
-                .where("bot_id", "==", bot_id) \
-                .where("is_active", "==", True) \
+            query = db.collection("sessions") \
+                .where(filter=FieldFilter("user_id", "==", user_id)) \
+                .where(filter=FieldFilter("bot_id", "==", bot_id)) \
+                .where(filter=FieldFilter("is_active", "==", True)) \
                 .order_by("last_updated", direction=firestore.Query.DESCENDING) \
                 .limit(1)
-            docs = list(session_ref.stream())
+
+            docs = list(query.stream())
             if not docs:
                 continue
+
             doc = docs[0]
             session_data = doc.to_dict()
-            # 🔍 Bot visuals
+
+            # Fetch bot visuals
             bot_doc = db.collection("ai_therapists").document(bot_id).get()
             bot_info = bot_doc.to_dict() if bot_doc.exists else {}
-            # 🧾 Simple summary
-            issue_description = session_data.get("problem", "a topic")
-            summary_text = f"You are discussing about {issue_description} with {bot_name}."
-            # ✅ Final single-session response
+
+            # Extract recent messages
+            messages = session_data.get("messages", [])[:5]
+            if not messages:
+                summary_text = "Session started, but no messages yet."
+            else:
+                transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in messages)
+
+                # One-line summary prompt
+                summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
+
+{transcript}
+
+One-line summary:"""
+
+                try:
+                    response = client.chat.completions.create(
+                        model="deepseek-chat",
+                        messages=[{"role": "user", "content": summary_prompt}],
+                        temperature=0.5,
+                        max_tokens=100
+                    )
+                    summary_text = response.choices[0].message.content.strip()
+                except Exception as e:
+                    print("⚠️ Summary generation failed:", e)
+                    summary_text = "Summary unavailable."
+
+            # Final response
             return jsonify({
                 "session_id": doc.id,
                 "bot_id": bot_id,
                 "bot_name": bot_name,
-                "problem": issue_description,
+                "problem": session_data.get("issue_description", "Therapy Session"),
                 "status": "in_progress",
                 "date": str(session_data.get("last_updated", "")),
                 "user_id": session_data.get("user_id", ""),
@@ -1171,12 +1200,13 @@ def get_last_active_session():
                 "image": bot_info.get("image", ""),
                 "summary": summary_text
             })
+
         return jsonify({"message": "No active sessions found"}), 404
+
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
-
 
 
 # ================= JOURNAL APIs =================
