@@ -640,7 +640,8 @@ IS_GENERIC: [yes/no]
                               .replace("{{preferred_style}}", preferred_style)
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
+    recent = "\n".join(f"User said: {m['message']}" if m["sender"] == "User" else f"{current_bot} replied: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
+
     context_note = ""
     if skip_deep:
         context_note += "Note: User prefers lighter conversation - keep response supportive but not too deep."
@@ -685,13 +686,13 @@ Respond in a self-contained, complete way:
 
         # Fix punctuation spacing
 
-
+        # text = re.sub(r'["""]?\*\*["""]?', '', text) 
 
         # Fix bold formatting
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        text = re.sub(r'\*{2} ?(.*?) ?\*{2}', r'**\1**', text)
        
 
-        text = re.sub(r'["""]?\*\*["""]?', '', text)
+        text = re.sub(r'\*+', '*', text) 
         
         # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
