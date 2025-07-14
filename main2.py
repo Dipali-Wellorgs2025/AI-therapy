@@ -538,7 +538,7 @@ def handle_message(data):
     preferred_style = data.get("preferred_style", "Balanced")
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
-
+    
     # Technical terms that should be escalated to developers
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
@@ -849,24 +849,20 @@ Respond in a self-contained, complete way:
         
         return text.strip()
 
-# NEW: Lightweight formatting for streaming chunks
-def format_streaming_chunk(text):
-    """Lightweight formatting for streaming chunks - no paragraph reordering"""
+    def format_streaming_chunk(text):
     # Remove parentheses content
-    text = re.sub(r'\([^)]*\)', '', text)
+     text = re.sub(r'\([^)]*\)', '', text)
     
     # Basic asterisk cleanup for streaming
-    text = re.sub(r'\*{3,}', '**', text)  # Triple+ asterisks to double
-    text = re.sub(r'\*(\s*[.!?])', r'**\1', text)  # Fix asterisk before punctuation
+     text = re.sub(r'\*{3,}', '**', text)  # Triple+ asterisks to double
+     text = re.sub(r'\*(\s*[.!?])', r'**\1', text)  # Fix asterisk before punctuation
     
     # Remove orphaned asterisks
-    text = re.sub(r'(?<!\*)\*(?!\*|\w)', '', text)
-    text = re.sub(r'(?<!\w)\*(?!\*)', '', text)
+     text = re.sub(r'(?<!\*)\*(?!\*|\w)', '', text)
+     text = re.sub(r'(?<!\w)\*(?!\*)', '', text)
     
-    return text.strip()
+     return text.strip()
 
-def handle_message(data):
-    # ...existing code...
 
     # 💬 IMPROVED Streaming output with paragraph-aware processing
     try:
