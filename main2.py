@@ -1133,9 +1133,26 @@ def get_recent_sessions():
 def home():
     return "Therapy Bot Server is running ✅"
 
-from flask import request, jsonify
-from google.cloud import firestore
-from google.cloud.firestore_v1.base_query import FieldFilter
+# from flask import request, jsonify
+# from google.cloud import firestore
+# from google.cloud.firestore_v1.base_query import FieldFilter
+
+# ================= NICKNAME FETCHING =================
+ 
+def get_user_nickname(user_id: str) -> str:
+    """Fetch user nickname from Firestore, fallback to 'User' if not found"""
+    try:
+        user_doc = db.collection("users").document(user_id).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            # Try multiple possible nickname fields
+            nickname = user_data.get("nickname") or user_data.get("name") or user_data.get("displayName") or user_data.get("firstName")
+            if nickname:
+                return str(nickname)
+        return "User"  # Fallback if no nickname found
+    except Exception as e:
+        print(f"Error fetching nickname for user {user_id}: {e}")
+        return "User"  # Fallback on error
 
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
@@ -1143,64 +1160,90 @@ def get_last_active_session():
         user_id = request.args.get("user_id")
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
-
+ 
+        # Get actual user nickname for personalized summary
+        actual_user_name = get_user_nickname(user_id)
+ 
         db = firestore.client()
-
-        # Include 'general' if bot_id uses it (as seen in your screenshot)
+ 
         bots = {
             "anxiety": "Sage",
             "breakup": "Jordan",
             "self-worth": "River",
             "trauma": "Phoenix",
             "family": "Ava",
-            "crisis": "Raya",
-            "general": "Ava"  # 👈 added for compatibility
+            "crisis": "Raya"
         }
-
+      
         for bot_id, bot_name in bots.items():
-            session_ref = db.collection("sessions") \
+            query = db.collection("sessions") \
                 .where(filter=FieldFilter("user_id", "==", user_id)) \
                 .where(filter=FieldFilter("bot_id", "==", bot_id)) \
                 .where(filter=FieldFilter("is_active", "==", True)) \
                 .order_by("last_updated", direction=firestore.Query.DESCENDING) \
                 .limit(1)
-
-            docs = list(session_ref.stream())
+ 
+            docs = list(query.stream())
             if not docs:
                 continue
-
+ 
             doc = docs[0]
             session_data = doc.to_dict()
-
-            # 🔍 Bot visuals
+ 
+            # Fetch bot visuals
             bot_doc = db.collection("ai_therapists").document(bot_id).get()
             bot_info = bot_doc.to_dict() if bot_doc.exists else {}
-
-            # 🧾 Summary from recent messages
-            messages = session_data.get("messages", [])[:5]
+ 
+            # Extract recent messages for summary generation
+            messages = session_data.get("messages", [])
             if not messages:
                 summary_text = "Session started, but no messages yet."
             else:
-                short_transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in messages)
-                summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
-
-{short_transcript}
-
-One-line summary:"""
-
+                # Get last 6 messages for better context (3 exchanges)
+                recent_messages = messages[-6:] if len(messages) >= 6 else messages
+                
+                # Replace "User" with actual nickname in transcript for better context
+                formatted_transcript = []
+                for msg in recent_messages:
+                    sender = msg['sender']
+                    if sender == "User":
+                        sender = actual_user_name
+                    formatted_transcript.append(f"{sender}: {msg['message']}")
+                transcript = "\n".join(formatted_transcript)
+ 
+                # Generate 2-line summary using DeepSeek with personalized context
+                summary_prompt = f"""Based on this mental health conversation with {actual_user_name}, create a 2-line summary that captures:
+1. The main topic/issue {actual_user_name} discussed
+2. {actual_user_name}'s current emotional state or progress
+ 
+Keep it empathetic, concise, and informative. Avoid direct quotes. Use {actual_user_name}'s name naturally in the summary.
+ 
+Conversation:
+{transcript}
+ 
+2-line summary:"""
+ 
                 try:
                     response = client.chat.completions.create(
                         model="deepseek-chat",
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
-                        max_tokens=100
+                        max_tokens=150
                     )
                     summary_text = response.choices[0].message.content.strip()
+                    
+                    # Ensure it's actually 2 lines max
+                    lines = summary_text.split('\n')
+                    if len(lines) > 2:
+                        summary_text = '\n'.join(lines[:2])
+                        
                 except Exception as e:
                     print("⚠️ Summary generation failed:", e)
-                    summary_text = "Summary unavailable."
-
-            # ✅ Final single-session response
+                    # Fallback to basic summary with actual name
+                    last_user_msg = next((m['message'] for m in reversed(messages) if m['sender'] in ['User', actual_user_name]), "conversation")
+                    summary_text = f"{actual_user_name} last discussed: {last_user_msg[:50]}...\nWorking through {bot_name.lower()} support session."
+ 
+            # Final response
             return jsonify({
                 "session_id": doc.id,
                 "bot_id": bot_id,
@@ -1216,9 +1259,9 @@ One-line summary:"""
                 "image": bot_info.get("image", ""),
                 "summary": summary_text
             })
-
+ 
         return jsonify({"message": "No active sessions found"}), 404
-
+ 
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1250,6 +1293,8 @@ def upload_image_to_firebase(file, uid):
     print("[DEBUG] blob.public_url:", blob.public_url)
     return blob.public_url
 
+
+        
 # POST /addjournal (multipart)
 @app.route('/addjournal', methods=['POST'])
 def add_journal():
