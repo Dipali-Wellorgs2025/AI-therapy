@@ -538,6 +538,15 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
+    # Technical terms that should be routed to development team
+    TECHNICAL_TERMS = [
+        "training", "algorithm", "machine learning", "ai model", "neural network",
+        "deep learning", "training data", "model architecture", "how you work",
+        "how are you trained", "what model", "llm", "language model",
+        "parameters", "weights", "tokens", "api", "backend", "database",
+        "server", "code", "programming", "technical details", "development"
+    ]
+
     # Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
@@ -545,6 +554,11 @@ def handle_message(data):
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        return
+
+    # Technical terms check
+    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
+        yield "For technical questions about my training, algorithms, or development details, please **contact our development team** directly. They can provide you with comprehensive technical information. For now, I'm here to focus on supporting your mental health and wellbeing. How can I help you today? 💙"
         return
 
     # Context fetch
@@ -658,31 +672,40 @@ User's message: "{user_msg}"
 Respond in a self-contained, complete way:
 """
 
+    # ✅ Improved format cleaner with proper spacing and bold formatting
     def format_response_with_emojis(text):
+        # Remove parentheses content
         text = re.sub(r'\([^)]*\)', '', text)
-
-        # Convert *bold* or “*bold*” to **bold**
-        text = re.sub(r'\*["“”]?([^*"“”]+)["“”]?\*', r'**\1**', text)
-
-        # KEEP double asterisks - don't strip them
-
-        # Space after punctuation
-        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)
-
-        # Emoji spacing
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭💧🌿])'
+        
+        # Fix bold formatting - preserve existing ** formatting
+        text = re.sub(r'\*\*["""]?([^*"""]+)["""]?\*\*', r'**\1**', text)
+        text = re.sub(r'\*["""]?([^*"""]+)["""]?\*', r'**\1**', text)
+        
+        # Clean up malformed bold markers
+        text = re.sub(r'["""]?\*\*["""]?', '', text)
+        
+        # Ensure proper spacing around emojis
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-
-        # Trailing quote cleanup
-        text = re.sub(r'["“”]+$', '', text)
-        text = re.sub(r'\*+$', '', text)
-
-        # Extra spaces
+        
+        # Fix spacing around punctuation - ensure space after punctuation
+        text = re.sub(r'([.,!?:;])([^\s])', r'\1 \2', text)
+        
+        # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
-
+        
+        # Fix spacing before punctuation (remove unwanted spaces)
+        text = re.sub(r'\s+([.,!?:;])', r'\1', text)
+        
+        # Clean up comma and period spacing
+        text = text.replace(" ,", ",").replace(" .", ".")
+        
+        # Fix trailing formatting issues
+        if text.endswith('**"') or text.endswith('**'):
+            text = text.rstrip('*"')
+        
         return text.strip()
-
 
     # 💬 Streaming output
     try:
@@ -707,15 +730,18 @@ Respond in a self-contained, complete way:
                 buffer += token
                 final_reply += token
 
+                # Stream tokens when we hit natural break points
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 0:
                     cleaned = format_response_with_emojis(buffer)
                     if cleaned:
-                        yield cleaned + " "
+                        yield cleaned
                     buffer = ""
 
-        # Final flush
+        # Final flush for remaining content
         if buffer.strip():
-            yield format_response_with_emojis(buffer)
+            cleaned = format_response_with_emojis(buffer)
+            if cleaned:
+                yield cleaned
 
         # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
@@ -749,7 +775,7 @@ Respond in a self-contained, complete way:
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I’m having a little trouble right now. Let’s try again in a moment – I’m still here for you. 💙"
+        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
 
         
 @app.route("/api/stream", methods=["GET"])
