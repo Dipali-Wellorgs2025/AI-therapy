@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, Response, render_template, stream_with_context
+from google.cloud.firestore_v1.base_query import FieldFilter
 import firebase_admin
 import uuid
 import traceback
