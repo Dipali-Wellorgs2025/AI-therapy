@@ -681,14 +681,16 @@ Respond in a self-contained, complete way:
     # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
         # Remove parentheses content
-        text = re.sub(r'\([^)]*\)', '', text)
+        text = re.sub(r'\([^)]*\)', '', text)  # Remove (parenthesis content)
+
         # Fix punctuation spacing
 
 
 
         # Fix bold formatting
-        text = re.sub(r'\*\*["""]?([^*"""]+)["""]?\*\*', r'**\1**', text)
-        text = re.sub(r'\*["""]?([^*"""]+)["""]?\*', r'**\1**', text)
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+       
+
         text = re.sub(r'["""]?\*\*["""]?', '', text)
         
         # Ensure proper spacing around emojis
@@ -698,7 +700,8 @@ Respond in a self-contained, complete way:
         
         # Fix spacing around punctuation - IMPROVED
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
-        text = re.sub(r'([.,!?;:])(?=[^\s.,!?;:])', r'\1 ', text)  # Add space *after* punctuation if needed
+        
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
         
         # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
@@ -726,7 +729,7 @@ Respond in a self-contained, complete way:
         )
 
         # Clear separation between user message and bot response
-        yield "\n---\n"  # Visual separator
+        yield "\n"  # Visual separator
                 
         # yield f"**{current_bot}:**\n"  # ✅ Bot header
         buffer = ""
