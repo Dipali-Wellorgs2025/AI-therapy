@@ -538,7 +538,6 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
@@ -547,15 +546,12 @@ def handle_message(data):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
-    # Context fetch
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # Preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # Classification
     def classify_topic_with_confidence(message):
         try:
             classification_prompt = f"""
@@ -565,17 +561,17 @@ You are a mental health topic classifier. Analyze the message and determine:
 3. Whether it's a generic greeting/small talk
 
 Categories:
-- anxiety
-- breakup
-- self-worth
-- trauma
-- family
-- crisis
-- general
+- anxiety: worry, stress, nervousness, panic, fear
+- breakup: relationship ending, heartbreak, dating issues, romantic loss
+- self-worth: self-esteem, confidence, self-image, identity issues
+- trauma: past experiences, PTSD, abuse, difficult memories
+- family: parent issues, sibling problems, family conflict
+- crisis: immediate danger, self-harm, suicidal thoughts
+- general: greetings, small talk, generic mental health questions
 
 Message: "{message}"
 
-Respond in this format:
+Respond in this exact format:
 CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
@@ -590,14 +586,16 @@ IS_GENERIC: [yes/no]
                 max_tokens=100
             )
             response = classification.choices[0].message.content.strip()
-            category, confidence, is_generic = None, None, False
-            for line in response.split("\n"):
-                if line.startswith("CATEGORY:"):
-                    category = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("CONFIDENCE:"):
-                    confidence = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("IS_GENERIC:"):
-                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
+            lines = response.split('\n')
+            category = confidence = None
+            is_generic = False
+            for line in lines:
+                if line.startswith('CATEGORY:'):
+                    category = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('CONFIDENCE:'):
+                    confidence = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('IS_GENERIC:'):
+                    is_generic = line.split(':', 1)[1].strip().lower() == 'yes'
             return category, confidence, is_generic
         except Exception as e:
             print("Classification failed:", e)
@@ -605,15 +603,18 @@ IS_GENERIC: [yes/no]
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # Routing logic
     should_route = False
+    route_message = ""
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
-        if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
-            return
+        if (confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot):
+            should_route = True
+            route_message = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
 
-    # Prompt
+    if should_route:
+        yield route_message
+        return
+
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -621,60 +622,58 @@ IS_GENERIC: [yes/no]
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
-    context_note = ""
-    if skip_deep:
-        context_note += "Note: User prefers lighter conversation - keep response supportive but not too deep."
-    if session_number > 1:
-        context_note += f" This is session {session_number} - build on previous conversations."
 
     guidance = f"""
 You are {current_bot}, a specialized mental health support bot.
 
 CORE PRINCIPLES:
 - Be **warm, empathetic, and comprehensive**
-- Provide **independent, complete support**
-- Use **natural flow** with appropriate emojis
-- NEVER include stage directions like (inhale) or (smiles)
-- Skip text in parentheses completely
+- Provide complete support without referring to other bots
+- Use natural conversation with 1–2 emojis
+- Offer practical, actionable help
+- Don't use (pauses), (leans in), or any stage directions
 
-FORMAT:
-- 3-5 sentences, natural tone
-- Bold using **only double asterisks**
-- 1-2 emojis max
-- Ask 1 thoughtful follow-up question unless user is overwhelmed
+RESPONSE FORMAT:
+- 3–5 sentences
+- Use **bold** with **double asterisks**
+- Ask one thoughtful follow-up question if energy feels stable
+- If user seems overwhelmed, comfort without asking more
 """
+
+    context_note = ""
+    if skip_deep:
+        context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep."
+    if session_number > 1:
+        context_note += f" This is session {session_number} - build on previous conversations."
 
     prompt = f"""{guidance}
 
 {filled_prompt}
 
-Recent messages:
+Current conversation context:
 {recent}
 
 User's message: "{user_msg}"
 
 {context_note}
 
-Respond in a self-contained, complete way:
+Provide a comprehensive, standalone response that addresses their needs completely:
 """
 
-    # ✅ Format cleaner
     def format_response_with_emojis(text):
+        import re
         text = re.sub(r'\([^)]*\)', '', text)
-        text = re.sub(r'\*\*["“”]?([^*"“”]+)["“”]?\*\*', r'**\1**', text)
-        text = re.sub(r'\*["“”]?([^*"“”]+)["“”]?\*', r'**\1**', text)
-        text = re.sub(r'["“”]?\*\*["“”]?', '', text)
+        text = re.sub(r'\*{2,}', '**', text)
+        text = re.sub(r'(?<!\*)\*(?!\*)', '**', text)
+        text = re.sub(r'\*{2,}\s*["“”]?', '**', text)
+        text = re.sub(r'["“”]?\s*\*{2,}', '**', text)
+        text = re.sub(r'([.,!?])(?=\w)', r'\1 ', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
-        text = re.sub(r'\s+([.,!?])', r'\1', text)
-        text = text.replace(" ,", ",").replace(" .", ".")
-        if text.endswith('**"') or text.endswith('**'):
-            text = text.rstrip('*"')
         return text.strip()
 
-    # 💬 Streaming output
     try:
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
@@ -686,39 +685,26 @@ Respond in a self-contained, complete way:
             stream=True
         )
 
-        yield "\n"  # Clean break after user input
-        buffer = ""
-        final_reply = ""
-
+        full_response = ""
         for chunk in response_stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                token = delta.content
-                buffer += token
-                final_reply += token
+                full_response += delta.content
+                yield delta.content
 
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 0:
-                    cleaned = format_response_with_emojis(buffer)
-                    if cleaned:
-                        yield cleaned + " "
-                    buffer = ""
+        final_reply = format_response_with_emojis(full_response)
 
-        # Final flush
-        if buffer.strip():
-            yield format_response_with_emojis(buffer)
-
-        # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
-            "sender": "User",
-            "message": user_msg,
+            "sender": "User", 
+            "message": user_msg, 
             "timestamp": now,
             "classified_topic": category,
             "confidence": confidence
         })
         ctx["history"].append({
-            "sender": current_bot,
-            "message": format_response_with_emojis(final_reply),
+            "sender": current_bot, 
+            "message": final_reply.strip(), 
             "timestamp": now,
             "session_number": session_number
         })
@@ -739,8 +725,7 @@ Respond in a self-contained, complete way:
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I’m having a little trouble right now. Let’s try again in a moment – I’m still here for you. 💙"
-
+        yield "I apologize, but I'm having trouble processing that right now. Let's try again – I'm here to support you. 💙"
 
         
 @app.route("/api/stream", methods=["GET"])
