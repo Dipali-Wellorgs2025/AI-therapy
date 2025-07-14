@@ -788,17 +788,13 @@ Respond in a self-contained, complete way:
     # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
         # Remove parentheses content
-        text = re.sub(r'\([^)]*\)', '', text)  # Remove (parenthesis content)
-
+           
+        text = re.sub(r'\([^)]*\)', '', text)
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text) # Fix bold formatting
         # Fix punctuation spacing
 
-
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        # Fix bold formatting
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         text = re.sub(r'([.,!?;:])(?=[^\s.,!?;:\n*])', r'\1 ', text)
-
-        text = re.sub(r'["""]?\*\*["""]?', '', text)
         
         # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
@@ -806,22 +802,13 @@ Respond in a self-contained, complete way:
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         
         # Fix spacing around punctuation - IMPROVED
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
-        
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
-        
-        # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
+        text = text.strip().rstrip('*"')
         
-        # Fix common spacing issues
-        text = text.replace(" ,", ",").replace(" .", ".")
-        text = text.replace(".,", ".").replace("!,", "!")
+
         
-        # Clean up trailing formatting
-        if text.endswith('**"') or text.endswith('**'):
-            text = text.rstrip('*"')
-        
-        return text.strip()
+
+        return text
 
     # 💬 IMPROVED Streaming output with better separation
     try:
