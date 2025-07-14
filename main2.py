@@ -526,113 +526,6 @@ Important Rules:
         base_prompt += f"\n\nRecent responses to avoid repeating:\n{last_5_responses}"
     
     return base_prompt
-
-def handle_message(data):
-    import re
-    from datetime import datetime, timezone
-
-    user_msg = data.get("message", "")
-    user_name = data.get("user_name", "User")
-    user_id = data.get("user_id", "unknown")
-    issue_description = data.get("issue_description", "")
-    preferred_style = data.get("preferred_style", "Balanced")
-    current_bot = data.get("botName")
-    session_id = f"{user_id}_{current_bot}"
-    
-    # Technical terms that should be escalated to developers
-    TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "ai training", "dataset", "parameters", "weights", "backpropagation",
-        "gradient descent", "optimization", "loss function", "epochs", "batch size",
-        "learning rate", "overfitting", "underfitting", "regularization",
-        "transformer", "attention mechanism", "fine-tuning", "pre-training",
-        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-        "deployment", "inference", "api", "endpoint", "latency", "throughput",
-        "scaling", "load balancing", "database", "server", "cloud", "docker",
-        "kubernetes", "microservices", "devops", "ci/cd", "version control",
-        "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"
-    ]
-    
-    # Check for technical terms
-    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
-        return
-
-    # Escalation check
-    if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
-        return
-
-    if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
-        return
-
-    # Context fetch
-    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-    session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
-
-    # Preferences
-    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
-
-    # Classification
-    def classify_topic_with_confidence(message):
-        try:
-            classification_prompt = f"""
-You are a mental health topic classifier. Analyze the message and determine:
-1. The primary topic category
-2. Confidence level (high/medium/low)
-3. Whether it's a generic greeting/small talk
-
-Categories:
-- anxiety
-- breakup
-- self-worth
-- trauma
-- family
-- crisis
-- general
-
-Message: "{message}"
-
-Respond in this format:
-CATEGORY: [category]
-CONFIDENCE: [high/medium/low]
-IS_GENERIC: [yes/no]
-"""
-            classification = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
-                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
-                    {"role": "user", "content": classification_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=100
-            )
-            response = classification.choices[0].message.content.strip()
-            category, confidence, is_generic = None, None, False
-            for line in response.split("\n"):
-                if line.startswith("CATEGORY:"):
-                    category = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("CONFIDENCE:"):
-                    confidence = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("IS_GENERIC:"):
-                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
-            return category, confidence, is_generic
-        except Exception as e:
-            print("Classification failed:", e)
-            return "general", "low", True
-
-    category, confidence, is_generic = classify_topic_with_confidence(user_msg)
-
-    # Routing logic
-    should_route = False
-    if category and category != "general" and category in TOPIC_TO_BOT:
-        correct_bot = TOPIC_TO_BOT[category]
-        if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
-            return
 def handle_message(data):
     import re
     from datetime import datetime, timezone
@@ -788,13 +681,17 @@ Respond in a self-contained, complete way:
     # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
         # Remove parentheses content
-           
-        text = re.sub(r'\([^)]*\)', '', text)
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text) # Fix bold formatting
+        text = re.sub(r'\([^)]*\)', '', text)  # Remove (parenthesis content)
+
         # Fix punctuation spacing
 
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])(?=[^\s.,!?;:\n*])', r'\1 ', text)
+
+
+        # Fix bold formatting
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+       
+
+        text = re.sub(r'["""]?\*\*["""]?', '', text)
         
         # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
@@ -802,13 +699,22 @@ Respond in a self-contained, complete way:
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         
         # Fix spacing around punctuation - IMPROVED
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
+        
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
+        
+        # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
-        text = text.strip().rstrip('*"')
         
-
+        # Fix common spacing issues
+        text = text.replace(" ,", ",").replace(" .", ".")
+        text = text.replace(".,", ".").replace("!,", "!")
         
-
-        return text
+        # Clean up trailing formatting
+        if text.endswith('**"') or text.endswith('**'):
+            text = text.rstrip('*"')
+        
+        return text.strip()
 
     # 💬 IMPROVED Streaming output with better separation
     try:
@@ -822,16 +728,13 @@ Respond in a self-contained, complete way:
             stream=True
         )
 
-        # Clear separation between user message and bot response
-        # yield "\n"  # Visual separator
-        yield "\n\n" 
-
-                
-        # yield f"**{current_bot}:**\n"  # ✅ Bot header
+        # Buffer for streaming and paragraph handling
         buffer = ""
         final_reply = ""
+        paragraphs = []
         first_token = True
 
+        # Stream and collect paragraphs
         for chunk in response_stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
@@ -844,21 +747,39 @@ Respond in a self-contained, complete way:
                     first_token = False
                     continue
 
-                # Stream at natural breaking points
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
+                # Detect paragraph breaks (double newline or end punctuation)
+                if buffer.endswith("\n\n") or (token in [".", "!", "?"] and len(buffer.strip()) > 40):
                     cleaned = format_response_with_emojis(buffer)
                     if cleaned:
-                        yield cleaned + " "
+                        paragraphs.append(cleaned.strip())
                     buffer = ""
 
         # Final flush for any remaining content
         if buffer.strip():
             cleaned = format_response_with_emojis(buffer)
             if cleaned:
-                yield cleaned
+                paragraphs.append(cleaned.strip())
+
+        # Ensure bold formatting and paragraph order
+        def fix_bold_and_order(paragraphs):
+            fixed = []
+            for p in paragraphs:
+                # Fix bold formatting: ensure only double asterisks
+                p = re.sub(r'\*{1,2}([A-Za-z0-9 ,.!?]+)\*{1,2}', r'**\1**', p)
+                # Remove accidental merging of user and bot text
+                p = re.sub(r'(User:|Bot:).*', '', p)
+                fixed.append(p.strip())
+            # Remove empty paragraphs
+            return [x for x in fixed if x]
+
+        ordered_paragraphs = fix_bold_and_order(paragraphs)
+
+        # Yield paragraphs in order, separated for UI
+        for para in ordered_paragraphs:
+            yield para + "\n"
 
         # Clean up the final reply for storage
-        final_reply_cleaned = format_response_with_emojis(final_reply)
+        final_reply_cleaned = "\n".join(ordered_paragraphs)
 
         # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
@@ -893,6 +814,8 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
+
         
 @app.route("/api/stream", methods=["GET"])
 def stream():
