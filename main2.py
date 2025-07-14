@@ -614,27 +614,23 @@ IS_GENERIC: [yes/no]
             return "general", "low", True
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
-    
+
     # 🤖 Smart routing logic
     should_route = False
     route_message = ""
-    
+
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
-        
-        # Only route if:
-        # 1. High confidence classification
-        # 2. Not generic/small talk
-        # 3. User hasn't explicitly requested to stay
-        # 4. Current bot is not the specialist for this topic
-        if (confidence == "high" and 
-            not is_generic and 
-            not wants_to_stay and 
-            correct_bot != current_bot):
+
+        if (
+            confidence == "high" and
+            not is_generic and
+            not wants_to_stay and
+            correct_bot != current_bot
+        ):
             should_route = True
             route_message = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
-    
-    # If routing is suggested, yield the message and return
+
     if should_route:
         yield route_message
         return
@@ -648,7 +644,6 @@ IS_GENERIC: [yes/no]
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
 
-    # 🧭 Improved therapy guidance
     guidance = f"""
 You are {current_bot}, a specialized mental health support bot.
 
@@ -663,7 +658,7 @@ CORE PRINCIPLES:
 
 RESPONSE FORMAT:
 - 3-5 sentences that feel friendly, natural and conversational
-- Use **bold** for emphasis with **double asterisks** (not single asterisks)
+- Use **bold** for emphasis with **double asterisks**
 - Include 1-2 relevant emojis naturally within the text
 - Ask ONE thoughtful follow-up question if appropriate
 - If user seems overwhelmed, focus on comfort without questions
@@ -671,7 +666,6 @@ RESPONSE FORMAT:
 SPECIALIZATION: Handle ALL aspects of the user's message within your expertise area.
 """
 
-    # 📝 Context-aware prompt
     context_note = ""
     if skip_deep:
         context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep."
@@ -692,69 +686,26 @@ User's message: "{user_msg}"
 Provide a comprehensive, standalone response that addresses their needs completely:
 """
 
-    def format_response_with_emojis(text):
-        """Clean and format response with proper emoji placement"""
-        # Remove parenthetical instructions/stage directions
-        text = re.sub(r'\([^)]*\)', '', text)
-        
-        # Clean up spacing and formatting
-        text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
-        text = re.sub(r"([.,!?])(?=\S)", r"\1 ", text)
-        text = re.sub(r"\s{2,}", " ", text)
-        
-        # Convert asterisks to proper bold formatting
-        text = re.sub(r'\*\*([^*]+)\*\*', r'**\1**', text)
-        text = re.sub(r'\*([^*]+)\*', r'**\1**', text)
-        
-        # Fix word merging issues
-        text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-        text = re.sub(r'([.!?])([A-Z])', r'\1 \2', text)
-        
-        # Ensure emojis have proper spacing
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋])'
-        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        
-        # Final cleanup
-        text = re.sub(r'\s{2,}', ' ', text)
-        return text.strip()
-
     try:
-        # 🧠 Generate comprehensive response
-        completion = client.chat.completions.create(
+        # 🚀 Stream response directly from deepseek-chat for lower latency
+        response_stream = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=400,
             presence_penalty=0.2,
-            frequency_penalty=0.3
+            frequency_penalty=0.3,
+            stream=True
         )
-        
-        full_response = completion.choices[0].message.content.strip()
-        final_reply = format_response_with_emojis(full_response)
 
-        # 💬 Stream in natural chunks with better word separation
-        words = final_reply.split()
-        chunk = []
-        chunk_size = 6  # Smaller chunks for smoother streaming
-        
-        for i, word in enumerate(words):
-            chunk.append(word)
-            
-            # Check for natural breaks (punctuation)
-            has_punctuation = any(word.endswith(punct) for punct in ['.', '!', '?', ',', ';'])
-            
-            if (len(chunk) >= chunk_size and has_punctuation) or len(chunk) >= chunk_size + 2:
-                chunk_text = " ".join(chunk)
-                # Add space after chunk for better separation
-                yield chunk_text + " "
-                chunk = []
-        
-        # Yield remaining words
-        if chunk:
-            yield " ".join(chunk)
+        final_reply = ""
+        for chunk in response_stream:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                final_reply += delta.content
+                yield delta.content
 
-        # 💾 Save to Firestore with improved metadata
+        # 💾 Save to Firestore after streaming completes
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
             "sender": "User", 
@@ -765,11 +716,11 @@ Provide a comprehensive, standalone response that addresses their needs complete
         })
         ctx["history"].append({
             "sender": current_bot, 
-            "message": final_reply, 
+            "message": final_reply.strip(), 
             "timestamp": now,
             "session_number": session_number
         })
-        
+
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -787,6 +738,7 @@ Provide a comprehensive, standalone response that addresses their needs complete
         import traceback
         traceback.print_exc()
         yield "I apologize, but I'm having trouble processing that right now. Let's try again - I'm here to support you. 💙"
+
         
 @app.route("/api/stream", methods=["GET"])
 def stream():
