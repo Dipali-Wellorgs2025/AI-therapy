@@ -684,41 +684,116 @@ Respond in a self-contained, complete way:
         # Remove parentheses content first
         text = re.sub(r'\([^)]*\)', '', text)
         
-        # Fix spacing issues FIRST - more comprehensive patterns
-        # Fix missing spaces after numbers followed by letters
-        text = re.sub(r'(\d+)([a-zA-Z])', r'\1 \2', text)
-        text = re.sub(r'(\d+)sessions', r'\1 sessions', text)
-        text = re.sub(r'(\d+)session', r'\1 session', text)
+        # Enhanced paragraph ordering fix
+        def fix_paragraph_order(content):
+            if not content:
+                return content
+                
+            # Split into paragraphs and clean them
+            paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+            
+            if len(paragraphs) <= 1:
+                return content
+            
+            # More comprehensive patterns for paragraphs that should come later
+            later_paragraph_patterns = [
+                r"Even in this quiet",
+                r"Even when things feel",
+                r"Even as we work",
+                r"I can feel the weight",
+                r"After yesterday's",
+                r"Since the user",
+                r"Given that",
+                r"Considering",
+                r"Building on our",
+                r"Following up on",
+                r"As we discussed",
+                r"Looking back on",
+                r"Reflecting on",
+                r"In our last conversation",
+                r"From what you've shared",
+                r"Based on our discussion"
+            ]
+            
+            # Patterns for paragraphs that should come first
+            first_paragraph_patterns = [
+                r"That makes complete sense",
+                r"I hear you",
+                r"It sounds like",
+                r"What you're describing",
+                r"Your feelings are",
+                r"That's a really",
+                r"I can understand",
+                r"It's completely normal",
+                r"Thank you for sharing",
+                r"I appreciate you"
+            ]
+            
+            # Find the paragraph that should be first
+            first_para_index = -1
+            later_para_index = -1
+            
+            for i, para in enumerate(paragraphs):
+                # Check if this paragraph should come first
+                if any(re.search(pattern, para, re.IGNORECASE) for pattern in first_paragraph_patterns):
+                    if first_para_index == -1:  # Take the first match
+                        first_para_index = i
+                
+                # Check if this paragraph should come later
+                if any(re.search(pattern, para, re.IGNORECASE) for pattern in later_paragraph_patterns):
+                    if later_para_index == -1:  # Take the first match
+                        later_para_index = i
+            
+            # If we found a paragraph that should be first but isn't first
+            if first_para_index > 0:
+                # Move it to the front
+                first_para = paragraphs.pop(first_para_index)
+                paragraphs.insert(0, first_para)
+            
+            # If we found a paragraph that should be later but is first
+            elif later_para_index == 0 and len(paragraphs) > 1:
+                # Move it to the end
+                later_para = paragraphs.pop(0)
+                paragraphs.append(later_para)
+            
+            return '\n\n'.join(paragraphs)
         
-        # Fix missing spaces around conjunctions and common words
-        text = re.sub(r'([.,!?;:])and([A-Z][a-z])', r'\1 and \2', text)
-        text = re.sub(r'([.,!?;:])that([A-Z][a-z])', r'\1 that \2', text)
-        text = re.sub(r'([.,!?;:])the([A-Z][a-z])', r'\1 the \2', text)
-        text = re.sub(r'([.,!?;:])this([A-Z][a-z])', r'\1 this \2', text)
-        text = re.sub(r'([.,!?;:])you([A-Z][a-z])', r'\1 you \2', text)
+        # Apply paragraph reordering first
+        text = fix_paragraph_order(text)
         
-        # Fix specific patterns like "andthat", "andthe", etc.
-        text = re.sub(r'and([A-Z][a-z])', r'and \1', text)
-        text = re.sub(r'that([A-Z][a-z])', r'that \1', text)
-        text = re.sub(r'the([A-Z][a-z])', r'the \1', text)
-        text = re.sub(r'with([A-Z][a-z])', r'with \1', text)
-        text = re.sub(r'for([A-Z][a-z])', r'for \1', text)
+        # Remove embedded user responses that appear at the start of bot messages
+        user_input_patterns = [
+            r'^[*]*yes[*]*[\s.,!?]*',
+            r'^[*]*no[*]*[\s.,!?]*',
+            r'^[*]*okay[*]*[\s.,!?]*',
+            r'^[*]*sure[*]*[\s.,!?]*',
+            r'^[*]*maybe[*]*[\s.,!?]*',
+            r'^[*]*alright[*]*[\s.,!?]*',
+            r'^[*]*got it[*]*[\s.,!?]*',
+            r'^[*]*i see[*]*[\s.,!?]*',
+            r'^[*]*understood[*]*[\s.,!?]*'
+        ]
         
-        # Fix spacing after punctuation followed by lowercase letters
-        text = re.sub(r'([.,!?;:])([a-z])', r'\1 \2', text)
+        # Remove user input echoes from the beginning
+        for pattern in user_input_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
         
-        # Now handle bold formatting - COMPLETELY REMOVE asterisks and convert to HTML
+        # Remove any leading punctuation or spaces left after removing user input
+        text = re.sub(r'^[.,!?\s]+', '', text)
+        
+        # Handle bold formatting - KEEP **text** format for frontend processing
         # First clean up malformed asterisks
         text = re.sub(r'\*{3,}', '**', text)  # Triple+ asterisks to double
         
-        # Convert **text** to <strong>text</strong> and REMOVE the asterisks completely
-        text = re.sub(r'\*\*([^*]+?)\*\*', r'<strong>\1</strong>', text)
+        # Ensure proper **text** formatting (DON'T convert to HTML)
+        # Fix malformed bold patterns
+        text = re.sub(r'\*\*([^*]+?)\*\*', r'**\1**', text)
         
-        # Handle single asterisks that should be bold (convert and remove asterisks)
-        text = re.sub(r'(?<!\*)\*([^*\s][^*]*?[^*\s])\*(?!\*)', r'<strong>\1</strong>', text)
+        # Convert single asterisks to double asterisks for consistency
+        text = re.sub(r'(?<!\*)\*([^*\s][^*]*?[^*\s])\*(?!\*)', r'**\1**', text)
         
-        # Remove any remaining standalone asterisks that weren't part of bold formatting
-        text = re.sub(r'(?<!\w)\*+(?!\w)', '', text)
+        # Clean up any triple or more asterisks
+        text = re.sub(r'\*{3,}([^*]+?)\*{3,}', r'**\1**', text)
         
         # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧💔🍀])'
@@ -732,9 +807,9 @@ Respond in a self-contained, complete way:
         text = text.replace(" ,", ",").replace(" .", ".")
         text = text.replace(".,", ".").replace("!,", "!")
         
-        # Fix spacing around HTML tags
-        text = re.sub(r'<strong>\s+', '<strong>', text)
-        text = re.sub(r'\s+</strong>', '</strong>', text)
+        # Fix spacing around asterisks (but keep the asterisks)
+        text = re.sub(r'\*\*\s+', '**', text)
+        text = re.sub(r'\s+\*\*', '**', text)
         
         return text.strip()
 
@@ -841,6 +916,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+        
 @app.route("/api/stream", methods=["GET"])
 def stream():
     """Streaming endpoint for real-time conversation"""
