@@ -728,7 +728,7 @@ Respond in a self-contained, complete way:
         # Clear separation between user message and bot response
         yield "\n---\n"  # Visual separator
                 
-        yield f"**{current_bot}:**\n"  # ✅ Bot header
+        # yield f"**{current_bot}:**\n"  # ✅ Bot header
         buffer = ""
         final_reply = ""
         first_token = True
