@@ -836,7 +836,9 @@ Respond in a self-contained, complete way:
         )
 
         # Clear separation between user message and bot response
-        yield "\n"  # Visual separator
+        # yield "\n"  # Visual separator
+        yield f"\n\n**{current_bot}:**\n\n"
+
                 
         # yield f"**{current_bot}:**\n"  # ✅ Bot header
         buffer = ""
