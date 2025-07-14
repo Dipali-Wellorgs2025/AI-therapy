@@ -3,7 +3,7 @@ import firebase_admin
 import uuid
 import traceback
 from firebase_admin import credentials, firestore
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone 
 import threading
 import time
 from uuid import uuid4
@@ -662,7 +662,8 @@ CORE PRINCIPLES:
 - Skip any text in parentheses completely
 
 RESPONSE FORMAT:
-- 3-5 sentences that feel natural and conversational
+- 3-5 sentences that feel friendly, natural and conversational
+- Do not use inverted commas before *italic* ,**bold**, ***emphasis***
 - Use **bold** for emphasis with **double asterisks** (not single asterisks)
 - Include 1-2 relevant emojis naturally within the text
 - Ask ONE thoughtful follow-up question if appropriate
