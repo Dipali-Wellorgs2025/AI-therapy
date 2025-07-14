@@ -1122,6 +1122,10 @@ def get_recent_sessions():
 def home():
     return "Therapy Bot Server is running ✅"
 
+from flask import request, jsonify
+from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
     try:
@@ -1131,20 +1135,22 @@ def get_last_active_session():
 
         db = firestore.client()
 
+        # Include 'general' if bot_id uses it (as seen in your screenshot)
         bots = {
             "anxiety": "Sage",
             "breakup": "Jordan",
             "self-worth": "River",
             "trauma": "Phoenix",
             "family": "Ava",
-            "crisis": "Raya"
+            "crisis": "Raya",
+            "general": "Ava"  # 👈 added for compatibility
         }
 
         for bot_id, bot_name in bots.items():
             session_ref = db.collection("sessions") \
-                .where("user_id", "==", user_id) \
-                .where("bot_id", "==", bot_id) \
-                .where("is_active", "==", True) \
+                .where(filter=FieldFilter("user_id", "==", user_id)) \
+                .where(filter=FieldFilter("bot_id", "==", bot_id)) \
+                .where(filter=FieldFilter("is_active", "==", True)) \
                 .order_by("last_updated", direction=firestore.Query.DESCENDING) \
                 .limit(1)
 
@@ -1165,7 +1171,7 @@ def get_last_active_session():
                 summary_text = "Session started, but no messages yet."
             else:
                 short_transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in messages)
-                summary_prompt = f"""Summarize the following therapy session in one clear, empathetic line. Avoid quotes.
+                summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
 
 {short_transcript}
 
