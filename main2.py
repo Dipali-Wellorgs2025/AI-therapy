@@ -553,7 +553,7 @@ def handle_message(data):
         "git", "repository", "bug", "debug", "code", "programming", "python",
         "javascript", "html", "css", "framework", "library", "package"
     ]
-
+    
     # Check for technical terms
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
         yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
@@ -684,15 +684,13 @@ Respond in a self-contained, complete way:
         # Remove parentheses content
         text = re.sub(r'\([^)]*\)', '', text)  # Remove (parenthesis content)
 
-        # Fix punctuation spacing
-
-
-
-        # Fix bold formatting
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-       
-
-        text = re.sub(r'["""]?\*\*["""]?', '', text)
+        # Fix bold formatting - preserve **text** properly
+        text = re.sub(r'\*{3,}([^*]+)\*{3,}', r'**\1**', text)  # Fix triple+ asterisks
+        text = re.sub(r'(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)', r'**\1**', text)  # Single * to **
+        
+        # Clean up malformed bold formatting
+        text = re.sub(r'\*{2,}(["""]?)(.*?)\1\*{2,}', r'**\2**', text)
+        text = re.sub(r'["""]?\*\*["""]?', '**', text)
         
         # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
@@ -700,9 +698,12 @@ Respond in a self-contained, complete way:
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         
         # Fix spacing around punctuation - IMPROVED
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
-        
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
+        # Remove extra spaces before punctuation
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        # Ensure space after punctuation if followed by a letter/word
+        text = re.sub(r'([.,!?;:])([a-zA-Z])', r'\1 \2', text)
+        # Ensure space after punctuation if followed by uppercase letter (sentence start)
+        text = re.sub(r'([.!?])([A-Z])', r'\1 \2', text)
         
         # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
@@ -732,33 +733,43 @@ Respond in a self-contained, complete way:
         # Clear separation between user message and bot response
         yield "\n"  # Visual separator
                 
-        # yield f"**{current_bot}:**\n"  # ✅ Bot header
         buffer = ""
         final_reply = ""
-        first_token = True
-
+        word_buffer = ""
+        
         for chunk in response_stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 token = delta.content
-                buffer += token
                 final_reply += token
+                word_buffer += token
 
-                # For the first token, yield immediately to start the response
-                if first_token:
-                    first_token = False
-                    continue
-
-                # Stream at natural breaking points
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
+                # Stream at natural breaking points with better punctuation handling
+                if token in [".", "!", "?"]:
+                    # Complete sentence - add space and yield
+                    buffer += word_buffer + " "
                     cleaned = format_response_with_emojis(buffer)
                     if cleaned:
-                        yield cleaned + " "
+                        yield cleaned
                     buffer = ""
+                    word_buffer = ""
+                elif token in [",", ";"]:
+                    # Pause punctuation - add space and continue buffering
+                    buffer += word_buffer + " "
+                    word_buffer = ""
+                elif token == " " and len(buffer + word_buffer) > 15:
+                    # Natural word break - yield accumulated content
+                    buffer += word_buffer + " "
+                    cleaned = format_response_with_emojis(buffer)
+                    if cleaned:
+                        yield cleaned
+                    buffer = ""
+                    word_buffer = ""
 
         # Final flush for any remaining content
-        if buffer.strip():
-            cleaned = format_response_with_emojis(buffer)
+        if buffer or word_buffer:
+            remaining = buffer + word_buffer
+            cleaned = format_response_with_emojis(remaining)
             if cleaned:
                 yield cleaned
 
