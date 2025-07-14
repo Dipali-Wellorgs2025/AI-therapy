@@ -682,7 +682,10 @@ Respond in a self-contained, complete way:
     def format_response_with_emojis(text):
         # Remove parentheses content
         text = re.sub(r'\([^)]*\)', '', text)
-        
+        # Fix punctuation spacing
+
+
+
         # Fix bold formatting
         text = re.sub(r'\*\*["""]?([^*"""]+)["""]?\*\*', r'**\1**', text)
         text = re.sub(r'\*["""]?([^*"""]+)["""]?\*', r'**\1**', text)
@@ -694,8 +697,8 @@ Respond in a self-contained, complete way:
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         
         # Fix spacing around punctuation - IMPROVED
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove spaces before punctuation
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
+        text = re.sub(r'([.,!?;:])(?=[^\s.,!?;:])', r'\1 ', text)  # Add space *after* punctuation if needed
         
         # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
@@ -724,7 +727,8 @@ Respond in a self-contained, complete way:
 
         # Clear separation between user message and bot response
         yield "\n---\n"  # Visual separator
-        
+                
+        yield f"**{current_bot}:**\n"  # ✅ Bot header
         buffer = ""
         final_reply = ""
         first_token = True
