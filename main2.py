@@ -681,29 +681,49 @@ Respond in a self-contained, complete way:
 
     # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
-        # Remove parentheses content
-        text = re.sub(r'\([^)]*\)', '', text)  # Remove (parenthesis content)
-
-        # Fix bold formatting - preserve **text** properly
-        text = re.sub(r'\*{3,}([^*]+)\*{3,}', r'**\1**', text)  # Fix triple+ asterisks
-        text = re.sub(r'(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)', r'**\1**', text)  # Single * to **
+        # Remove parentheses content first
+        text = re.sub(r'\([^)]*\)', '', text)
         
-        # Clean up malformed bold formatting
-        text = re.sub(r'\*{2,}(["""]?)(.*?)\1\*{2,}', r'**\2**', text)
-        text = re.sub(r'["""]?\*\*["""]?', '**', text)
+        # Fix spacing issues FIRST - more comprehensive patterns
+        # Fix missing spaces after numbers followed by letters
+        text = re.sub(r'(\d+)([a-zA-Z])', r'\1 \2', text)
+        text = re.sub(r'(\d+)sessions', r'\1 sessions', text)
+        text = re.sub(r'(\d+)session', r'\1 session', text)
+        
+        # Fix missing spaces around conjunctions and common words
+        text = re.sub(r'([.,!?;:])and([A-Z][a-z])', r'\1 and \2', text)
+        text = re.sub(r'([.,!?;:])that([A-Z][a-z])', r'\1 that \2', text)
+        text = re.sub(r'([.,!?;:])the([A-Z][a-z])', r'\1 the \2', text)
+        text = re.sub(r'([.,!?;:])this([A-Z][a-z])', r'\1 this \2', text)
+        text = re.sub(r'([.,!?;:])you([A-Z][a-z])', r'\1 you \2', text)
+        
+        # Fix specific patterns like "andthat", "andthe", etc.
+        text = re.sub(r'and([A-Z][a-z])', r'and \1', text)
+        text = re.sub(r'that([A-Z][a-z])', r'that \1', text)
+        text = re.sub(r'the([A-Z][a-z])', r'the \1', text)
+        text = re.sub(r'with([A-Z][a-z])', r'with \1', text)
+        text = re.sub(r'for([A-Z][a-z])', r'for \1', text)
+        
+        # Fix spacing after punctuation followed by lowercase letters
+        text = re.sub(r'([.,!?;:])([a-z])', r'\1 \2', text)
+        
+        # Now handle bold formatting - COMPLETELY REMOVE asterisks and convert to HTML
+        # First clean up malformed asterisks
+        text = re.sub(r'\*{3,}', '**', text)  # Triple+ asterisks to double
+        
+        # Convert **text** to <strong>text</strong> and REMOVE the asterisks completely
+        text = re.sub(r'\*\*([^*]+?)\*\*', r'<strong>\1</strong>', text)
+        
+        # Handle single asterisks that should be bold (convert and remove asterisks)
+        text = re.sub(r'(?<!\*)\*([^*\s][^*]*?[^*\s])\*(?!\*)', r'<strong>\1</strong>', text)
+        
+        # Remove any remaining standalone asterisks that weren't part of bold formatting
+        text = re.sub(r'(?<!\w)\*+(?!\w)', '', text)
         
         # Ensure proper spacing around emojis
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧💔🍀])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        
-        # Fix spacing around punctuation - IMPROVED
-        # Remove extra spaces before punctuation
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        # Ensure space after punctuation if followed by a letter/word
-        text = re.sub(r'([.,!?;:])([a-zA-Z])', r'\1 \2', text)
-        # Ensure space after punctuation if followed by uppercase letter (sentence start)
-        text = re.sub(r'([.!?])([A-Z])', r'\1 \2', text)
         
         # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
@@ -712,13 +732,13 @@ Respond in a self-contained, complete way:
         text = text.replace(" ,", ",").replace(" .", ".")
         text = text.replace(".,", ".").replace("!,", "!")
         
-        # Clean up trailing formatting
-        if text.endswith('**"') or text.endswith('**'):
-            text = text.rstrip('*"')
+        # Fix spacing around HTML tags
+        text = re.sub(r'<strong>\s+', '<strong>', text)
+        text = re.sub(r'\s+</strong>', '</strong>', text)
         
         return text.strip()
 
-    # 💬 IMPROVED Streaming output with better separation
+    # 💬 IMPROVED Streaming output with better separation and message ordering
     try:
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
@@ -736,6 +756,7 @@ Respond in a self-contained, complete way:
         buffer = ""
         final_reply = ""
         word_buffer = ""
+        sentence_buffer = ""  # NEW: Buffer for complete sentences
         
         for chunk in response_stream:
             delta = chunk.choices[0].delta
@@ -746,35 +767,46 @@ Respond in a self-contained, complete way:
 
                 # Stream at natural breaking points with better punctuation handling
                 if token in [".", "!", "?"]:
-                    # Complete sentence - add space and yield
-                    buffer += word_buffer + " "
-                    cleaned = format_response_with_emojis(buffer)
-                    if cleaned:
-                        yield cleaned
-                    buffer = ""
+                    # Complete sentence - add to sentence buffer
+                    sentence_buffer += word_buffer
+                    
+                    # Only yield complete, properly formatted sentences
+                    if len(sentence_buffer.strip()) > 10:  # Avoid tiny fragments
+                        cleaned = format_response_with_emojis(sentence_buffer)
+                        if cleaned and not cleaned.startswith('('):  # Avoid parenthetical content
+                            yield cleaned + " "
+                    
+                    sentence_buffer = ""
                     word_buffer = ""
+                    
                 elif token in [",", ";"]:
-                    # Pause punctuation - add space and continue buffering
-                    buffer += word_buffer + " "
+                    # Pause punctuation - continue building sentence
+                    sentence_buffer += word_buffer
                     word_buffer = ""
-                elif token == " " and len(buffer + word_buffer) > 15:
-                    # Natural word break - yield accumulated content
-                    buffer += word_buffer + " "
-                    cleaned = format_response_with_emojis(buffer)
-                    if cleaned:
+                    
+                elif token == " " and len(sentence_buffer + word_buffer) > 50:
+                    # Long sentence - yield partial content to avoid delays
+                    sentence_buffer += word_buffer + " "
+                    cleaned = format_response_with_emojis(sentence_buffer)
+                    if cleaned and not cleaned.startswith('('):
                         yield cleaned
-                    buffer = ""
+                    sentence_buffer = ""
                     word_buffer = ""
 
-        # Final flush for any remaining content
-        if buffer or word_buffer:
-            remaining = buffer + word_buffer
-            cleaned = format_response_with_emojis(remaining)
-            if cleaned:
+        # Final flush for any remaining content - FIXED ORDER
+        remaining_content = sentence_buffer + word_buffer
+        if remaining_content.strip():
+            cleaned = format_response_with_emojis(remaining_content)
+            if cleaned and not cleaned.startswith('('):
                 yield cleaned
 
-        # Clean up the final reply for storage
+        # Clean up the final reply for storage - ENSURE PROPER FORMATTING
         final_reply_cleaned = format_response_with_emojis(final_reply)
+        
+        # Remove any developer notes or stage directions from final storage
+        final_reply_cleaned = re.sub(r'\(Since.*?\)', '', final_reply_cleaned)
+        final_reply_cleaned = re.sub(r'\([^)]*developer.*?\)', '', final_reply_cleaned, flags=re.IGNORECASE)
+        final_reply_cleaned = final_reply_cleaned.strip()
 
         # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
