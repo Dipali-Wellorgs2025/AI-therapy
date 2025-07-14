@@ -1108,11 +1108,11 @@ def handle_message(data):
 
     # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this."
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this. 💙"
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly."
+        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
     # ⚙️ Get context
@@ -1121,119 +1121,208 @@ def handle_message(data):
 
     # 👂 Detect user preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don’t switch|stay with)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # 🔍 Classify topic
-    try:
-        classification_prompt = f"""
-You are a classifier. Based on the user's message, return one label from the following:
+    # 🔍 Improved topic classification with confidence scoring
+    def classify_topic_with_confidence(message):
+        try:
+            classification_prompt = f"""
+You are a mental health topic classifier. Analyze the message and determine:
+1. The primary topic category
+2. Confidence level (high/medium/low)
+3. Whether it's a generic greeting/small talk
 
 Categories:
-- anxiety
-- breakup
-- self-worth
-- trauma
-- family
-- crisis
-- none
+- anxiety: worry, stress, nervousness, panic, fear
+- breakup: relationship ending, heartbreak, dating issues, romantic loss
+- self-worth: self-esteem, confidence, self-image, identity issues
+- trauma: past experiences, PTSD, abuse, difficult memories
+- family: parent issues, sibling problems, family conflict
+- crisis: immediate danger, self-harm, suicidal thoughts
+- general: greetings, small talk, generic mental health questions
 
-Message: \"{user_msg}\"
+Message: "{message}"
 
-Respond only with one category from the list. Do not explain.
+Respond in this exact format:
+CATEGORY: [category]
+CONFIDENCE: [high/medium/low]
+IS_GENERIC: [yes/no]
 """
-        classification = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": "Strict one-word classification only."},
-                {"role": "user", "content": classification_prompt}
-            ],
-            temperature=0.0
-        )
-        category = classification.choices[0].message.content.strip().lower()
-        if category == "none":
-            category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
-        if category not in TOPIC_TO_BOT:
-            yield "This feels like something outside what I can best support. Want to switch to a specialist bot?"
-            return
+            
+            classification = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+                    {"role": "user", "content": classification_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=100
+            )
+            
+            response = classification.choices[0].message.content.strip()
+            
+            # Parse response
+            lines = response.split('\n')
+            category = None
+            confidence = None
+            is_generic = False
+            
+            for line in lines:
+                if line.startswith('CATEGORY:'):
+                    category = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('CONFIDENCE:'):
+                    confidence = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('IS_GENERIC:'):
+                    is_generic = line.split(':', 1)[1].strip().lower() == 'yes'
+            
+            return category, confidence, is_generic
+            
+        except Exception as e:
+            print("Classification failed:", e)
+            return "general", "low", True
 
+    category, confidence, is_generic = classify_topic_with_confidence(user_msg)
+    
+    # 🤖 Smart routing logic
+    should_route = False
+    route_message = ""
+    
+    if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
-        if correct_bot != current_bot and not wants_to_stay:
-            yield f"This feels like a **{category}** issue. I recommend switching to **{correct_bot}**, who specializes in this."
-            return
-    except Exception as e:
-        print("Classification failed:", e)
+        
+        # Only route if:
+        # 1. High confidence classification
+        # 2. Not generic/small talk
+        # 3. User hasn't explicitly requested to stay
+        # 4. Current bot is not the specialist for this topic
+        if (confidence == "high" and 
+            not is_generic and 
+            not wants_to_stay and 
+            correct_bot != current_bot):
+            should_route = True
+            route_message = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+    
+    # If routing is suggested, yield the message and return
+    if should_route:
+        yield route_message
+        return
 
-    # 🧱 Prompt construction
+    # 🧱 Enhanced prompt construction
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-5:]) if ctx["history"] else ""
+    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
 
-    # 🧭 Therapy guidance
-    guidance = """
-You are a warm, supportive mental health guide.
-Your reply must:
-- Be **natural, warm, and brief** (2–3 lines)
-- Use **bold** formatting using **double asterisks**
-- Ask **at most one open-ended question**
-- Skip any instructions or actions in parentheses
-- Avoid repeating user words
-- Gently reflect if user is vulnerable
-- Use emojis where helpful (🌱💛✨🧘‍♀️)
-- Do not greet in every reply
-- If the user seems overwhelmed, **don’t ask any question**
+    # 🧭 Improved therapy guidance
+    guidance = f"""
+You are {current_bot}, a specialized mental health support bot.
+
+CORE PRINCIPLES:
+- Be **warm, empathetic, and comprehensive** in your response
+- Provide **independent, complete support** without referring to other bots
+- Use **natural conversation flow** with appropriate emojis
+- Give **practical, actionable advice** specific to your expertise
+- Be **self-contained** - don't assume other bots will handle parts of the issue
+
+RESPONSE FORMAT:
+- 3-5 sentences that feel natural and conversational
+- Use **bold** for emphasis with **double asterisks**
+- Include 1-2 relevant emojis naturally within the text
+- Ask ONE thoughtful follow-up question if appropriate
+- If user seems overwhelmed, focus on comfort without questions
+
+SPECIALIZATION: Handle ALL aspects of the user's message within your expertise area.
 """
+
+    # 📝 Context-aware prompt
+    context_note = ""
+    if skip_deep:
+        context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep."
+    if session_number > 1:
+        context_note += f" This is session {session_number} - build on previous conversations."
 
     prompt = f"""{guidance}
 
 {filled_prompt}
 
-User: "{user_msg}"
-{"Note: User prefers light conversation — avoid going deep." if skip_deep else ""}
-
-Recent messages:
+Current conversation context:
 {recent}
 
-Reply:
+User's message: "{user_msg}"
+
+{context_note}
+
+Provide a comprehensive, standalone response that addresses their needs completely:
 """
 
-    def clean_response(text):
+    def format_response_with_emojis(text):
+        """Clean and format response with proper emoji placement"""
+        # Clean up spacing and formatting
         text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
         text = re.sub(r"([.,!?])(?=\S)", r"\1 ", text)
         text = re.sub(r"\s{2,}", " ", text)
-        return text.strip()
+        text = text.strip()
+        
+        # Ensure emojis have proper spacing
+        text = re.sub(r"([^\s])([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈])", r"\1 \2", text)
+        text = re.sub(r"([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈])([^\s])", r"\1 \2", text)
+        
+        return text
 
     try:
-        # 🧠 Generate full response first
+        # 🧠 Generate comprehensive response
         completion = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.65,
-            max_tokens=350,
-            presence_penalty=0.3,
-            frequency_penalty=0.4
+            temperature=0.7,
+            max_tokens=400,
+            presence_penalty=0.2,
+            frequency_penalty=0.3
         )
+        
         full_response = completion.choices[0].message.content.strip()
-        final_reply = clean_response(full_response)
+        final_reply = format_response_with_emojis(full_response)
 
-        # 💬 Stream in 8-word chunks
+        # 💬 Stream in natural chunks (6-8 words for better flow)
         words = final_reply.split()
         chunk = []
+        chunk_size = 7  # Optimal for natural reading
+        
         for word in words:
             chunk.append(word)
-            if len(chunk) == 8:
-                yield " ".join(chunk) + " "
-                chunk = []
+            if len(chunk) >= chunk_size:
+                # Look for natural break points
+                chunk_text = " ".join(chunk)
+                if any(chunk_text.endswith(punct) for punct in ['.', '!', '?', ',']):
+                    yield chunk_text + " "
+                    chunk = []
+                elif len(chunk) >= chunk_size + 2:  # Force break if too long
+                    yield chunk_text + " "
+                    chunk = []
+        
+        # Yield remaining words
         if chunk:
-            yield " ".join(chunk) + " "
+            yield " ".join(chunk)
 
-        # 💾 Save to Firestore
+        # 💾 Save to Firestore with improved metadata
         now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": current_bot, "message": final_reply, "timestamp": now})
+        ctx["history"].append({
+            "sender": "User", 
+            "message": user_msg, 
+            "timestamp": now,
+            "classified_topic": category,
+            "confidence": confidence
+        })
+        ctx["history"].append({
+            "sender": current_bot, 
+            "message": final_reply, 
+            "timestamp": now,
+            "session_number": session_number
+        })
+        
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -1243,14 +1332,14 @@ Reply:
             "issue_description": issue_description,
             "preferred_style": preferred_style,
             "session_number": session_number,
-            "is_active": True
+            "is_active": True,
+            "last_topic_confidence": confidence
         }, merge=True)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "Sorry — something went wrong mid-reply. Can we try again?"
-
+        yield "I apologize, but I'm having trouble processing that right now. Let's try again - I'm here to support you. 💙"
 @app.route("/api/stream", methods=["GET"])
 def stream():
     """Streaming endpoint for real-time conversation"""
