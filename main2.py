@@ -555,7 +555,7 @@ def handle_message(data):
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # 🔍 Improved topic classification with confidence scoring
+    # 🔍 Topic classification
     def classify_topic_with_confidence(message):
         try:
             classification_prompt = f"""
@@ -580,7 +580,6 @@ CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
-            
             classification = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
@@ -590,15 +589,9 @@ IS_GENERIC: [yes/no]
                 temperature=0.1,
                 max_tokens=100
             )
-            
             response = classification.choices[0].message.content.strip()
-            
-            # Parse response
             lines = response.split('\n')
-            category = None
-            confidence = None
-            is_generic = False
-            
+            category, confidence, is_generic = None, None, False
             for line in lines:
                 if line.startswith('CATEGORY:'):
                     category = line.split(':', 1)[1].strip().lower()
@@ -606,9 +599,7 @@ IS_GENERIC: [yes/no]
                     confidence = line.split(':', 1)[1].strip().lower()
                 elif line.startswith('IS_GENERIC:'):
                     is_generic = line.split(':', 1)[1].strip().lower() == 'yes'
-            
             return category, confidence, is_generic
-            
         except Exception as e:
             print("Classification failed:", e)
             return "general", "low", True
@@ -621,7 +612,6 @@ IS_GENERIC: [yes/no]
 
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
-
         if (
             confidence == "high" and
             not is_generic and
@@ -635,7 +625,7 @@ IS_GENERIC: [yes/no]
         yield route_message
         return
 
-    # 🧱 Enhanced prompt construction
+    # 🧱 Prompt construction
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
@@ -686,8 +676,8 @@ User's message: "{user_msg}"
 Provide a comprehensive, standalone response that addresses their needs completely:
 """
 
+    # ✅ Stream with spacing fix
     try:
-        # 🚀 Stream response directly from deepseek-chat for lower latency
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
@@ -699,24 +689,34 @@ Provide a comprehensive, standalone response that addresses their needs complete
         )
 
         final_reply = ""
+        buffer = ""
+
         for chunk in response_stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                final_reply += delta.content
-                yield delta.content
+                text = delta.content
+                final_reply += text
+                buffer += text
 
-        # 💾 Save to Firestore after streaming completes
+                if any(buffer.endswith(p) for p in [' ', '.', '?', '!', ',', '\n']):
+                    yield buffer
+                    buffer = ""
+
+        if buffer.strip():
+            yield buffer
+
+        # 💾 Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
-            "sender": "User", 
-            "message": user_msg, 
+            "sender": "User",
+            "message": user_msg,
             "timestamp": now,
             "classified_topic": category,
             "confidence": confidence
         })
         ctx["history"].append({
-            "sender": current_bot, 
-            "message": final_reply.strip(), 
+            "sender": current_bot,
+            "message": final_reply.strip(),
             "timestamp": now,
             "session_number": session_number
         })
@@ -738,6 +738,7 @@ Provide a comprehensive, standalone response that addresses their needs complete
         import traceback
         traceback.print_exc()
         yield "I apologize, but I'm having trouble processing that right now. Let's try again - I'm here to support you. 💙"
+
 
         
 @app.route("/api/stream", methods=["GET"])
