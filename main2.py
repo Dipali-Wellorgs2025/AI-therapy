@@ -659,31 +659,30 @@ Respond in a self-contained, complete way:
 """
 
     def format_response_with_emojis(text):
-    # Remove stage directions
         text = re.sub(r'\([^)]*\)', '', text)
 
-        # Fix bold formatting: single * → **, misplaced quotes around **
-        text = re.sub(r'\*\*["“”]?([^*"“”]+)["“”]?\*\*', r'**\1**', text)
+        # Convert *bold* or “*bold*” to **bold**
         text = re.sub(r'\*["“”]?([^*"“”]+)["“”]?\*', r'**\1**', text)
-        text = re.sub(r'["“”]?\*\*["“”]?', '', text)
 
-        # Add space after punctuation if missing
-        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)  # "Hello!How" → "Hello! How"
+        # KEEP double asterisks - don't strip them
 
-        # Ensure emoji has space before and after
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭])'
+        # Space after punctuation
+        text = re.sub(r'([.,!?])(?=\S)', r'\1 ', text)
+
+        # Emoji spacing
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭💧🌿])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
 
-        # Fix double or trailing spaces
+        # Trailing quote cleanup
+        text = re.sub(r'["“”]+$', '', text)
+        text = re.sub(r'\*+$', '', text)
+
+        # Extra spaces
         text = re.sub(r'\s{2,}', ' ', text)
-        text = text.strip()
 
-        # Clean trailing broken stars like **"
-        if text.endswith('**"') or text.endswith('**'):
-            text = text.rstrip('*"')
+        return text.strip()
 
-        return text
 
     # 💬 Streaming output
     try:
