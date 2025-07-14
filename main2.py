@@ -793,12 +793,12 @@ Respond in a self-contained, complete way:
         # Fix punctuation spacing
 
 
-
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         # Fix bold formatting
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-       
+        # text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        text = re.sub(r'([.,!?;:])(?=[^\s.,!?;:\n*])', r'\1 ', text)
 
-        text = re.sub(r'["""]?\*\*["""]?', '', text)
+        # text = re.sub(r'["""]?\*\*["""]?', '', text)
         
         # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
