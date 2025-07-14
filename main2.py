@@ -1141,35 +1141,33 @@ def get_last_active_session():
         }
 
         for bot_id, bot_name in bots.items():
-            query = db.collection("sessions") \
-                .where(filter=FieldFilter("user_id", "==", user_id)) \
-                .where(filter=FieldFilter("bot_id", "==", bot_id)) \
-                .where(filter=FieldFilter("is_active", "==", True)) \
+            session_ref = db.collection("sessions") \
+                .where("user_id", "==", user_id) \
+                .where("bot_id", "==", bot_id) \
+                .where("is_active", "==", True) \
                 .order_by("last_updated", direction=firestore.Query.DESCENDING) \
                 .limit(1)
 
-            docs = list(query.stream())
+            docs = list(session_ref.stream())
             if not docs:
                 continue
 
             doc = docs[0]
             session_data = doc.to_dict()
 
-            # Fetch bot visuals
+            # 🔍 Bot visuals
             bot_doc = db.collection("ai_therapists").document(bot_id).get()
             bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-            # Extract recent messages
+            # 🧾 Summary from recent messages
             messages = session_data.get("messages", [])[:5]
             if not messages:
                 summary_text = "Session started, but no messages yet."
             else:
-                transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in messages)
+                short_transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in messages)
+                summary_prompt = f"""Summarize the following therapy session in one clear, empathetic line. Avoid quotes.
 
-                # One-line summary prompt
-                summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
-
-{transcript}
+{short_transcript}
 
 One-line summary:"""
 
@@ -1185,7 +1183,7 @@ One-line summary:"""
                     print("⚠️ Summary generation failed:", e)
                     summary_text = "Summary unavailable."
 
-            # Final response
+            # ✅ Final single-session response
             return jsonify({
                 "session_id": doc.id,
                 "bot_id": bot_id,
@@ -1208,6 +1206,7 @@ One-line summary:"""
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 
 
 # ================= JOURNAL APIs =================
