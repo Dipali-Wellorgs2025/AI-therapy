@@ -714,6 +714,13 @@ Respond in a self-contained, complete way:
         if text.endswith('**"') or text.endswith('**'):
             text = text.rstrip('*"')
         
+        # Fallback: Bold the first sentence if no bold exists
+        if '**' not in text:
+            match = re.search(r'^(.*?[.!?])', text)
+            if match:
+                first_sentence = match.group(1)
+                if not first_sentence.strip().startswith('**'):
+                    text = text.replace(first_sentence, f'**{first_sentence.strip()}**', 1)
         return text.strip()
 
     # 💬 IMPROVED Streaming output with better separation
@@ -734,25 +741,16 @@ Respond in a self-contained, complete way:
         paragraphs = []
         first_token = True
 
-        # Stream and collect paragraphs
+
+        # Stream and yield each chunk immediately for real-time feedback
         for chunk in response_stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 token = delta.content
                 buffer += token
                 final_reply += token
-
-                # For the first token, yield immediately to start the response
-                if first_token:
-                    first_token = False
-                    continue
-
-                # Detect paragraph breaks (double newline or end punctuation)
-                if buffer.endswith("\n\n") or (token in [".", "!", "?"] and len(buffer.strip()) > 40):
-                    cleaned = format_response_with_emojis(buffer)
-                    if cleaned:
-                        paragraphs.append(cleaned.strip())
-                    buffer = ""
+                # Yield each token as soon as it's received
+                yield token
 
         # Final flush for any remaining content
         if buffer.strip():
