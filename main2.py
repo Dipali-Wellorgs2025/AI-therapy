@@ -540,7 +540,7 @@ def handle_message(data):
 
     # 🚨 Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. You're not alone in this. 💙"
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
