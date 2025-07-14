@@ -1144,7 +1144,7 @@ def get_last_active_session():
             bot_doc = db.collection("ai_therapists").document(bot_id).get()
             bot_info = bot_doc.to_dict() if bot_doc.exists else {}
             # 🧾 Simple summary
-            issue_description = session_data.get("issue_description", "a topic")
+            issue_description = session_data.get("problem", "a topic")
             summary_text = f"You are discussing about {issue_description} with {bot_name}."
             # ✅ Final single-session response
             return jsonify({
