@@ -726,7 +726,8 @@ Respond in a self-contained, complete way:
                 r"I can understand",
                 r"It's completely normal",
                 r"Thank you for sharing",
-                r"I appreciate you"
+                r"I appreciate you",
+                r"Movement can be such a"
             ]
             
             # Find the paragraph that should be first
@@ -781,39 +782,93 @@ Respond in a self-contained, complete way:
         # Remove any leading punctuation or spaces left after removing user input
         text = re.sub(r'^[.,!?\s]+', '', text)
         
-        # Handle bold formatting - KEEP **text** format for frontend processing
-        # First clean up malformed asterisks
-        text = re.sub(r'\*{3,}', '**', text)  # Triple+ asterisks to double
+        # COMPLETELY REDESIGNED BOLD FORMATTING HANDLER
+        # This handles the streaming issue where asterisks get corrupted at sentence boundaries
         
-        # Ensure proper **text** formatting (DON'T convert to HTML)
-        # Fix malformed bold patterns
-        text = re.sub(r'\*\*([^*]+?)\*\*', r'**\1**', text)
+        # Step 1: Handle asterisks that got separated by punctuation during streaming
+        # Fix patterns like "text* ." or "text*." -> "text**."
+        text = re.sub(r'\*(\s*[.!?])', r'**\1', text)
         
-        # Convert single asterisks to double asterisks for consistency
-        text = re.sub(r'(?<!\*)\*([^*\s][^*]*?[^*\s])\*(?!\*)', r'**\1**', text)
+        # Step 2: Handle incomplete bold patterns at end of sentences
+        # Fix "**text*." -> "**text**."
+        text = re.sub(r'\*\*([^*]+?)\*([.!?])', r'**\1**\2', text)
         
-        # Clean up any triple or more asterisks
-        text = re.sub(r'\*{3,}([^*]+?)\*{3,}', r'**\1**', text)
+        # Step 3: Fix broken bold patterns that span across sentence boundaries
+        # Handle "**text" at end + period -> "**text**."
+        text = re.sub(r'\*\*([^*]+?)(\s*[.!?])', r'**\1**\2', text)
         
-        # Ensure proper spacing around emojis
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧💔🍀])'
-        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        # Step 4: Clean up malformed asterisks first
+        text = re.sub(r'\*{4,}', '**', text)  # 4+ asterisks to double
+        text = re.sub(r'\*{3}', '**', text)   # Triple asterisks to double
         
-        # Clean up multiple spaces
-        text = re.sub(r'\s{2,}', ' ', text)
+        # Step 5: Handle cases where bold text gets interrupted by streaming
+        # Fix "* *text* *" -> "**text**"
+        text = re.sub(r'\*\s+\*([^*]+?)\*\s+\*', r'**\1**', text)
         
-        # Fix common spacing issues
-        text = text.replace(" ,", ",").replace(" .", ".")
-        text = text.replace(".,", ".").replace("!,", "!")
+        # Step 6: Normalize existing bold patterns with proper spacing
+        text = re.sub(r'\*\*\s*([^*]+?)\s*\*\*', r'**\1**', text)
         
-        # Fix spacing around asterisks (but keep the asterisks)
-        text = re.sub(r'\*\*\s+', '**', text)
-        text = re.sub(r'\s+\*\*', '**', text)
+        # Step 7: Convert single asterisks to double for consistency (but avoid punctuation conflicts)
+        # Only convert if not followed by punctuation
+        text = re.sub(r'(?<!\*)\*([^*\s][^*]*?[^*\s])\*(?!\*|[.!?])', r'**\1**', text)
+        
+        # Step 8: Handle the specific case where asterisks appear before punctuation
+        # "text*." -> "text**." (assuming it should be bold)
+        text = re.sub(r'([a-zA-Z])\*([.!?])', r'\1**\2', text)
+        
+        # Step 9: Final cleanup - ensure no orphaned asterisks
+        # Remove standalone asterisks that aren't part of bold formatting
+        text = re.sub(r'(?<!\*)\*(?!\*|\w)', '', text)  # Remove lone asterisks not connected to words
+        text = re.sub(r'(?<!\w)\*(?!\*)', '', text)     # Remove asterisks not connected to words
+    
+        # Step 10: Final normalization - ensure all bold text has proper **text** format
+        text = re.sub(r'\*{3,}', '**', text)  # Any remaining triple+ asterisks to double
+    
+        # Fix spacing issues after bold formatting cleanup
+        # Fix missing spaces after numbers followed by letters
+        text = re.sub(r'(\d+)([a-zA-Z])', r'\1 \2', text)
+        text = re.sub(r'(\d+)sessions', r'\1 sessions', text)
+        text = re.sub(r'(\d+)session', r'\1 session', text)
+        
+        # Fix missing spaces around conjunctions and common words
+        text = re.sub(r'([.,!?;:])and([A-Z][a-z])', r'\1 and \2', text)
+        text = re.sub(r'([.,!?;:])that([A-Z][a-z])', r'\1 that \2', text)
+        text = re.sub(r'([.,!?;:])the([A-Z][a-z])', r'\1 the \2', text)
+        text = re.sub(r'([.,!?;:])this([A-Z][a-z])', r'\1 this \2', text)
+        text = re.sub(r'([.,!?;:])you([A-Z][a-z])', r'\1 you \2', text)
+        
+        # Fix specific patterns like "andthat", "andthe", etc.
+        text = re.sub(r'and([A-Z][a-z])', r'and \1', text)
+        text = re.sub(r'that([A-Z][a-z])', r'that \1', text)
+        text = re.sub(r'the([A-Z][a-z])', r'the \1', text)
+        text = re.sub(r'with([A-Z][a-z])', r'with \1', text)
+        text = re.sub(r'for([A-Z][a-z])', r'for \1', text)
+        
+        # Fix spacing after punctuation followed by lowercase letters
+        text = re.sub(r'([.,!?;:])([a-z])', r'\1 \2', text)
         
         return text.strip()
 
-    # 💬 IMPROVED Streaming output with better separation and message ordering
+# NEW: Lightweight formatting for streaming chunks
+def format_streaming_chunk(text):
+    """Lightweight formatting for streaming chunks - no paragraph reordering"""
+    # Remove parentheses content
+    text = re.sub(r'\([^)]*\)', '', text)
+    
+    # Basic asterisk cleanup for streaming
+    text = re.sub(r'\*{3,}', '**', text)  # Triple+ asterisks to double
+    text = re.sub(r'\*(\s*[.!?])', r'**\1', text)  # Fix asterisk before punctuation
+    
+    # Remove orphaned asterisks
+    text = re.sub(r'(?<!\*)\*(?!\*|\w)', '', text)
+    text = re.sub(r'(?<!\w)\*(?!\*)', '', text)
+    
+    return text.strip()
+
+def handle_message(data):
+    # ...existing code...
+
+    # 💬 IMPROVED Streaming output with paragraph-aware processing
     try:
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
@@ -831,7 +886,9 @@ Respond in a self-contained, complete way:
         buffer = ""
         final_reply = ""
         word_buffer = ""
-        sentence_buffer = ""  # NEW: Buffer for complete sentences
+        sentence_buffer = ""
+        complete_paragraphs = []  # NEW: Store complete paragraphs
+        current_paragraph = ""    # NEW: Build current paragraph
         
         for chunk in response_stream:
             delta = chunk.choices[0].delta
@@ -839,15 +896,37 @@ Respond in a self-contained, complete way:
                 token = delta.content
                 final_reply += token
                 word_buffer += token
+                current_paragraph += token
 
-                # Stream at natural breaking points with better punctuation handling
-                if token in [".", "!", "?"]:
+                # Check for paragraph breaks
+                if '\n\n' in word_buffer:
+                    # We hit a paragraph break
+                    parts = word_buffer.split('\n\n')
+                    current_paragraph = current_paragraph[:-len(word_buffer)] + parts[0]
+                    
+                    # Complete the current paragraph and add to completed paragraphs
+                    if current_paragraph.strip():
+                        complete_paragraphs.append(current_paragraph.strip())
+                    
+                    # Start new paragraph with remaining content
+                    current_paragraph = '\n\n'.join(parts[1:]) if len(parts) > 1 else ""
+                    word_buffer = current_paragraph
+                    
+                    # Yield the reordered content so far
+                    if len(complete_paragraphs) > 0:
+                        # Apply paragraph reordering to complete paragraphs
+                        reordered_text = format_response_with_emojis('\n\n'.join(complete_paragraphs))
+                        yield reordered_text + '\n\n'
+                        complete_paragraphs = []  # Clear after yielding
+
+                # Stream at natural breaking points within paragraphs
+                elif token in [".", "!", "?"]:
                     # Complete sentence - add to sentence buffer
                     sentence_buffer += word_buffer
                     
                     # Only yield complete, properly formatted sentences
                     if len(sentence_buffer.strip()) > 10:  # Avoid tiny fragments
-                        cleaned = format_response_with_emojis(sentence_buffer)
+                        cleaned = format_streaming_chunk(sentence_buffer)
                         if cleaned and not cleaned.startswith('('):  # Avoid parenthetical content
                             yield cleaned + " "
                     
@@ -862,20 +941,28 @@ Respond in a self-contained, complete way:
                 elif token == " " and len(sentence_buffer + word_buffer) > 50:
                     # Long sentence - yield partial content to avoid delays
                     sentence_buffer += word_buffer + " "
-                    cleaned = format_response_with_emojis(sentence_buffer)
+                    cleaned = format_streaming_chunk(sentence_buffer)
                     if cleaned and not cleaned.startswith('('):
                         yield cleaned
                     sentence_buffer = ""
                     word_buffer = ""
 
-        # Final flush for any remaining content - FIXED ORDER
-        remaining_content = sentence_buffer + word_buffer
+        # Final flush - handle any remaining content with proper paragraph ordering
+        remaining_content = sentence_buffer + word_buffer + current_paragraph
         if remaining_content.strip():
-            cleaned = format_response_with_emojis(remaining_content)
-            if cleaned and not cleaned.startswith('('):
-                yield cleaned
+            # Add any remaining content to complete paragraphs
+            if current_paragraph.strip():
+                complete_paragraphs.append(current_paragraph.strip())
+            
+            # Apply full formatting with paragraph reordering to all remaining content
+            if complete_paragraphs:
+                final_chunk = format_response_with_emojis('\n\n'.join(complete_paragraphs))
+                yield final_chunk
+            elif remaining_content.strip():
+                final_chunk = format_response_with_emojis(remaining_content)
+                yield final_chunk
 
-        # Clean up the final reply for storage - ENSURE PROPER FORMATTING
+        # Clean up the final reply for storage with proper formatting
         final_reply_cleaned = format_response_with_emojis(final_reply)
         
         # Remove any developer notes or stage directions from final storage
