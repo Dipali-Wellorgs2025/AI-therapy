@@ -538,17 +538,24 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Technical terms check - NEW ADDITION
+    # Technical terms that should be escalated to developers
     TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "ai", "artificial intelligence", 
-        "machine learning", "neural network", "how do you work", "how are you trained",
-        "what model", "gpt", "llm", "language model", "backend", "code",
-        "programming", "development", "technical", "architecture", "data"
+        "training", "algorithm", "model", "neural network", "machine learning", "ml",
+        "ai training", "dataset", "parameters", "weights", "backpropagation",
+        "gradient descent", "optimization", "loss function", "epochs", "batch size",
+        "learning rate", "overfitting", "underfitting", "regularization",
+        "transformer", "attention mechanism", "fine-tuning", "pre-training",
+        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+        "deployment", "inference", "api", "endpoint", "latency", "throughput",
+        "scaling", "load balancing", "database", "server", "cloud", "docker",
+        "kubernetes", "microservices", "devops", "ci/cd", "version control",
+        "git", "repository", "bug", "debug", "code", "programming", "python",
+        "javascript", "html", "css", "framework", "library", "package"
     ]
 
-    # Check for technical queries
+    # Check for technical terms
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "For technical questions about my training, algorithms, or development details, please contact our development team. They can provide you with detailed information about the technical aspects. 🔧"
+        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
     # Escalation check
@@ -568,7 +575,7 @@ def handle_message(data):
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # Classification - UPDATED to include technical category
+    # Classification
     def classify_topic_with_confidence(message):
         try:
             classification_prompt = f"""
@@ -584,7 +591,6 @@ Categories:
 - trauma
 - family
 - crisis
-- technical
 - general
 
 Message: "{message}"
@@ -618,11 +624,6 @@ IS_GENERIC: [yes/no]
             return "general", "low", True
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
-
-    # Technical routing with confidence check - NEW ADDITION
-    if category == "technical" and confidence in ["high", "medium"]:
-        yield "For technical questions about my training, algorithms, or development details, please contact our development team. They can provide you with detailed information about the technical aspects. 🔧"
-        return
 
     # Routing logic
     should_route = False
@@ -677,33 +678,39 @@ User's message: "{user_msg}"
 Respond in a self-contained, complete way:
 """
 
-    # ✅ IMPROVED Format cleaner - FIXED
+    # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
         # Remove parentheses content
         text = re.sub(r'\([^)]*\)', '', text)
         
-        # Fix bold formatting - preserve content inside asterisks
-        text = re.sub(r'\*\*([^*]+)\*\*', r'**\1**', text)
-        text = re.sub(r'\*([^*]+)\*', r'**\1**', text)
+        # Fix bold formatting
+        text = re.sub(r'\*\*["""]?([^*"""]+)["""]?\*\*', r'**\1**', text)
+        text = re.sub(r'\*["""]?([^*"""]+)["""]?\*', r'**\1**', text)
+        text = re.sub(r'["""]?\*\*["""]?', '', text)
         
-        # Fix spacing around punctuation - IMPROVED
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
-        text = re.sub(r'([.,!?;:])(\w)', r'\1 \2', text)  # Add space after punctuation before word
-        
-        # Fix emoji spacing
+        # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         
+        # Fix spacing around punctuation - IMPROVED
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove spaces before punctuation
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
+        
         # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
         
-        # Remove trailing asterisks and quotes
-        text = re.sub(r'[*"]+$', '', text)
+        # Fix common spacing issues
+        text = text.replace(" ,", ",").replace(" .", ".")
+        text = text.replace(".,", ".").replace("!,", "!")
+        
+        # Clean up trailing formatting
+        if text.endswith('**"') or text.endswith('**'):
+            text = text.rstrip('*"')
         
         return text.strip()
 
-    # 💬 Streaming output
+    # 💬 IMPROVED Streaming output with better separation
     try:
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
@@ -715,9 +722,12 @@ Respond in a self-contained, complete way:
             stream=True
         )
 
-        yield "\n"  # Clean break after user input
+        # Clear separation between user message and bot response
+        yield "\n---\n"  # Visual separator
+        
         buffer = ""
         final_reply = ""
+        first_token = True
 
         for chunk in response_stream:
             delta = chunk.choices[0].delta
@@ -726,18 +736,26 @@ Respond in a self-contained, complete way:
                 buffer += token
                 final_reply += token
 
-                # Stream on sentence boundaries and spaces
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 0:
+                # For the first token, yield immediately to start the response
+                if first_token:
+                    first_token = False
+                    continue
+
+                # Stream at natural breaking points
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
                     cleaned = format_response_with_emojis(buffer)
                     if cleaned:
-                        yield cleaned
+                        yield cleaned + " "
                     buffer = ""
 
-        # Final flush
+        # Final flush for any remaining content
         if buffer.strip():
-            final_cleaned = format_response_with_emojis(buffer)
-            if final_cleaned:
-                yield final_cleaned
+            cleaned = format_response_with_emojis(buffer)
+            if cleaned:
+                yield cleaned
+
+        # Clean up the final reply for storage
+        final_reply_cleaned = format_response_with_emojis(final_reply)
 
         # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
@@ -750,7 +768,7 @@ Respond in a self-contained, complete way:
         })
         ctx["history"].append({
             "sender": current_bot,
-            "message": format_response_with_emojis(final_reply),
+            "message": final_reply_cleaned,
             "timestamp": now,
             "session_number": session_number
         })
@@ -772,7 +790,6 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-        
 @app.route("/api/stream", methods=["GET"])
 def stream():
     """Streaming endpoint for real-time conversation"""
