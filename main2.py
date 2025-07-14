@@ -529,6 +529,7 @@ Important Rules:
 def handle_message(data):
     import re
     from datetime import datetime, timezone
+    import time
 
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
@@ -551,262 +552,257 @@ def handle_message(data):
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # 👂 Detect user preferences
-    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
+    # 👂 Advanced user preference detection
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer|don't go deep|stay surface)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with|remain here|continue with you)\b", user_msg.lower()))
     
-    # 🎯 Enhanced topic classification with context awareness
-    def classify_with_intelligence(message, conversation_history):
-        """
-        Intelligent classification that considers:
-        - Message content and depth
-        - Conversation context
-        - Emotional intensity
-        - Specificity of the issue
-        """
+    # Detect if user is asking generic questions
+    generic_patterns = [
+        r"\b(hi|hello|hey|what's up|how are you|good morning|good evening)\b",
+        r"\b(thanks|thank you|okay|ok|alright|sure|yes|no|maybe)\b",
+        r"\b(can you help|what do you do|who are you|tell me about)\b"
+    ]
+    is_generic_message = any(re.search(pattern, user_msg.lower()) for pattern in generic_patterns)
+
+    # 🔍 Enhanced topic classification with strict routing logic
+    def classify_with_context(message, conversation_history):
         try:
             # Build context from recent messages
             recent_context = ""
             if conversation_history:
-                recent_msgs = conversation_history[-4:]  # Last 4 messages
-                recent_context = "\n".join([f"{msg['sender']}: {msg['message']}" for msg in recent_msgs])
-            
+                recent_messages = conversation_history[-4:]  # Last 4 messages
+                recent_context = "\n".join([f"{msg['sender']}: {msg['message']}" for msg in recent_messages])
+
             classification_prompt = f"""
-You are an expert mental health topic classifier. Analyze this message considering the conversation context.
+You are an expert mental health topic classifier. Analyze the user's message considering the conversation context.
 
-CLASSIFICATION RULES:
-1. HIGH CONFIDENCE: Specific symptoms, clear emotional distress, detailed situations
-2. MEDIUM CONFIDENCE: General concerns with some specificity
-3. LOW CONFIDENCE: Vague statements, greetings, generic wellness questions
+STRICT ROUTING RULES:
+1. Only route if the message contains SPECIFIC mental health content that clearly falls outside the current bot's expertise
+2. DO NOT route for: greetings, thanks, follow-up questions, clarifications, or generic responses
+3. DO NOT route if the user is responding to homework or continuing a therapeutic conversation
+4. Route ONLY for clear, substantial topic shifts that require specialized expertise
 
-CATEGORIES & TRIGGERS:
-- anxiety: panic attacks, worry spirals, physical anxiety symptoms, specific fears, social anxiety
-- breakup: relationship ended, dating struggles, heartbreak, missing ex, romantic rejection
-- self-worth: feeling worthless, low self-esteem, imposter syndrome, self-criticism, burnout
-- trauma: flashbacks, triggers, past abuse, PTSD symptoms, body memories, hypervigilance  
-- family: parent conflicts, sibling issues, toxic family dynamics, generational patterns
-- crisis: overwhelming emotions, life upheaval, major decisions, feeling lost, identity crisis
-- general: greetings, check-ins, vague wellness questions, generic support requests
+Current Bot Specializations:
+- Sage: Anxiety disorders, panic attacks, worry spirals, physical anxiety symptoms
+- Jordan: Breakups, relationship endings, attachment issues, heartbreak, dating problems
+- River: Self-worth, self-esteem, burnout, feeling worthless, confidence issues
+- Phoenix: Trauma, PTSD, flashbacks, abuse recovery, safety concerns
+- Ava: Family conflicts, generational issues, parent problems, sibling issues
+- Raya: Crisis situations, major life changes, identity upheaval, emergency support
 
-CONTEXT:
-Recent conversation:
+Current bot: {current_bot}
+
+Recent conversation context:
 {recent_context}
 
-Current message: "{message}"
+User's message: "{message}"
 
-Respond EXACTLY in this format:
-CATEGORY: [category name]
-CONFIDENCE: [high/medium/low]  
-REASONING: [one sentence explaining why]
+Analyze and respond in this format:
+TOPIC: [specific topic or "current_specialty"]
+CONFIDENCE: [high/medium/low]
 SHOULD_ROUTE: [yes/no]
+REASON: [brief explanation]
 """
             
-            response = client.chat.completions.create(
+            classification = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
-                    {"role": "system", "content": "You are a precise mental health classifier. Follow the exact format."},
+                    {"role": "system", "content": "You are a precise classifier focused on therapeutic routing decisions."},
                     {"role": "user", "content": classification_prompt}
                 ],
                 temperature=0.1,
                 max_tokens=150
             )
             
-            result = response.choices[0].message.content.strip()
+            response = classification.choices[0].message.content.strip()
             
-            # Parse the structured response
-            category = None
-            confidence = None
+            # Parse response
+            topic = "current_specialty"
+            confidence = "low"
             should_route = False
+            reason = ""
             
-            for line in result.split('\n'):
-                if line.startswith('CATEGORY:'):
-                    category = line.split(':', 1)[1].strip().lower()
+            for line in response.split('\n'):
+                if line.startswith('TOPIC:'):
+                    topic = line.split(':', 1)[1].strip().lower()
                 elif line.startswith('CONFIDENCE:'):
                     confidence = line.split(':', 1)[1].strip().lower()
                 elif line.startswith('SHOULD_ROUTE:'):
                     should_route = line.split(':', 1)[1].strip().lower() == 'yes'
+                elif line.startswith('REASON:'):
+                    reason = line.split(':', 1)[1].strip()
             
-            return category, confidence, should_route
+            return topic, confidence, should_route, reason
             
         except Exception as e:
-            print(f"Classification error: {e}")
-            return "general", "low", False
+            print("Classification failed:", e)
+            return "current_specialty", "low", False, "Classification error"
 
-    # 🔍 Classify the message
-    category, confidence, should_route = classify_with_intelligence(user_msg, ctx["history"])
-    
-    # 🚦 Smart routing decision
-    route_user = False
-    if (category and category != "general" and 
-        category in TOPIC_TO_BOT and 
-        confidence == "high" and 
-        should_route and 
-        not wants_to_stay):
+    # Only classify if not generic and user hasn't requested to stay
+    if not is_generic_message and not wants_to_stay:
+        topic, confidence, should_route, reason = classify_with_context(user_msg, ctx["history"])
         
-        correct_bot = TOPIC_TO_BOT[category]
-        if correct_bot != current_bot:
-            route_user = True
-            route_message = f"I can see you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and would be better equipped to support you. Would you like me to connect you? 🔄"
-    
-    # If routing, provide the message and return
-    if route_user:
-        yield route_message
-        return
+        # Enhanced routing logic - only route for high confidence, clear topic shifts
+        if should_route and confidence == "high" and topic in TOPIC_TO_BOT:
+            correct_bot = TOPIC_TO_BOT[topic]
+            if correct_bot != current_bot:
+                route_message = f"I notice you're dealing with **{topic}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+                yield route_message
+                return
 
-    # 🧱 Enhanced prompt construction with your bot structure
+    # 🧱 Enhanced prompt construction with session context
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     
-    # Replace template variables in your bot prompts
+    # Replace template variables
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)\
                               .replace("{{session_number}}", str(session_number))
     
+    # Add homework and session summary if available
+    if ctx.get("last_homework"):
+        filled_prompt = filled_prompt.replace("{{last_homework}}", ctx["last_homework"])
+    if ctx.get("last_session_summary"):
+        filled_prompt = filled_prompt.replace("{{last_session_summary}}", ctx["last_session_summary"])
+    
     # Clean up any remaining template variables
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     # Build conversation context
-    recent_messages = ""
+    recent_context = ""
     if ctx["history"]:
-        recent_msgs = ctx["history"][-6:]  # Last 6 messages for context
-        recent_messages = "\n".join([f"{msg['sender']}: {msg['message']}" for msg in recent_msgs])
+        recent_messages = ctx["history"][-6:]  # Last 6 messages for context
+        recent_context = "\n".join([f"{msg['sender']}: {msg['message']}" for msg in recent_messages])
 
-    # 🎭 Context-aware system message
-    system_context = f"""
-You are responding as {current_bot}, following your established personality and therapeutic approach.
+    # 🎯 Final prompt assembly
+    context_notes = []
+    if skip_deep:
+        context_notes.append("User prefers lighter conversation - keep response supportive but not too deep.")
+    if session_number > 1:
+        context_notes.append(f"This is session {session_number} - build on previous conversations.")
+    if is_generic_message:
+        context_notes.append("User sent a generic message - respond warmly while staying in character.")
+    
+    context_note = " ".join(context_notes) if context_notes else ""
 
-CURRENT SESSION CONTEXT:
-- Session #{session_number} with {user_name}
-- User's issue: {issue_description}  
-- Preferred style: {preferred_style}
-- Conversation flow: {"Light/surface level" if skip_deep else "Open to deeper exploration"}
+    final_prompt = f"""{filled_prompt}
 
-RESPONSE REQUIREMENTS:
-- Stay true to your bot's specialized expertise and voice
-- Provide comprehensive, standalone support
-- Use natural, conversational language with appropriate emojis
-- Keep responses 2-4 sentences unless more depth is needed
-- Use **bold** for emphasis on key points
-- Include emojis naturally within the text (not just at the end)
-- Ask maximum 1 thoughtful question if appropriate
-- If user seems overwhelmed, focus on comfort without questions
+Recent conversation context:
+{recent_context}
 
-CRITICAL: Respond as your specialized bot character would, providing complete support without referring to other bots or external resources unless it's a crisis situation.
-"""
+User's current message: "{user_msg}"
 
-    # 📝 Build the final prompt
-    conversation_context = f"""
-Recent conversation:
-{recent_messages}
+Additional context: {context_note}
 
-Current user message: "{user_msg}"
+Respond as {current_bot} with:
+- 2-4 sentences that feel natural and caring
+- Use **double asterisks** for bold emphasis on key therapeutic terms
+- Include 1-2 relevant emojis naturally within the text  
+- Ask ONE thoughtful follow-up question if appropriate
+- Stay true to your therapeutic specialty and personality
+- Provide comprehensive support without referring to other bots
 
-{"Note: User prefers lighter conversation - keep supportive but not too intensive." if skip_deep else ""}
+Response:"""
 
-Respond naturally as {current_bot} would, providing the support this user needs:
-"""
-
-    def format_response_naturally(text):
-        """Format response to feel natural and conversational"""
-        # Clean up basic formatting
-        text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
-        text = re.sub(r"([.,!?])(?=\S)", r"\1 ", text)
+    def format_response_with_bold(text):
+        """Format response with proper bold markdown and emoji spacing"""
+        # Clean up spacing
         text = re.sub(r"\s{2,}", " ", text)
         text = text.strip()
         
-        # Ensure emojis have natural spacing
-        text = re.sub(r"([^\s])([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😌😊🌸💫⭐🕊️🌺🦋])", r"\1 \2", text)
-        text = re.sub(r"([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😌😊🌸💫⭐🕊️🌺🦋])([^\s])", r"\1 \2", text)
+        # Ensure proper emoji spacing
+        text = re.sub(r"([^\s])([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😊🌷])", r"\1 \2", text)
+        text = re.sub(r"([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😊🌷])([^\s])", r"\1 \2", text)
+        
+        # Ensure **text** becomes proper markdown bold
+        text = re.sub(r"\*\*([^*]+)\*\*", r"**\1**", text)
         
         return text
 
-    def stream_like_claude(text):
-        """Stream text in natural, Claude-like chunks"""
+    def stream_like_claude(text, chunk_size=8):
+        """Stream text in Claude-like chunks with natural pauses"""
         words = text.split()
         current_chunk = []
         
-        for word in words:
+        for i, word in enumerate(words):
             current_chunk.append(word)
             
-            # Check for natural break points
-            chunk_text = " ".join(current_chunk)
+            # Determine if we should yield this chunk
+            should_yield = False
             
-            # Stream on punctuation or after 6-8 words
-            if (any(chunk_text.endswith(p) for p in ['.', '!', '?']) or 
-                len(current_chunk) >= 7):
-                
-                yield chunk_text + " "
+            # Check for natural break points
+            if any(word.endswith(punct) for punct in ['.', '!', '?', ',']):
+                should_yield = True
+            elif len(current_chunk) >= chunk_size:
+                should_yield = True
+            elif i == len(words) - 1:  # Last word
+                should_yield = True
+            
+            if should_yield:
+                chunk_text = " ".join(current_chunk)
+                yield chunk_text + (" " if i < len(words) - 1 else "")
                 current_chunk = []
                 
-            # Force stream if chunk gets too long
-            elif len(current_chunk) >= 10:
-                yield chunk_text + " "
-                current_chunk = []
-        
-        # Stream any remaining words
-        if current_chunk:
-            yield " ".join(current_chunk)
+                # Add small delay for natural feel (adjust as needed)
+                time.sleep(0.05)  # 50ms delay between chunks
 
     try:
-        # 🧠 Generate response using your bot's personality
+        # 🧠 Generate response
         completion = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": system_context + "\n\n" + filled_prompt},
-                {"role": "user", "content": conversation_context}
-            ],
-            temperature=0.75,
+            messages=[{"role": "user", "content": final_prompt}],
+            temperature=0.7,
             max_tokens=400,
-            presence_penalty=0.1,
-            frequency_penalty=0.2
+            presence_penalty=0.2,
+            frequency_penalty=0.3
         )
         
-        raw_response = completion.choices[0].message.content.strip()
-        final_response = format_response_naturally(raw_response)
+        full_response = completion.choices[0].message.content.strip()
+        formatted_response = format_response_with_bold(full_response)
 
-        # 💬 Stream the response in Claude-like chunks
-        for chunk in stream_like_claude(final_response):
+        # 💬 Stream response Claude-style
+        for chunk in stream_like_claude(formatted_response):
             yield chunk
 
-        # 💾 Save conversation with enhanced metadata
+        # 💾 Save to Firestore with enhanced metadata
         now = datetime.now(timezone.utc).isoformat()
         
+        # Add user message
         ctx["history"].append({
             "sender": "User", 
             "message": user_msg, 
             "timestamp": now,
-            "classified_topic": category,
-            "confidence_level": confidence,
-            "session_number": session_number
+            "session_number": session_number,
+            "message_type": "generic" if is_generic_message else "therapeutic"
         })
         
+        # Add bot response
         ctx["history"].append({
             "sender": current_bot, 
-            "message": final_response, 
+            "message": formatted_response, 
             "timestamp": now,
-            "response_type": "comprehensive_support",
-            "session_number": session_number
+            "session_number": session_number,
+            "skip_deep": skip_deep
         })
         
         # Update session data
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
-            "current_topic": category,
             "messages": ctx["history"],
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
             "session_number": session_number,
             "is_active": True,
-            "classification_confidence": confidence,
-            "conversation_depth": "light" if skip_deep else "open"
+            "last_response_formatted": formatted_response
         }, merge=True)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I'm having a moment of technical difficulty, but I'm still here for you. Can we try that again? 💙"
+        yield "I apologize, but I'm having trouble processing that right now. Let's try again - I'm here to support you. 💙"
+        
 @app.route("/api/stream", methods=["GET"])
 def stream():
     """Streaming endpoint for real-time conversation"""
