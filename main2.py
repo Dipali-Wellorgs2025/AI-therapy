@@ -1197,11 +1197,17 @@ def get_last_active_session():
                     recent_messages = all_messages[-6:]  # Last 6 msgs
                     transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in recent_messages)
 
-                    summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
+                    summary_prompt = f"""Based on this mental health support conversation, write a warm and empathetic 2-line summary that reflects:
+1. The main concern discussed
+2. How the user (you) was feeling or progressing
 
+Avoid direct quotes. Use 'you' instead of 'the user'.
+
+Conversation:
 {transcript}
 
-One-line summary:"""
+2-line summary:"""
+
 
                     response = client.chat.completions.create(
                         model="deepseek-chat",
