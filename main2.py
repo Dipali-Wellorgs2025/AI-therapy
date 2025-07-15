@@ -1129,7 +1129,7 @@ def home():
 # from google.cloud import firestore
 # from google.cloud.firestore_v1.base_query import FieldFilter
 
-from google.cloud.firestore_v1.base import FieldFilter
+# from google.cloud.firestore_v1.base import FieldFilter
 
 # ✅ Helper function to get summary from global `sessions` collection
 def fetch_summary_from_global_sessions(user_id: str, bot_id: str) -> str:
