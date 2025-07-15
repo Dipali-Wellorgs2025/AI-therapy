@@ -1184,19 +1184,17 @@ def get_last_active_session():
         bot_doc = db.collection("ai_therapists").document(final_bot_id).get()
         bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-        # 🧠 Generate summary from global sessions/{user_id} doc messages filtered by bot_id
+        # 🧠 Generate summary from global sessions/{user_id}_{bot_name} document
         summary_text = "Session started."
         try:
-            session_doc = db.collection("sessions").document(user_id).get()
+            composite_doc_id = f"{user_id}_{final_bot_name}"
+            session_doc = db.collection("sessions").document(composite_doc_id).get()
             if session_doc.exists:
                 session_data = session_doc.to_dict()
                 all_messages = session_data.get("messages", [])
 
-                # Filter messages by bot_id
-                filtered_messages = [m for m in all_messages if m.get("bot_id") == final_bot_id]
-
-                if filtered_messages:
-                    recent_messages = filtered_messages[-6:]  # Last 6 msgs
+                if all_messages:
+                    recent_messages = all_messages[-6:]  # Last 6 msgs
                     transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in recent_messages)
 
                     summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
@@ -1213,7 +1211,7 @@ One-line summary:"""
                     )
                     summary_text = response.choices[0].message.content.strip()
         except Exception as e:
-            print("⚠️ Summary generation failed:", e)
+            print("\u26a0\ufe0f Summary generation failed:", e)
             summary_text = "Summary unavailable."
 
         # ✅ Final Response
@@ -1237,8 +1235,6 @@ One-line summary:"""
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
-
-
 
 
 # ================= JOURNAL APIs =================
