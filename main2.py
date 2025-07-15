@@ -1165,12 +1165,17 @@ def get_last_active_session():
             "crisis": "Raya"
         }
 
+        latest_doc = None
+        latest_created_at = None
+        final_bot_id = None
+        final_bot_name = None
+        final_session_data = None
+
         for bot_id, bot_name in bots.items():
-            query = db.collection("sessions") \
-                .where(filter=FieldFilter("user_id", "==", user_id)) \
-                .where(filter=FieldFilter("bot_id", "==", bot_id)) \
-                .where(filter=FieldFilter("is_active", "==", True)) \
-                .order_by("last_updated", direction=firestore.Query.DESCENDING) \
+            query = db.collection("ai_therapists").document(bot_id).collection("sessions") \
+                .where("userId", "==", user_id) \
+                .where("status", "==", "Active") \
+                .order_by("createdAt", direction=firestore.Query.DESCENDING) \
                 .limit(1)
 
             docs = list(query.stream())
@@ -1179,16 +1184,27 @@ def get_last_active_session():
 
             doc = docs[0]
             session_data = doc.to_dict()
+            created_at = session_data.get("createdAt")
 
-            # Fetch bot visual fields from ai_therapists
-            bot_doc = db.collection("ai_therapists").document(bot_id).get()
-            bot_info = bot_doc.to_dict() if bot_doc.exists else {}
+            if not latest_created_at or (created_at and created_at > latest_created_at):
+                latest_created_at = created_at
+                latest_doc = doc
+                final_bot_id = bot_id
+                final_bot_name = bot_name
+                final_session_data = session_data
 
-            # Process messages for summary
-            messages = session_data.get("messages", [])
-            if not messages:
-                summary_text = "Session started, but no messages yet."
-            else:
+        if not latest_doc:
+            return jsonify({"message": "No active sessions found"}), 404
+
+        # Fetch bot visual fields from ai_therapists
+        bot_doc = db.collection("ai_therapists").document(final_bot_id).get()
+        bot_info = bot_doc.to_dict() if bot_doc.exists else {}
+
+        # Fallback summary if no messages field is found
+        summary_text = "Session started."
+        if "messages" in final_session_data:
+            messages = final_session_data.get("messages", [])
+            if messages:
                 recent_messages = messages[-6:] if len(messages) >= 6 else messages
                 formatted_transcript = []
                 for msg in recent_messages:
@@ -1198,7 +1214,6 @@ def get_last_active_session():
                     formatted_transcript.append(f"{sender}: {msg['message']}")
                 transcript = "\n".join(formatted_transcript)
 
-                # Generate 2-line summary using DeepSeek
                 summary_prompt = f"""Based on this mental health conversation with {actual_user_name}, create a 2-line summary that captures:
 1. The main topic/issue {actual_user_name} discussed
 2. {actual_user_name}'s current emotional state or progress
@@ -1209,7 +1224,6 @@ Conversation:
 {transcript}
 
 2-line summary:"""
-
                 try:
                     response = client.chat.completions.create(
                         model="deepseek-chat",
@@ -1223,27 +1237,22 @@ Conversation:
                         summary_text = '\n'.join(lines[:2])
                 except Exception as e:
                     print("⚠️ Summary generation failed:", e)
-                    last_user_msg = next((m['message'] for m in reversed(messages) if m['sender'] in ['User', actual_user_name]), "conversation")
-                    summary_text = f"{actual_user_name} last discussed: {last_user_msg[:50]}...\nWorking through {bot_name.lower()} support session."
 
-            # ✅ Final response with bot visuals from ai_therapists
-            return jsonify({
-                "session_id": doc.id,
-                "bot_id": bot_id,
-                "bot_name": bot_name,
-                "problem": session_data.get("issue_description", "Therapy Session"),
-                "status": "in_progress",
-                "date": str(session_data.get("last_updated", "")),
-                "user_id": session_data.get("user_id", ""),
-                "preferred_style": session_data.get("preferred_style", ""),
-                "buttonColor": bot_info.get("buttonColor", ""),
-                "color": bot_info.get("color", ""),
-                "icon": bot_info.get("icon", ""),
-                "image": bot_info.get("image", ""),
-                "summary": summary_text
-            })
-
-        return jsonify({"message": "No active sessions found"}), 404
+        return jsonify({
+            "session_id": latest_doc.id,
+            "bot_id": final_bot_id,
+            "bot_name": final_bot_name,
+            "problem": final_session_data.get("title", "Therapy Session"),
+            "status": final_session_data.get("status", "in_progress"),
+            "date": str(latest_created_at),
+            "user_id": final_session_data.get("userId", user_id),
+            "preferred_style": final_session_data.get("therapyStyle", ""),
+            "buttonColor": bot_info.get("buttonColor", ""),
+            "color": bot_info.get("color", ""),
+            "icon": bot_info.get("icon", ""),
+            "image": bot_info.get("image", ""),
+            "summary": summary_text
+        })
 
     except Exception as e:
         import traceback
