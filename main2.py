@@ -1131,36 +1131,6 @@ def home():
 
 # from google.cloud.firestore_v1.base import FieldFilter
 
-# ✅ Helper function to get summary from global `sessions` collection
-def generate_summary_from_session_doc(session_doc):
-    try:
-        session_data = session_doc.to_dict()
-        messages = session_data.get("messages", [])
-        if not messages:
-            return "Session started, but no messages yet."
-
-        recent_messages = messages[-6:] if len(messages) >= 6 else messages
-        transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in recent_messages)
-
-        summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
-
-{transcript}
-
-One-line summary:"""
-
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": summary_prompt}],
-            temperature=0.5,
-            max_tokens=100
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print("⚠️ Summary generation failed:", e)
-        return "Summary unavailable."
-
-
-
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
     try:
@@ -1172,8 +1142,8 @@ def get_last_active_session():
 
         bots = {
             "anxiety": "Sage",
-            "breakup": "Jordan",
-            "self-worth": "River",
+            "couples": "Jordan",
+            "depression": "River",
             "trauma": "Phoenix",
             "family": "Ava",
             "crisis": "Raya"
@@ -1210,19 +1180,49 @@ def get_last_active_session():
         if not latest_doc:
             return jsonify({"message": "No ended sessions found"}), 404
 
-        # Fetch bot visuals
+        # 🎨 Fetch visuals from ai_therapists
         bot_doc = db.collection("ai_therapists").document(final_bot_id).get()
         bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-        # ✅ Use updated helper to generate summary
-        summary_text = generate_summary_from_session_doc(latest_doc)
+        # 🧠 Generate summary from global sessions/{user_id} doc messages filtered by bot_id
+        summary_text = "Session started."
+        try:
+            session_doc = db.collection("sessions").document(user_id).get()
+            if session_doc.exists:
+                session_data = session_doc.to_dict()
+                all_messages = session_data.get("messages", [])
 
+                # Filter messages by bot_id
+                filtered_messages = [m for m in all_messages if m.get("bot_id") == final_bot_id]
+
+                if filtered_messages:
+                    recent_messages = filtered_messages[-6:]  # Last 6 msgs
+                    transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in recent_messages)
+
+                    summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
+
+{transcript}
+
+One-line summary:"""
+
+                    response = client.chat.completions.create(
+                        model="deepseek-chat",
+                        messages=[{"role": "user", "content": summary_prompt}],
+                        temperature=0.5,
+                        max_tokens=100
+                    )
+                    summary_text = response.choices[0].message.content.strip()
+        except Exception as e:
+            print("⚠️ Summary generation failed:", e)
+            summary_text = "Summary unavailable."
+
+        # ✅ Final Response
         return jsonify({
             "session_id": latest_doc.id,
             "bot_id": final_bot_id,
             "bot_name": final_bot_name,
             "problem": final_session_data.get("title", "Therapy Session"),
-            "status": "in_progress",  # still returned as 'in_progress'
+            "status": "in_progress",
             "date": str(latest_ended_at),
             "user_id": final_session_data.get("userId", user_id),
             "preferred_style": final_session_data.get("therapyStyle", ""),
@@ -1237,6 +1237,7 @@ def get_last_active_session():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 
 
 
