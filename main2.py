@@ -1152,12 +1152,12 @@ def get_last_active_session():
         user_id = request.args.get("user_id")
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
- 
+
         # Get actual user nickname for personalized summary
         actual_user_name = get_user_nickname(user_id)
- 
+
         db = firestore.client()
- 
+
         bots = {
             "anxiety": "Sage",
             "breakup": "Jordan",
@@ -1166,7 +1166,7 @@ def get_last_active_session():
             "family": "Ava",
             "crisis": "Raya"
         }
-      
+
         for bot_id, bot_name in bots.items():
             query = db.collection("sessions") \
                 .where(filter=FieldFilter("user_id", "==", user_id)) \
@@ -1174,27 +1174,28 @@ def get_last_active_session():
                 .where(filter=FieldFilter("is_active", "==", True)) \
                 .order_by("last_updated", direction=firestore.Query.DESCENDING) \
                 .limit(1)
- 
+
             docs = list(query.stream())
             if not docs:
                 continue
- 
+
             doc = docs[0]
             session_data = doc.to_dict()
- 
-            # Fetch bot visuals
+
+            # 🔍 Get bot visuals and info from ai_therapists
             bot_doc = db.collection("ai_therapists").document(bot_id).get()
             bot_info = bot_doc.to_dict() if bot_doc.exists else {}
- 
-            # Extract recent messages for summary generation
+
+            # Debug info (optional)
+            print("📦 Bot Info:", bot_info)
+            print("📦 Session Data:", session_data)
+
+            # Get last few messages for summary
             messages = session_data.get("messages", [])
             if not messages:
                 summary_text = "Session started, but no messages yet."
             else:
-                # Get last 6 messages for better context (3 exchanges)
                 recent_messages = messages[-6:] if len(messages) >= 6 else messages
-                
-                # Replace "User" with actual nickname in transcript for better context
                 formatted_transcript = []
                 for msg in recent_messages:
                     sender = msg['sender']
@@ -1202,19 +1203,18 @@ def get_last_active_session():
                         sender = actual_user_name
                     formatted_transcript.append(f"{sender}: {msg['message']}")
                 transcript = "\n".join(formatted_transcript)
- 
-                # Generate 2-line summary using DeepSeek with personalized context
+
                 summary_prompt = f"""Based on this mental health conversation with {actual_user_name}, create a 2-line summary that captures:
 1. The main topic/issue {actual_user_name} discussed
 2. {actual_user_name}'s current emotional state or progress
- 
+
 Keep it empathetic, concise, and informative. Avoid direct quotes. Use {actual_user_name}'s name naturally in the summary.
- 
+
 Conversation:
 {transcript}
- 
+
 2-line summary:"""
- 
+
                 try:
                     response = client.chat.completions.create(
                         model="deepseek-chat",
@@ -1223,37 +1223,36 @@ Conversation:
                         max_tokens=150
                     )
                     summary_text = response.choices[0].message.content.strip()
-                    
-                    # Ensure it's actually 2 lines max
                     lines = summary_text.split('\n')
                     if len(lines) > 2:
                         summary_text = '\n'.join(lines[:2])
-                        
                 except Exception as e:
                     print("⚠️ Summary generation failed:", e)
-                    # Fallback to basic summary with actual name
-                    last_user_msg = next((m['message'] for m in reversed(messages) if m['sender'] in ['User', actual_user_name]), "conversation")
+                    last_user_msg = next(
+                        (m['message'] for m in reversed(messages) if m['sender'] in ['User', actual_user_name]),
+                        "a conversation"
+                    )
                     summary_text = f"{actual_user_name} last discussed: {last_user_msg[:50]}...\nWorking through {bot_name.lower()} support session."
- 
-            # Final response
+
+            # ✅ Return full session metadata with bot visuals
             return jsonify({
                 "session_id": doc.id,
                 "bot_id": bot_id,
                 "bot_name": bot_name,
-                "problem": session_data.get("issue_description", "Therapy Session"),
+                "problem": session_data.get("issue_description") or "Therapy Session",
                 "status": "in_progress",
                 "date": str(session_data.get("last_updated", "")),
                 "user_id": session_data.get("user_id", ""),
-                "preferred_style": session_data.get("preferred_style", ""),
-                "buttonColor": bot_info.get("buttonColor", ""),
-                "color": bot_info.get("color", ""),
-                "icon": bot_info.get("icon", ""),
-                "image": bot_info.get("image", ""),
+                "preferred_style": session_data.get("preferred_style") or "Balanced",
+                "buttonColor": bot_info.get("buttonColor") or "#CCCCCC",
+                "color": bot_info.get("color") or "#999999",
+                "icon": bot_info.get("icon") or "🤖",
+                "image": bot_info.get("image") or "https://your-default-url/assets/placeholder.png",
                 "summary": summary_text
             })
- 
+
         return jsonify({"message": "No active sessions found"}), 404
- 
+
     except Exception as e:
         import traceback
         traceback.print_exc()
