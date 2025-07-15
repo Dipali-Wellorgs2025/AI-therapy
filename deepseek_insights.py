@@ -1,3 +1,4 @@
+
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from datetime import datetime, timedelta
@@ -19,12 +20,15 @@ def get_firestore_client():
     return firestore.client()
 
 def get_user_sessions(user_id):
+    user_id = user_id.strip()  # <-- Fix: strip whitespace/newlines
     db = get_firestore_client()
     # PATCH: Use recommended filter syntax
     sessions_ref = db.collection('sessions').where('user_id', '==', user_id).stream()
     sessions = []
+    print(f"[DEBUG] Fetching sessions for user_id: {user_id}")
     for doc in sessions_ref:
         session_data = doc.to_dict()
+        print(f"[DEBUG] Session doc: {session_data}")
         if session_data:
             # --- PATCH: Strip whitespace from bot_name if present ---
             if 'bot_name' in session_data and isinstance(session_data['bot_name'], str):
@@ -35,6 +39,7 @@ def get_user_sessions(user_id):
                     if isinstance(msg, dict) and 'sender' in msg and isinstance(msg['sender'], str):
                         msg['sender'] = msg['sender'].strip()
             sessions.append(session_data)
+    print(f"[DEBUG] Total sessions found: {len(sessions)}")
     return sessions
 
 def store_insights(user_id, insights):
@@ -85,7 +90,28 @@ You are a mental health analytics assistant. Given the following messages from a
         summary = response.choices[0].message.content.strip()
     except Exception:
         summary = ""
-    return {"summary": summary, "mood_scores": mood_scores}
+
+    # --- PATCH: Always show a score for every date in the week ---
+    mood_trend_analysis = []
+    if messages_by_day:
+        all_dates = sorted(messages_by_day.keys())
+        from datetime import datetime, timedelta
+        week_start = datetime.fromisoformat(all_dates[0])
+        week_dates = [(week_start + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+        week_days = ["Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu"]  # or use dynamic weekday names if needed
+        for i, date in enumerate(week_dates):
+            mood_trend_analysis.append({
+                "category": "",
+                "date": week_days[i % 7],
+                "date_full": date,
+                "score": mood_scores.get(date, "")
+            })
+
+    return {
+        "summary": summary,
+        "mood_scores": mood_scores,
+        "mood_trend_analysis": mood_trend_analysis
+    }
 
 
 def generate_clinical_insights_and_recommendations(user_id, messages_by_day):
@@ -99,6 +125,16 @@ You are a clinical analytics assistant. Based on the following transcript, gener
 2. progress_insights: 3-5 concise bullet points with clinical recommendations or insights.
 
 Return a valid JSON object with keys "progress_indicators" and "progress_insights".
+Each item in progress_insights should be an object with keys "title" and "subtitle", not just a string.
+
+Example:
+{
+  "progress_insights": [
+    {"title": "Maintaining stable mood patterns", "subtitle": "1 sessions completed"},
+    {"title": "Building consistency", "subtitle": "1 day streak"},
+    {"title": "Regular check-ins show commitment", "subtitle": "40 entries logged"}
+  ]
+}
 
 Transcript:
 """ + transcript
@@ -107,7 +143,7 @@ Transcript:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
-            max_tokens=300
+            max_tokens=400
         )
         import json, re
         content = response.choices[0].message.content.strip()
@@ -115,6 +151,24 @@ Transcript:
         if match:
             content = match.group(0)
         insights = json.loads(content)
+        # --- PATCH: progress_insights to structured format ---
+        def to_structured(items):
+            result = []
+            for item in items:
+                if isinstance(item, dict) and "title" in item and "subtitle" in item:
+                    result.append(item)
+                elif isinstance(item, str):
+                    # Split at first colon or dash for title/subtitle, else use as title
+                    if ":" in item:
+                        title, subtitle = item.split(":", 1)
+                        result.append({"title": title.strip(), "subtitle": subtitle.strip()})
+                    elif "-" in item:
+                        title, subtitle = item.split("-", 1)
+                        result.append({"title": title.strip(), "subtitle": subtitle.strip()})
+                    else:
+                        result.append({"title": item.strip(), "subtitle": ""})
+            return result
+        insights["progress_insights"] = to_structured(insights.get("progress_insights", []))
     except Exception:
         insights = {"progress_indicators": [], "progress_insights": []}
     return insights
@@ -159,8 +213,11 @@ Transcript:
     return insights
 
 def generate_insights_for_user(user_id):
+    user_id = user_id.strip()  # <-- Fix: strip whitespace/newlines
     sessions = get_user_sessions(user_id)
+    print(f"[DEBUG] Sessions returned for user {user_id}: {sessions}")
     if not sessions:
+        print(f"[DEBUG] No sessions found for user {user_id}.")
         raise Exception(f"No sessions found for user {user_id}. Please check if there are any completed sessions for this user.")
     from collections import defaultdict
     messages_by_day = defaultdict(list)
@@ -200,9 +257,14 @@ def generate_insights_for_user(user_id):
     all_analytics = {
         "summary": analytics.get("summary", ""),
         "mood_scores": analytics.get("mood_scores", {}),
-        "progress_indicators": clinical.get("progress_indicators", []),
-        "progress_insights": clinical.get("progress_insights", []),
-        "Clinical_insights and Recommendations": structured_clinical,
+        "clinical_insights_and_recommendations": {
+            "progress_indicators": clinical.get("progress_indicators", []),
+            "progress_insights": clinical.get("progress_insights", []),
+            "risk_assessment": structured_clinical.get("risk_assessment", []),
+            "therapeutic_effectiveness": structured_clinical.get("therapeutic_effectiveness", []),
+            "treatment_recommendations": structured_clinical.get("treatment_recommendations", []),
+            
+        },
         "analysis_version": "2.0"
     }
     store_insights(user_id, all_analytics)
