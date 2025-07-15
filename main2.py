@@ -635,7 +635,14 @@ IS_GENERIC: [yes/no]
                               .replace("{{preferred_style}}", preferred_style)
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
+    recent = ""
+    for m in ctx["history"][-6:]:
+       sender = m["sender"]
+       msg = m["message"]
+       # Strip "User:" or "Bot:" if already present
+       msg = re.sub(r'^(User|Bot):', '', msg).strip()
+       recent += f"{sender}: {msg}\n"
+
     context_note = ""
     if skip_deep:
         context_note += "Note: User prefers lighter conversation - keep response supportive but not too deep."
