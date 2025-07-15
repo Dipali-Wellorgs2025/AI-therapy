@@ -1,4 +1,3 @@
-
 from flask import Blueprint, request, jsonify
 from model_effectiveness import model_effectiveness
 import asyncio
@@ -6,8 +5,12 @@ import concurrent.futures
 from functools import wraps
 import time
 from threading import Lock
+from firebase_admin import firestore
+
 
 combined_bp = Blueprint('combined', __name__)
+def get_firestore_client():
+    return firestore.client()
 
 # Simple in-memory cache with TTL
 _cache = {}
@@ -53,6 +56,20 @@ async def call_function_async(func, *args, **kwargs):
     """Helper to run synchronous functions in async context"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, func, *args, **kwargs)
+
+def get_clinical_insights(user_id):
+    db = get_firestore_client()
+    doc = db.collection('analytics').document(user_id).get()
+    if doc.exists:
+        data = doc.to_dict()
+        insights = data.get('clinical_insights_and_recommendations', {})
+        # Ensure keys exist
+        if not insights:
+            insights = {"progress_indicators": [], "progress_insights": []}
+        return insights
+    else:
+        # Always return empty structure if not found
+        return {"progress_indicators": [], "progress_insights": []}
 
 @combined_bp.route('/combined_analytics', methods=['GET'])
 @async_route
@@ -123,9 +140,13 @@ async def combined_analytics():
     try:
         # Import the async functions from the modules
         from progress_report import clinical_overview_async, mood_trend_analysis_async, session_bar_chart_async, session_heatmap_async
-        from deepseek_insights import get_insights_async
+        from deepseek_insights import get_insights_async, get_firestore_client
         from model_effectiveness import model_effectiveness_async
         
+        db = get_firestore_client()
+        analytics_doc = db.collection('analytics').document(user_id).get()
+        analytics_data = analytics_doc.to_dict() if analytics_doc.exists else {}
+
         # Execute all async functions in parallel
         tasks = [
             clinical_overview_async(user_id, start_date),
@@ -140,12 +161,12 @@ async def combined_analytics():
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Extract results and handle any exceptions
-        clinical = results[0] if not isinstance(results[0], Exception) else {}
-        mood_trend = results[1] if not isinstance(results[1], Exception) else {}
-        session_bar = results[2] if not isinstance(results[2], Exception) else {}
-        session_heat = results[3] if not isinstance(results[3], Exception) else {}
-        model_eff = results[4] if not isinstance(results[4], Exception) else {}
-        get_insights_resp = results[5] if not isinstance(results[5], Exception) else {}
+        clinical = results[0] if isinstance(results[0], dict) else {}
+        mood_trend = results[1] if isinstance(results[1], dict) else {}
+        session_bar = results[2] if isinstance(results[2], dict) else {}
+        session_heat = results[3] if isinstance(results[3], dict) else {}
+        model_eff = results[4] if isinstance(results[4], dict) else {}
+        get_insights_resp = results[5] if isinstance(results[5], dict) else {}
         
         # Debug: Print any exceptions that occurred
         for i, result in enumerate(results):
@@ -167,17 +188,6 @@ async def combined_analytics():
     # Flatten mood_trend_analysis
     mood_trend_data = mood_trend.get('mood_trend') if isinstance(mood_trend, dict) and 'mood_trend' in mood_trend else mood_trend
 
-    # Extract insights data properly (data is nested under 'insights' key)
-    insights_data = get_insights_resp.get('insights', {})
-    clinical_insights = insights_data.get('Clinical_insights and Recommendations', {})
-    progress_indicators = insights_data.get('progress_indicators', [])
-    progress_insights = insights_data.get('progress_insights', [])
-
-    # Add progress_indicators and progress_insights to clinical_insights_and_recommendations
-    if isinstance(clinical_insights, dict):
-        clinical_insights['progress_indicators'] = progress_indicators
-        clinical_insights['progress_insights'] = progress_insights
-
     # Compose the response in the required flat structure
     response = {
         'clinical_overview': clinical,
@@ -187,12 +197,17 @@ async def combined_analytics():
         'session_heatmap': session_heatmap_data,
         'usage_insights': usage_insights_data,
         'model_effectiveness': model_effectiveness_data,
-        'clinical_insights_and_recommendations': clinical_insights
+        # Do NOT manually add clinical_insights_and_recommendations here
     }
-    
+
+    # --- PATCH: Add all analytics keys dynamically ---
+    if analytics_data:
+        for k, v in analytics_data.items():
+            response[k] = v
+
     # Remove any None values to keep response clean
     response = {k: v for k, v in response.items() if v is not None}
-    
+
     # Cache the result
     set_cache(cache_key, response)
     
@@ -204,3 +219,14 @@ def clear_analytics_cache():
     with _cache_lock:
         _cache.clear()
     return jsonify({'message': 'Analytics cache cleared successfully'})
+    if analytics_data:
+        for k, v in analytics_data.items():
+            response[k] = v
+
+    # Remove any None values to keep response clean
+    response = {k: v for k, v in response.items() if v is not None}
+
+    # Cache the result
+    set_cache(cache_key, response)
+    
+    return jsonify(response)
