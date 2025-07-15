@@ -1223,7 +1223,7 @@ Conversation:
             "bot_id": final_bot_id,
             "bot_name": final_bot_name,
             "problem": final_session_data.get("title", "Therapy Session"),
-            "status": final_session_data.get("status", "in_progress"),
+            "status": "in_progress",
             "date": str(latest_created_at),
             "user_id": final_session_data.get("userId", user_id),
             "preferred_style": final_session_data.get("therapyStyle", ""),
