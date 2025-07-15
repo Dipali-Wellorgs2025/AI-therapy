@@ -538,7 +538,6 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Technical terms that should be escalated to developers
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -553,12 +552,14 @@ def handle_message(data):
         "javascript", "html", "css", "framework", "library", "package"
     ]
 
-    # Check for technical terms
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield (
+            "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+            "For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. 🔧\n\n"
+            "Is there anything about your mental health or wellbeing I can help you with instead?"
+        )
         return
 
-    # Escalation check
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
@@ -567,15 +568,12 @@ def handle_message(data):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
-    # Context fetch
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
     session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
-    # Preferences
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # Classification
     def classify_topic_with_confidence(message):
         try:
             classification_prompt = f"""
@@ -625,28 +623,22 @@ IS_GENERIC: [yes/no]
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # Routing logic
-    should_route = False
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    # Prompt
     bot_prompt = BOT_PROMPTS.get(current_bot, "")
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    recent = "\n".join(f"User said: {m['message']}" if m["sender"] == "User" else f"{current_bot} replied: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
-
+    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
     context_note = ""
     if skip_deep:
         context_note += "Note: User prefers lighter conversation - keep response supportive but not too deep."
-    if session_number > 1:
-        context_note += f" This is session {session_number} - build on previous conversations."
 
     guidance = f"""
 You are {current_bot}, a specialized mental health support bot.
@@ -679,52 +671,23 @@ User's message: "{user_msg}"
 Respond in a self-contained, complete way:
 """
 
-    # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
-        # Remove parentheses content
-        text = re.sub(r'\([^)]*\)', '', text)  # Remove (parenthesis content)
+        text = re.sub(r'\([^)]*\)', '', text)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        text = re.sub(r'([.,!?;:])(?=[^\s.,!?;:\n*])', r'\1 ', text)
+        text = re.sub(r'["""]?\*\*["""]?', '', text)
 
-        # Fix punctuation spacing
-
-        # text = re.sub(r'["""]?\*\*["""]?', '', text) 
-
-        # Fix bold formatting
-        text = re.sub(r'\*{2} ?(.*?) ?\*{2}', r'**\1**', text)
-       
-
-        text = re.sub(r'\*+', '*', text) 
-        
-        # Ensure proper spacing around emojis
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        
-        # Fix spacing around punctuation - IMPROVED
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
-        
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
-        
-        # Clean up multiple spaces
+
         text = re.sub(r'\s{2,}', ' ', text)
-        
-        # Fix common spacing issues
-        text = text.replace(" ,", ",").replace(" .", ".")
-        text = text.replace(".,", ".").replace("!,", "!")
-        
-        # Clean up trailing formatting
+        text = text.replace(" ,", ",").replace(" .", ".").replace(".,", ".").replace("!,", "!")
         if text.endswith('**"') or text.endswith('**'):
             text = text.rstrip('*"')
-        
-        # Fallback: Bold the first sentence if no bold exists
-        if '**' not in text:
-            match = re.search(r'^(.*?[.!?])', text)
-            if match:
-                first_sentence = match.group(1)
-                if not first_sentence.strip().startswith('**'):
-                    text = text.replace(first_sentence, f'**{first_sentence.strip()}**', 1)
         return text.strip()
 
-    # 💬 IMPROVED Streaming output with better separation
     try:
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
@@ -736,40 +699,34 @@ Respond in a self-contained, complete way:
             stream=True
         )
 
-        # Buffer for streaming and paragraph handling
+        yield "\n\n"
+
         buffer = ""
         final_reply = ""
-        paragraphs = []
         first_token = True
 
-
-        # Stream and yield each chunk with formatting for real-time feedback
-        sentence_buffer = ""
-        final_reply = ""
         for chunk in response_stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 token = delta.content
-                sentence_buffer += token
+                buffer += token
                 final_reply += token
-                # If token ends a sentence, yield formatted sentence
-                if re.search(r'[.!?]\s*$', token):
-                    formatted = format_response_with_emojis(sentence_buffer)
-                    # Remove accidental merging of user and bot text
-                    formatted = re.sub(r'(User:|Bot:).*', '', formatted)
-                    yield formatted + "\n"
-                    sentence_buffer = ""
-        # Yield any remaining buffer
-        if sentence_buffer.strip():
-            formatted = format_response_with_emojis(sentence_buffer)
-            formatted = re.sub(r'(User:|Bot:).*', '', formatted)
-            yield formatted + "\n"
+                if first_token:
+                    first_token = False
+                    continue
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
+                    cleaned = format_response_with_emojis(buffer)
+                    if cleaned:
+                        yield cleaned + " "
+                    buffer = ""
 
-        # Clean up the final reply for storage
+        if buffer.strip():
+            cleaned = format_response_with_emojis(buffer)
+            if cleaned:
+                yield cleaned
+
         final_reply_cleaned = format_response_with_emojis(final_reply)
-        final_reply_cleaned = re.sub(r'(User:|Bot:).*', '', final_reply_cleaned)
 
-        # Save to Firestore
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
             "sender": "User",
@@ -802,6 +759,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
 
 
 
