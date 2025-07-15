@@ -1158,8 +1158,8 @@ def get_last_active_session():
 
         bots = {
             "anxiety": "Sage",
-            "breakup": "Jordan",
-            "self-worth": "River",
+            "couples": "Jordan",
+            "depression": "River",
             "trauma": "Phoenix",
             "family": "Ava",
             "crisis": "Raya"
