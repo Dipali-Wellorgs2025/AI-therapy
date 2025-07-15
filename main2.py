@@ -1153,9 +1153,7 @@ def get_last_active_session():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # Get actual user nickname for personalized summary
         actual_user_name = get_user_nickname(user_id)
-
         db = firestore.client()
 
         bots = {
@@ -1182,15 +1180,11 @@ def get_last_active_session():
             doc = docs[0]
             session_data = doc.to_dict()
 
-            # 🔍 Get bot visuals and info from ai_therapists
+            # Fetch bot visual fields from ai_therapists
             bot_doc = db.collection("ai_therapists").document(bot_id).get()
             bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-            # Debug info (optional)
-            print("📦 Bot Info:", bot_info)
-            print("📦 Session Data:", session_data)
-
-            # Get last few messages for summary
+            # Process messages for summary
             messages = session_data.get("messages", [])
             if not messages:
                 summary_text = "Session started, but no messages yet."
@@ -1204,6 +1198,7 @@ def get_last_active_session():
                     formatted_transcript.append(f"{sender}: {msg['message']}")
                 transcript = "\n".join(formatted_transcript)
 
+                # Generate 2-line summary using DeepSeek
                 summary_prompt = f"""Based on this mental health conversation with {actual_user_name}, create a 2-line summary that captures:
 1. The main topic/issue {actual_user_name} discussed
 2. {actual_user_name}'s current emotional state or progress
@@ -1223,31 +1218,28 @@ Conversation:
                         max_tokens=150
                     )
                     summary_text = response.choices[0].message.content.strip()
-                    lines = summary_text.split('\n')
+                    lines = summary_text.split("\n")
                     if len(lines) > 2:
                         summary_text = '\n'.join(lines[:2])
                 except Exception as e:
                     print("⚠️ Summary generation failed:", e)
-                    last_user_msg = next(
-                        (m['message'] for m in reversed(messages) if m['sender'] in ['User', actual_user_name]),
-                        "a conversation"
-                    )
+                    last_user_msg = next((m['message'] for m in reversed(messages) if m['sender'] in ['User', actual_user_name]), "conversation")
                     summary_text = f"{actual_user_name} last discussed: {last_user_msg[:50]}...\nWorking through {bot_name.lower()} support session."
 
-            # ✅ Return full session metadata with bot visuals
+            # ✅ Final response with bot visuals from ai_therapists
             return jsonify({
                 "session_id": doc.id,
                 "bot_id": bot_id,
                 "bot_name": bot_name,
-                "problem": session_data.get("issue_description") or "Therapy Session",
+                "problem": session_data.get("issue_description", "Therapy Session"),
                 "status": "in_progress",
                 "date": str(session_data.get("last_updated", "")),
                 "user_id": session_data.get("user_id", ""),
-                "preferred_style": session_data.get("preferred_style") or "Balanced",
-                "buttonColor": bot_info.get("buttonColor") or "#CCCCCC",
-                "color": bot_info.get("color") or "#999999",
-                "icon": bot_info.get("icon") or "🤖",
-                "image": bot_info.get("image") or "https://your-default-url/assets/placeholder.png",
+                "preferred_style": session_data.get("preferred_style", ""),
+                "buttonColor": bot_info.get("buttonColor", ""),
+                "color": bot_info.get("color", ""),
+                "icon": bot_info.get("icon", ""),
+                "image": bot_info.get("image", ""),
                 "summary": summary_text
             })
 
@@ -1257,6 +1249,7 @@ Conversation:
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 
 
 
