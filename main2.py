@@ -1132,46 +1132,35 @@ def home():
 # from google.cloud.firestore_v1.base import FieldFilter
 
 # ✅ Helper function to get summary from global `sessions` collection
-def fetch_summary_from_global_sessions(user_id: str, bot_id: str) -> str:
+def generate_summary_from_session_doc(session_doc):
     try:
-        db = firestore.client()
-        query = db.collection("sessions") \
-            .where(filter=FieldFilter("user_id", "==", user_id)) \
-            .where(filter=FieldFilter("bot_id", "==", bot_id)) \
-            .order_by("last_updated", direction=firestore.Query.DESCENDING) \
-            .limit(5)
+        session_data = session_doc.to_dict()
+        messages = session_data.get("messages", [])
+        if not messages:
+            return "Session started, but no messages yet."
 
-        docs = list(query.stream())
-        for doc in docs:
-            session_data = doc.to_dict()
-            messages = session_data.get("messages", [])
-            if messages:
-                transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in messages[:6])
+        recent_messages = messages[-6:] if len(messages) >= 6 else messages
+        transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in recent_messages)
 
-                summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
+        summary_prompt = f"""Summarize the following mental health support session in one warm, empathetic, and informative sentence. Avoid direct quotes.
 
 {transcript}
 
 One-line summary:"""
 
-                try:
-                    response = client.chat.completions.create(
-                        model="deepseek-chat",
-                        messages=[{"role": "user", "content": summary_prompt}],
-                        temperature=0.5,
-                        max_tokens=100
-                    )
-                    return response.choices[0].message.content.strip().split("\n")[0]
-                except Exception as e:
-                    print("⚠️ Summary generation failed:", e)
-                    return "Summary could not be generated."
-        return "Session started, but no messages yet."
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": summary_prompt}],
+            temperature=0.5,
+            max_tokens=100
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print("⚠️ Global session fetch failed:", e)
-        return "Summary could not be generated."
+        print("⚠️ Summary generation failed:", e)
+        return "Summary unavailable."
 
 
-# ✅ Main route
+
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
     try:
@@ -1183,8 +1172,8 @@ def get_last_active_session():
 
         bots = {
             "anxiety": "Sage",
-            "couples": "Jordan",
-            "depression": "River",
+            "breakup": "Jordan",
+            "self-worth": "River",
             "trauma": "Phoenix",
             "family": "Ava",
             "crisis": "Raya"
@@ -1221,19 +1210,19 @@ def get_last_active_session():
         if not latest_doc:
             return jsonify({"message": "No ended sessions found"}), 404
 
-        # Fetch bot visual fields
+        # Fetch bot visuals
         bot_doc = db.collection("ai_therapists").document(final_bot_id).get()
         bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-        # ✅ Summary now pulled from global sessions collection
-        summary_text = fetch_summary_from_global_sessions(user_id, final_bot_id)
+        # ✅ Use updated helper to generate summary
+        summary_text = generate_summary_from_session_doc(latest_doc)
 
         return jsonify({
             "session_id": latest_doc.id,
             "bot_id": final_bot_id,
             "bot_name": final_bot_name,
             "problem": final_session_data.get("title", "Therapy Session"),
-            "status": "in_progress",  # Static value for response
+            "status": "in_progress",  # still returned as 'in_progress'
             "date": str(latest_ended_at),
             "user_id": final_session_data.get("userId", user_id),
             "preferred_style": final_session_data.get("therapyStyle", ""),
@@ -1248,6 +1237,7 @@ def get_last_active_session():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 
 
 # ================= JOURNAL APIs =================
