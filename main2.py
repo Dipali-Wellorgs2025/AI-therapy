@@ -1131,21 +1131,6 @@ def home():
 
 # ================= NICKNAME FETCHING =================
  
-def get_user_nickname(user_id: str) -> str:
-    """Fetch user nickname from Firestore, fallback to 'User' if not found"""
-    try:
-        user_doc = db.collection("users").document(user_id).get()
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            # Try multiple possible nickname fields
-            nickname = user_data.get("nickname") or user_data.get("name") or user_data.get("displayName") or user_data.get("firstName")
-            if nickname:
-                return str(nickname)
-        return "User"  # Fallback if no nickname found
-    except Exception as e:
-        print(f"Error fetching nickname for user {user_id}: {e}")
-        return "User"  # Fallback on error
-
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
     try:
@@ -1258,6 +1243,7 @@ Conversation:
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 
 
 
