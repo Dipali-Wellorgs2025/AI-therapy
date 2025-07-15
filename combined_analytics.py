@@ -1,3 +1,4 @@
+
 from flask import Blueprint, request, jsonify
 from model_effectiveness import model_effectiveness
 import asyncio
@@ -6,6 +7,8 @@ from functools import wraps
 import time
 from threading import Lock
 from firebase_admin import firestore
+from datetime import datetime, timedelta
+import json
 
 
 combined_bp = Blueprint('combined', __name__)
@@ -85,6 +88,8 @@ async def combined_analytics():
     Query params: user_id (required), bot_id (optional), start_date (optional, YYYY-MM-DD)
     """
     user_id = request.args.get('user_id')
+    if user_id:
+        user_id = user_id.strip()  # <-- Fix: strip whitespace/newlines
     bot_id = request.args.get('bot_id')
     start_date = request.args.get('start_date')
     refresh_cache = request.args.get('refresh', 'false').lower() == 'true'
@@ -195,7 +200,62 @@ async def combined_analytics():
     usage_insights_data = session_heat.get('usage_insights') if isinstance(session_heat, dict) and 'usage_insights' in session_heat else None
 
     # Flatten mood_trend_analysis
-    mood_trend_data = mood_trend.get('mood_trend') if isinstance(mood_trend, dict) and 'mood_trend' in mood_trend else mood_trend
+    mood_trend_data = None
+    # Try to get mood_trend_analysis from analytics_data if present
+    if analytics_data and "mood_trend_analysis" in analytics_data:
+        mood_trend_data = analytics_data["mood_trend_analysis"]
+        # --- PATCH: Add category based on score ---
+        for entry in mood_trend_data:
+            score = entry.get("score", "")
+            if isinstance(score, int) or (isinstance(score, str) and score.isdigit()):
+                score_val = int(score)
+                if score_val >= 7:
+                    entry["category"] = "good"
+                elif score_val >= 4:
+                    entry["category"] = "okay"
+                else:
+                    entry["category"] = "bad"
+            else:
+                entry["category"] = ""
+    elif analytics_data and "mood_scores" in analytics_data:
+        mood_scores = analytics_data["mood_scores"]
+        if mood_scores:
+            from datetime import datetime, timedelta
+            # --- PATCH: Use start_date if provided, else use earliest date ---
+            if start_date:
+                try:
+                    week_start = datetime.fromisoformat(start_date)
+                except Exception:
+                    all_dates = sorted(mood_scores.keys())
+                    week_start = datetime.fromisoformat(all_dates[0])
+            else:
+                all_dates = sorted(mood_scores.keys())
+                week_start = datetime.fromisoformat(all_dates[0])
+            week_dates = [(week_start + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+            week_days = [(week_start + timedelta(days=i)).strftime('%a') for i in range(7)]
+            mood_trend_data = []
+            for i, date in enumerate(week_dates):
+                score = mood_scores.get(date, "")
+                if isinstance(score, int) or (isinstance(score, str) and str(score).isdigit()):
+                    score_val = int(score)
+                    if score_val >= 7:
+                        category = "good"
+                    elif score_val >= 4:
+                        category = "okay"
+                    else:
+                        category = "Difficult"
+                else:
+                    category = ""
+                mood_trend_data.append({
+                    "category": category,
+                    "date": week_days[i % 7],
+                    "date_full": date,
+                    "score": score
+                })
+        else:
+            mood_trend_data = []
+    else:
+        mood_trend_data = []
 
     # Compose the response in the required flat structure
     response = {
@@ -211,11 +271,45 @@ async def combined_analytics():
 
     # --- PATCH: Add all analytics keys dynamically ---
     if analytics_data:
+        analytics_data.pop('progress_indicators', None)
+        analytics_data.pop('progress_insights', None)
+        insights_key_db = None
+        if 'Clinical_insights and Recommendations' in analytics_data:
+            insights_key_db = 'Clinical_insights_and_recommendations'
+            # Rename if needed
+            analytics_data['clinical_insights_and_recommendations'] = analytics_data.pop('Clinical_insights and Recommendations')
+        elif 'clinical_insights_and_recommendations' in analytics_data:
+            insights_key_db = 'clinical_insights_and_recommendations'
+        if insights_key_db:
+            insights = analytics_data[insights_key_db]
+            print(f"[DEBUG] Value of insights ({insights_key_db}): {insights}")
+            # --- PATCH: Flatten nested keys if present ---
+            if isinstance(insights, dict) and 'Clinical_insights and Recommendations' in insights:
+                nested = insights.pop('Clinical_insights and Recommendations')
+                if isinstance(nested, dict):
+                    insights.update(nested)
+            # Ensure all required keys exist
+            for key in ['progress_indicators', 'progress_insights', 'risk_assessment', 'therapeutic_effectiveness', 'treatment_recommendations']:
+                if key not in insights:
+                    insights[key] = []
+            response['clinical_insights_and_recommendations'] = insights
+        else:
+            print("[DEBUG] No insights key found in analytics_data.")
+            response['clinical_insights_and_recommendations'] = {
+                "risk_assessment": [],
+                "therapeutic_effectiveness": [],
+                "treatment_recommendations": [],
+                "progress_indicators": [],
+                "progress_insights": []
+            }
         for k, v in analytics_data.items():
-            response[k] = v
+            if k not in ['Clinical_insights and Recommendations', 'clinical_insights_and_recommendations']:
+                response[k] = v
 
     # Remove any None values to keep response clean
     response = {k: v for k, v in response.items() if v is not None}
+
+    print(f"[DEBUG] Final response for user {user_id}: {json.dumps(response, indent=2)}")  # <-- Add this line
 
     # Cache the result
     set_cache(cache_key, response)
@@ -228,5 +322,42 @@ def clear_analytics_cache():
     with _cache_lock:
         _cache.clear()
     return jsonify({'message': 'Analytics cache cleared successfully'})
-    
-    return jsonify(response)
+
+def get_week_to_show(user_id, today=None):
+    """
+    Returns the week number and date range to show for a given user_id.
+    """
+    db = get_firestore_client()
+    # Find earliest message timestamp for user
+    sessions = db.collection('sessions').where('user_id', '==', user_id).stream()
+    earliest = None
+    for doc in sessions:
+        data = doc.to_dict()
+        messages = data.get('messages', [])
+        for msg in messages:
+            ts = msg.get('timestamp')
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    if not earliest or dt < earliest:
+                        earliest = dt
+                except Exception:
+                    continue
+    if not earliest:
+        return None  # No data
+
+    # Calculate week info
+    today_dt = today or datetime.now()
+    days_since = (today_dt - earliest).days
+    week_number = days_since // 7 + 1
+    week_start = earliest + timedelta(days=7 * (week_number - 1))
+    week_end = week_start + timedelta(days=6)
+    return {
+        "week_number": week_number,
+        "week_start": week_start.strftime('%Y-%m-%d'),
+        "week_end": week_end.strftime('%Y-%m-%d')
+    }
+
+# Example usage:
+# info = get_week_to_show("DxchnGkk5hf52qP0fOjHmTAp1oX2")
+# print(info)
