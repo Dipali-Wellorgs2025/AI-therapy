@@ -140,12 +140,21 @@ async def combined_analytics():
     try:
         # Import the async functions from the modules
         from progress_report import clinical_overview_async, mood_trend_analysis_async, session_bar_chart_async, session_heatmap_async
-        from deepseek_insights import get_insights_async, get_firestore_client
+        from deepseek_insights import get_insights_async, get_firestore_client, generate_insights_for_user
         from model_effectiveness import model_effectiveness_async
         
         db = get_firestore_client()
         analytics_doc = db.collection('analytics').document(user_id).get()
         analytics_data = analytics_doc.to_dict() if analytics_doc.exists else {}
+
+        # --- PATCH: Auto-generate analytics if missing ---
+        if not analytics_data:
+            try:
+                generate_insights_for_user(user_id)
+                analytics_doc = db.collection('analytics').document(user_id).get()
+                analytics_data = analytics_doc.to_dict() if analytics_doc.exists else {}
+            except Exception as e:
+                print(f"[ERROR] Failed to auto-generate analytics for user {user_id}: {e}")
 
         # Execute all async functions in parallel
         tasks = [
@@ -219,14 +228,5 @@ def clear_analytics_cache():
     with _cache_lock:
         _cache.clear()
     return jsonify({'message': 'Analytics cache cleared successfully'})
-    if analytics_data:
-        for k, v in analytics_data.items():
-            response[k] = v
-
-    # Remove any None values to keep response clean
-    response = {k: v for k, v in response.items() if v is not None}
-
-    # Cache the result
-    set_cache(cache_key, response)
     
     return jsonify(response)
