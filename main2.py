@@ -1154,35 +1154,37 @@ def get_last_active_session():
         final_session_data = None
 
         for bot_id, bot_name in bots.items():
-            query = db.collection("ai_therapists").document(bot_id).collection("sessions") \
-                .where("userId", "==", user_id) \
-                .where("status", "==", "Active") \
-                .order_by("createdAt", direction=firestore.Query.DESCENDING) \
-                .limit(1)
+            # Query both Active and Exit status
+            for status in ["Active", "Exit"]:
+                query = db.collection("ai_therapists").document(bot_id).collection("sessions") \
+                    .where("userId", "==", user_id) \
+                    .where("status", "==", status) \
+                    .order_by("createdAt", direction=firestore.Query.DESCENDING) \
+                    .limit(1)
 
-            docs = list(query.stream())
-            if not docs:
-                continue
+                docs = list(query.stream())
+                if not docs:
+                    continue
 
-            doc = docs[0]
-            session_data = doc.to_dict()
-            created_at = session_data.get("createdAt")
+                doc = docs[0]
+                session_data = doc.to_dict()
+                created_at = session_data.get("createdAt")
 
-            if not latest_created_at or (created_at and created_at > latest_created_at):
-                latest_created_at = created_at
-                latest_doc = doc
-                final_bot_id = bot_id
-                final_bot_name = bot_name
-                final_session_data = session_data
+                if not latest_created_at or (created_at and created_at > latest_created_at):
+                    latest_created_at = created_at
+                    latest_doc = doc
+                    final_bot_id = bot_id
+                    final_bot_name = bot_name
+                    final_session_data = session_data
 
         if not latest_doc:
-            return jsonify({"message": "No active sessions found"}), 404
+            return jsonify({"message": "No recent sessions found"}), 404
 
         # Fetch bot visual fields from ai_therapists
         bot_doc = db.collection("ai_therapists").document(final_bot_id).get()
         bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-        # Fallback summary if no messages field is found
+        # Generate summary if messages are available
         summary_text = "Session started."
         if "messages" in final_session_data:
             messages = final_session_data.get("messages", [])
@@ -1223,7 +1225,7 @@ Conversation:
             "bot_id": final_bot_id,
             "bot_name": final_bot_name,
             "problem": final_session_data.get("title", "Therapy Session"),
-            "status": "in_progress",
+            "status": "in_progress",  # Always marked as in_progress
             "date": str(latest_created_at),
             "user_id": final_session_data.get("userId", user_id),
             "preferred_style": final_session_data.get("therapyStyle", ""),
