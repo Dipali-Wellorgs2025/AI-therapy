@@ -1129,8 +1129,6 @@ def home():
 # from google.cloud import firestore
 # from google.cloud.firestore_v1.base_query import FieldFilter
 
-# ================= NICKNAME FETCHING =================
- 
 @app.route("/api/last_active_session", methods=["GET"])
 def get_last_active_session():
     try:
@@ -1138,7 +1136,6 @@ def get_last_active_session():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        actual_user_name = get_user_nickname(user_id)
         db = firestore.client()
 
         bots = {
@@ -1194,16 +1191,14 @@ def get_last_active_session():
                 formatted_transcript = []
                 for msg in recent_messages:
                     sender = msg['sender']
-                    if sender == "User":
-                        sender = actual_user_name
                     formatted_transcript.append(f"{sender}: {msg['message']}")
                 transcript = "\n".join(formatted_transcript)
 
-                summary_prompt = f"""Based on this mental health conversation with {actual_user_name}, create a 2-line summary that captures:
-1. The main topic/issue {actual_user_name} discussed
-2. {actual_user_name}'s current emotional state or progress
+                summary_prompt = f"""Based on this mental health conversation with user {user_id}, create a 2-line summary that captures:
+1. The main topic/issue discussed
+2. The user's current emotional state or progress
 
-Keep it empathetic, concise, and informative. Avoid direct quotes. Use {actual_user_name}'s name naturally in the summary.
+Keep it empathetic, concise, and informative. Avoid direct quotes. Do not use the user's name.
 
 Conversation:
 {transcript}
@@ -1243,9 +1238,6 @@ Conversation:
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
-
-
-
 
 
 # ================= JOURNAL APIs =================
