@@ -340,7 +340,9 @@ Important Rules:
         base_prompt += f"\n\nRecent responses to avoid repeating:\n{last_5_responses}"
     
     return base_prompt
-def def handle_message(data):
+
+
+def handle_message(data):
     import re
     from datetime import datetime, timezone
 
@@ -367,7 +369,7 @@ def def handle_message(data):
     ]
 
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
@@ -379,7 +381,6 @@ def def handle_message(data):
         return
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-    session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
 
     skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
@@ -449,8 +450,6 @@ IS_GENERIC: [yes/no]
     context_note = ""
     if skip_deep:
         context_note += "Note: User prefers lighter conversation - keep response supportive but not too deep."
-    if session_number > 1:
-        context_note += f" This is session {session_number} - build on previous conversations."
 
     guidance = f"""
 You are {current_bot}, a specialized mental health support bot.
@@ -459,10 +458,10 @@ CORE PRINCIPLES:
 - Be **warm, empathetic, and comprehensive**
 - Provide **independent, complete support**
 - Use **natural flow** with appropriate emojis
-- Use [inhale 4], [hold 4], [exhale 4] style when suggesting breathing
-- Be friendly and gentle, but **firm** and **clear** if needed
 - NEVER include stage directions like (inhale) or (smiles)
 - Skip text in parentheses completely
+- Use [inhale 4], [hold 4], [exhale 4] style action cues if guiding breathing
+- Maintain a friendly but **firm** tone when needed
 
 FORMAT:
 - 3-5 sentences, natural tone
@@ -487,16 +486,15 @@ Respond in a self-contained, complete way:
 
     def format_response_with_emojis(text):
         text = re.sub(r'\([^)]*\)', '', text)
-        text = re.sub(r'\*{1,2}[\"“”]?(.*?)[\"“”]?\*{1,2}', r'**\1**', text)
-        text = re.sub(r'["\"]?\*\*["\"]?', '', text)
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        text = re.sub(r'["”]?\*\*["”]?', '', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
-        text = text.replace(" ,", ",").replace(" .", ".")
-        text = text.replace(".,", ".").replace("!,", "!")
+        text = text.replace(" ,", ",").replace(" .", ".").replace(".,", ".").replace("!,", "!")
         if text.endswith('**"') or text.endswith('**'):
             text = text.rstrip('*"')
         return text.strip()
@@ -523,11 +521,9 @@ Respond in a self-contained, complete way:
                 token = delta.content
                 buffer += token
                 final_reply += token
-
                 if first_token:
                     first_token = False
                     continue
-
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
                     cleaned = format_response_with_emojis(buffer)
                     if cleaned:
@@ -552,8 +548,7 @@ Respond in a self-contained, complete way:
         ctx["history"].append({
             "sender": current_bot,
             "message": final_reply_cleaned,
-            "timestamp": now,
-            "session_number": session_number
+            "timestamp": now
         })
 
         ctx["session_ref"].set({
@@ -564,7 +559,6 @@ Respond in a self-contained, complete way:
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
-            "session_number": session_number,
             "is_active": True,
             "last_topic_confidence": confidence
         }, merge=True)
@@ -573,6 +567,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
 
 
         
