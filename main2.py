@@ -39,7 +39,7 @@ app.register_blueprint(model_effectiveness_bp)
 app.register_blueprint(combined_bp)
 
 # app.register_blueprint(subscription_bp)
-app.register_blueprint(combined_bp)
+# app.register_blueprint(combined_bp)
 
 app.register_blueprint(combined_progress_bp) # Register combined progress blueprint
 # Initialize Firebase
