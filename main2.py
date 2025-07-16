@@ -440,7 +440,7 @@ IS_GENERIC: [yes/no]
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    # ✅ FIX: Get prompt string from BOT_PROMPTS dict
+    # ✅ Fixed access to bot_prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -450,9 +450,7 @@ IS_GENERIC: [yes/no]
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
-    context_note = ""
-    if skip_deep:
-        context_note += "Note: User prefers lighter conversation - keep response supportive but not too deep."
+    context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep." if skip_deep else ""
 
     guidance = f"""
 You are {current_bot}, a specialized mental health support bot.
@@ -487,19 +485,15 @@ User's message: \"{user_msg}\"
 Respond in a self-contained, complete way:
 """
 
+    # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
-        text = re.sub(r'\([^)]*\)', '', text)
         text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-        text = re.sub(r'["”]?\*\*["”]?', '', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
-        text = text.replace(" ,", ",").replace(" .", ".").replace(".,", ".").replace("!,", "!")
-        if text.endswith('**"') or text.endswith('**'):
-            text = text.rstrip('*"')
         return text.strip()
 
     try:
@@ -528,15 +522,11 @@ Respond in a self-contained, complete way:
                     first_token = False
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
-                    cleaned = format_response_with_emojis(buffer)
-                    if cleaned:
-                        yield cleaned + " "
+                    yield format_response_with_emojis(buffer) + " "
                     buffer = ""
 
         if buffer.strip():
-            cleaned = format_response_with_emojis(buffer)
-            if cleaned:
-                yield cleaned
+            yield format_response_with_emojis(buffer)
 
         final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -570,6 +560,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
 
         
 @app.route("/api/stream", methods=["GET"])
