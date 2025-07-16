@@ -15,6 +15,8 @@ from queue import Queue
 import json
 import re
 
+from progress_api import progress_async_bp
+from combined_progress_api import combined_progress_bp
 from profile_manager import profile_bp
 from deepseek_insights import insights_bp
 from progress_report import progress_bp
@@ -37,7 +39,9 @@ app.register_blueprint(model_effectiveness_bp)
 app.register_blueprint(combined_bp)
 
 # app.register_blueprint(subscription_bp)
+app.register_blueprint(combined_bp)
 
+app.register_blueprint(combined_progress_bp) # Register combined progress blueprint
 # Initialize Firebase
 load_dotenv()
 firebase_key = os.getenv("FIREBASE_KEY_JSON")
