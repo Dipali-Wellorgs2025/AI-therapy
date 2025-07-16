@@ -440,7 +440,10 @@ IS_GENERIC: [yes/no]
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    bot_prompt = BOT_PROMPTS.get(current_bot, "")
+    # ✅ FIX: Get prompt string from BOT_PROMPTS dict
+    bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
+    bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
+
     filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                               .replace("{{issue_description}}", issue_description)\
                               .replace("{{preferred_style}}", preferred_style)
@@ -567,8 +570,6 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-
-
 
         
 @app.route("/api/stream", methods=["GET"])
