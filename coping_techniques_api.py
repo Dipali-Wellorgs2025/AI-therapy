@@ -52,8 +52,38 @@ def daily_summary_and_coping():
         m['message'] for m in latest_session['messages']
         if 'timestamp' in m and m['timestamp'].startswith(today_str)
     ]
+    # Immediate support options (same as get_coping_techniques_and_support)
+    support_options = [
+        {
+            "icon": "📞",
+            "title": "National Suicide Prevention Lifeline",
+            "subtitle": "24/7 Crisis Support",
+            "contact": "988",
+            "description": "Free and confidential emotional support",
+            "action": "Call Now"
+        },
+        {
+            "icon": "💬",
+            "title": "Crisis Text Line",
+            "subtitle": "Text Support Available",
+            "contact": "741741",
+            "description": "Text HOME to connect with a crisis counselor",
+            "action": "Call Now"
+        },
+        {
+            "icon": "🏥",
+            "title": "SAMHSA National Helpline",
+            "subtitle": "Mental Health & Substance Abuse",
+            "contact": "1-800-662-4357",
+            "description": "Treatment referral and information service",
+            "action": "Call Now"
+        }
+    ]
     if not todays_messages:
-        return jsonify({'error': 'No messages for today'}), 404
+        return jsonify({
+            'coping_techniques': [],
+            'immediate_support': support_options,
+        }), 200
 
     transcript = "\n".join(todays_messages)
 
@@ -167,10 +197,37 @@ You are a therapy assistant. Based on the following summary, suggest 2-3 coping 
         if name in TECHNIQUE_DETAILS:
             detailed_techniques.append(TECHNIQUE_DETAILS[name])
         else:
+            # Generate description and category using DeepSeek
+            try:
+                info_prompt = f"""
+You are a therapy assistant. For the coping technique '{name}', provide:
+1. A one-sentence description of what it is and how it helps.
+2. The most relevant category (e.g., Anxiety, Mindfulness, Self-reflection, Crisis, Trauma, etc.).
+Return a JSON object with 'description' and 'category'.
+"""
+                info_response = deepseek_client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[{"role": "user", "content": info_prompt}],
+                    temperature=0.5,
+                    max_tokens=60
+                )
+                import json as _json
+                info_content = info_response.choices[0].message.content.strip()
+                try:
+                    info_json = _json.loads(info_content)
+                    description = info_json.get("description", "See app for details.")
+                    category = info_json.get("category", "General")
+                except:
+                    # Fallback: parse manually
+                    description = info_content.split('"description"')[1].split(':')[1].split(',')[0].strip(' "') if '"description"' in info_content else "See app for details."
+                    category = info_content.split('"category"')[1].split(':')[1].split('}')[0].strip(' "') if '"category"' in info_content else "General"
+            except Exception:
+                description = "See app for details."
+                category = "General"
             detailed_techniques.append({
                 "name": name,
-                "description": "See app for details.",
-                "category": "General"
+                "description": description,
+                "category": category
             })
 
     # Immediate support options (same as get_coping_techniques_and_support)
