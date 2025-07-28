@@ -24,7 +24,7 @@ def get_daily_motivational_quote():
     if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
         return _daily_quote_cache["quote"]
     prompt = "Generate a short, two-line motivational quote for therapy and self-growth."
-    response = deepseek_client.chat.completions.create(
+    response = client.chat.completions.create(
         model="deepseek/deepseek-r1:free",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
