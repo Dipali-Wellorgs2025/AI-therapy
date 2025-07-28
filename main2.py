@@ -538,7 +538,12 @@ Important Rules:
 def handle_message(data):
     import re
     from datetime import datetime, timezone
+    import time
 
+    # Start timing
+    start_time = time.time()
+
+    # Extract message data
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
@@ -547,6 +552,7 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
+    # Term lists
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -563,20 +569,23 @@ def handle_message(data):
     
 
 
+    # First yield the user message immediately
+    yield {"type": "user_message", "content": user_msg}
+
     # Early exit checks
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
         response = "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
-        yield response
+        yield {"type": "bot_response", "content": response}
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         response = "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
-        yield response
+        yield {"type": "bot_response", "content": response}
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         response = "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
-        yield response
+        yield {"type": "bot_response", "content": response}
         return
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
@@ -637,7 +646,7 @@ IS_GENERIC: [yes/no]
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
             response = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
-            yield response
+            yield {"type": "bot_response", "content": response}
             return
 
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
@@ -685,7 +694,7 @@ Respond in a self-contained, complete way:
 """
 
     def format_response_with_emojis(text):
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        text = re.sub(r'\*{1,2}[""]?(.*?)[""]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
@@ -695,7 +704,7 @@ Respond in a self-contained, complete way:
         return text.strip()
 
     try:
-        # Store user message immediately before processing response
+        # Store user message in history immediately
         now = datetime.now(timezone.utc).isoformat()
         user_message_entry = {
             "sender": "User",
@@ -705,12 +714,12 @@ Respond in a self-contained, complete way:
             "confidence": confidence
         }
         ctx["history"].append(user_message_entry)
-        
+
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=400,
+            max_tokens=300,  # Reduced for faster response
             presence_penalty=0.2,
             frequency_penalty=0.3,
             stream=True
@@ -721,31 +730,26 @@ Respond in a self-contained, complete way:
         first_chunk = True
 
         for chunk in response_stream:
+            if time.time() - start_time > 3.0:  # 3 second timeout
+                break
+
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
                 buffer += token
                 final_reply += token
 
                 # Send chunks at natural break points
-                if len(buffer) > 20 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
+                if len(buffer) > 25 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
                     formatted = format_response_with_emojis(buffer)
                     if formatted.strip():
-                        if first_chunk:
-                            # Clear any leading whitespace for the first chunk
-                            yield formatted.lstrip()
-                            first_chunk = False
-                        else:
-                            yield formatted
-                    buffer = ""
+                        yield {"type": "bot_response", "content": formatted}
+                        buffer = ""
 
         # Send any remaining content
         if buffer.strip():
             formatted = format_response_with_emojis(buffer)
             if formatted.strip():
-                if first_chunk:
-                    yield formatted.lstrip()
-                else:
-                    yield formatted
+                yield {"type": "bot_response", "content": formatted}
 
         final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -773,8 +777,7 @@ Respond in a self-contained, complete way:
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-
+        yield {"type": "bot_response", "content": "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"}
         
 @app.route("/api/stream", methods=["GET"])
 def stream():
