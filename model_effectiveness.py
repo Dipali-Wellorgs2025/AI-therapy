@@ -85,12 +85,12 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
         
 
         
-        response = deepseek_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": prompt}],
             temperature=1,
             max_tokens=10000,  # Fixed: use valid range [1, 8192]
-            timeout=5 # Increased timeout to 10 seconds
+            timeout=5, # Increased timeout to 10 seconds
             headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
         
