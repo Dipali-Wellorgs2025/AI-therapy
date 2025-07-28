@@ -575,6 +575,7 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
+    # Term lists
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -589,23 +590,31 @@ def handle_message(data):
         "javascript", "html", "css", "framework", "library", "package"
     ]
 
-    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
+    ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life", "want to die"]
+    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "prescription", "lawsuit"]
+
+    # Early returns
+    lower_msg = user_msg.lower()
+    if any(term in lower_msg for term in TECHNICAL_TERMS):
         yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
-    if any(term in user_msg.lower() for term in ESCALATION_TERMS):
+    if any(term in lower_msg for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
 
-    if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
+    if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
+    # Get session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
+    # User preferences
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", lower_msg))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", lower_msg))
 
+    # Classification
     def classify_topic_with_confidence(message):
         try:
             classification_prompt = f"""
@@ -655,12 +664,14 @@ IS_GENERIC: [yes/no]
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
+    # Bot switching
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
+    # Prepare prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -723,7 +734,7 @@ Respond in a self-contained, complete way:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=300,  # Reduced for faster response
+            max_tokens=250,  # Reduced for faster response
             presence_penalty=0.2,
             frequency_penalty=0.3,
             stream=True
@@ -731,40 +742,34 @@ Respond in a self-contained, complete way:
 
         buffer = ""
         final_reply = ""
-        has_sent_first_chunk = False
-        min_chunk_size = 25  # Increased minimum chunk size
+        has_responded = False
+        min_chunk_size = 20
+        timeout = 3.0  # 3 second timeout
 
         for chunk in response_stream:
-            if time.time() - start_time > 3.0:  # Timeout after 3 seconds
+            if time.time() - start_time > timeout:
                 break
 
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
                 buffer += token
                 final_reply += token
+                has_responded = True
 
-                # Send chunks at natural break points with sufficient content
+                # Send chunks at natural break points
                 if len(buffer) >= min_chunk_size and token in {'.', '!', '?', ',', ';', ':', '\n'}:
                     formatted = format_response_with_emojis(buffer)
                     if formatted.strip():
-                        if not has_sent_first_chunk:
-                            yield formatted.lstrip()  # Remove leading whitespace for first chunk
-                            has_sent_first_chunk = True
-                        else:
-                            yield formatted
-                        buffer = ""
+                        yield formatted
+                    buffer = ""
 
-        # Send any remaining content
+        # Final flush if we have content
         if buffer.strip():
             formatted = format_response_with_emojis(buffer)
             if formatted.strip():
-                if not has_sent_first_chunk:
-                    yield formatted.lstrip()
-                else:
-                    yield formatted
-
-        # Format the complete reply for storage
-        final_reply_cleaned = format_response_with_emojis(final_reply)
+                yield formatted
+        elif not has_responded:  # Guaranteed response
+            yield "Let me think about that for a moment... ✨"
 
         # Update conversation history
         now = datetime.now(timezone.utc).isoformat()
@@ -777,7 +782,7 @@ Respond in a self-contained, complete way:
         })
         ctx["history"].append({
             "sender": current_bot,
-            "message": final_reply_cleaned,
+            "message": final_reply if final_reply else "...",
             "timestamp": now
         })
 
