@@ -647,7 +647,7 @@ CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
             classification = client.chat.completions.create(
-                model="deepseek/deepseek-r1:free",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
                     {"role": "user", "content": classification_prompt}
@@ -738,7 +738,7 @@ Respond in a self-contained, complete way:
 
     try:
         response_stream = client.chat.completions.create(
-            model="deepseek/deepseek-r1:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=250,  # Reduced for faster response
