@@ -610,19 +610,23 @@ Categories:
 
 Message: \"{message}\"
 
+  
+
+print(resp.choices[0].message.content)
 Respond in this format:
 CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
             classification = client.chat.completions.create(
-                model="deepseek-chat",
+                model="deepseek/deepseek-r1-0528-qwen3-8b:free",
                 messages=[
                     {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
                     {"role": "user", "content": classification_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=100
+                max_tokens=100,
+                headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
             )
             response = classification.choices[0].message.content.strip()
             category, confidence, is_generic = None, None, False
@@ -719,13 +723,14 @@ Respond in a self-contained, complete way:
         # yield user_msg.strip()  # No name or label, just plain text
 
         response_stream = client.chat.completions.create(
-          model="deepseek-chat",
+          model="deepseek/deepseek-r1-0528-qwen3-8b:free",
           messages=[{"role": "user", "content": prompt}],
           temperature=0.7,
           max_tokens=400,
           presence_penalty=0.2,
           frequency_penalty=0.3,
-          stream=True
+          stream=True,
+          headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
 
         buffer = ""
@@ -865,9 +870,10 @@ Instructions:
 """
 
         classification = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3
+            temperature=0.3,
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
 
         category = classification.choices[0].message.content.strip().lower()
@@ -900,12 +906,13 @@ Instructions:
         filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
 
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": filled_prompt}],
             temperature=0.7,
             max_tokens=150,
             presence_penalty=0.5,
-            frequency_penalty=0.5
+            frequency_penalty=0.5,
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
 
         reply = clean_response(response.choices[0].message.content.strip())
@@ -1002,10 +1009,11 @@ Generate the report now:
 """
 
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=600
+            max_tokens=600,
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
 
         summary_raw = response.choices[0].message.content.strip()
@@ -1190,10 +1198,11 @@ Conversation:
 
 
                     response = client.chat.completions.create(
-                        model="deepseek-chat",
+                        model="deepseek/deepseek-r1-0528-qwen3-8b:free",
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
-                        max_tokens=100
+                        max_tokens=100,
+                        headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
                     )
                     summary_text = response.choices[0].message.content.strip()
         except Exception as e:
