@@ -54,22 +54,22 @@ db = firestore.client()
 
 # Initialize client with your OpenRouter API key
 
-"""
+
 # Initialize DeepSeek client
 client = OpenAI(
     base_url="https://api.deepseek.com/v1",
-    api_key="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"
+    api_key="sk-09e270ba6ccb42f9af9cbe92c6be24d8"
 )
-"""
+
 from openai import OpenAI
 import os
-
+"""
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY")
 )
 
-
+"""
 # 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
 
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
@@ -651,17 +651,13 @@ CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
             classification = client.chat.completions.create(
-                model="deepseek/deepseek-r1:free",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
                     {"role": "user", "content": classification_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=100,
-                extra_headers={
-                   "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-                    "X-Title": "AI Therapy"
-                }
+                max_tokens=100
             )
             response = classification.choices[0].message.content.strip()
             category, confidence, is_generic = None, None, False
@@ -746,17 +742,14 @@ Respond in a self-contained, complete way:
 
     try:
         response_stream = client.chat.completions.create(
-            model="deepseek/deepseek-r1:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=250,  # Reduced for faster response
             presence_penalty=0.2,
             frequency_penalty=0.3,
-            stream=True,
-            extra_headers={
-             "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-             "X-Title": "AI Therapy"
-            }
+            stream=True
+            
         )
 
         buffer = ""
@@ -909,11 +902,7 @@ Instructions:
         classification = client.chat.completions.create(
             model="deepseek/deepseek-r1:free",
             messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3,
-            extra_headers={
-              "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-              "X-Title": "AI Therapy"
-            }
+            temperature=0.3
         )
 
         category = classification.choices[0].message.content.strip().lower()
@@ -946,16 +935,13 @@ Instructions:
         filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
 
         response = client.chat.completions.create(
-            model="deepseek/deepseek-r1:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": filled_prompt}],
             temperature=0.7,
             max_tokens=150,
             presence_penalty=0.5,
-            frequency_penalty=0.5,
-            extra_headers={
-             "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-             "X-Title": "AI Therapy"
-            }
+            frequency_penalty=0.5
+            
         )
 
         reply = clean_response(response.choices[0].message.content.strip())
@@ -1052,14 +1038,11 @@ Generate the report now:
 """
 
         response = client.chat.completions.create(
-            model="deepseek/deepseek-r1:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=600,
-            extra_headers={
-             "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-             "X-Title": "AI Therapy"
-            }
+            max_tokens=600
+            
         )
 
         summary_raw = response.choices[0].message.content.strip()
@@ -1244,14 +1227,10 @@ Conversation:
 
 
                     response = client.chat.completions.create(
-                        model="deepseek/deepseek-r1:free",
+                        model="deepseek-chat",
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
-                        max_tokens=100,
-                        extra_headers={
-                         "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-                         "X-Title": "AI Therapy"
-                        }
+                        max_tokens=100
                     )
                     summary_text = response.choices[0].message.content.strip()
         except Exception as e:
