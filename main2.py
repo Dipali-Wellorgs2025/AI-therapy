@@ -707,7 +707,7 @@ Respond in a self-contained, complete way:
         # First, yield the user message for display
         yield user_msg.strip()  # No name or label, just plain text
 
-       response_stream = client.chat.completions.create(
+        response_stream = client.chat.completions.create(
           model="deepseek-chat",
           messages=[{"role": "user", "content": prompt}],
           temperature=0.7,
@@ -715,13 +715,13 @@ Respond in a self-contained, complete way:
           presence_penalty=0.2,
           frequency_penalty=0.3,
           stream=True
-       )
+        )
 
-       buffer = ""
-       final_reply = ""
+        buffer = ""
+        final_reply = ""
 
-       # Stream and yield clean chunks of bot reply
-       for chunk in response_stream:
+        # Stream and yield clean chunks of bot reply
+        for chunk in response_stream:
           if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
             token = chunk.choices[0].delta.content
             buffer += token
@@ -734,8 +734,8 @@ Respond in a self-contained, complete way:
                 yield formatted.strip()
                buffer = ""
 
-      # Flush any final leftover buffer
-      if buffer.strip():
+        # Flush any final leftover buffer
+        if buffer.strip():
            formatted = format_response_with_emojis(buffer)
            if formatted.strip():
              yield formatted.strip()
