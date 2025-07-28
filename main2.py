@@ -539,7 +539,6 @@ def handle_message(data):
     import re
     from datetime import datetime, timezone
 
-    # Extract message data
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
@@ -548,7 +547,6 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Technical keywords filter
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -562,17 +560,23 @@ def handle_message(data):
         "git", "repository", "bug", "debug", "code", "programming", "python",
         "javascript", "html", "css", "framework", "library", "package"
     ]
+    
 
+
+    # Early exit checks
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        response = "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield response
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        response = "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        yield response
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        response = "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        yield response
         return
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
@@ -632,7 +636,8 @@ IS_GENERIC: [yes/no]
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            response = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            yield response
             return
 
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
@@ -690,15 +695,17 @@ Respond in a self-contained, complete way:
         return text.strip()
 
     try:
+        # Store user message immediately before processing response
         now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({
+        user_message_entry = {
             "sender": "User",
             "message": user_msg,
             "timestamp": now,
             "classified_topic": category,
             "confidence": confidence
-        })
-
+        }
+        ctx["history"].append(user_message_entry)
+        
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
@@ -719,34 +726,43 @@ Respond in a self-contained, complete way:
                 buffer += token
                 final_reply += token
 
+                # Send chunks at natural break points
                 if len(buffer) > 20 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
                     formatted = format_response_with_emojis(buffer)
                     if formatted.strip():
                         if first_chunk:
+                            # Clear any leading whitespace for the first chunk
                             yield formatted.lstrip()
                             first_chunk = False
                         else:
                             yield formatted
                     buffer = ""
 
+        # Send any remaining content
         if buffer.strip():
             formatted = format_response_with_emojis(buffer)
             if formatted.strip():
-                yield formatted
+                if first_chunk:
+                    yield formatted.lstrip()
+                else:
+                    yield formatted
 
         final_reply_cleaned = format_response_with_emojis(final_reply)
 
-        ctx["history"].append({
+        # Store bot response in history
+        bot_message_entry = {
             "sender": current_bot,
             "message": final_reply_cleaned,
-            "timestamp": now
-        })
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        ctx["history"].append(bot_message_entry)
 
+        # Update Firestore with both messages
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
             "bot_id": category,
-            "messages": ctx["history"][-30:],  # Keep only recent 30 messages
+            "messages": ctx["history"],
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
