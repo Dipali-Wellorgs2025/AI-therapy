@@ -561,8 +561,12 @@ TECHNICAL_TERMS = [
 def handle_message(data):
     import re
     from datetime import datetime, timezone
+    import time
 
-    # Extract message data (unchanged)
+    # Start timing
+    start_time = time.time()
+
+    # Extract message data
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
@@ -571,7 +575,6 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Term lists (unchanged)
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -703,13 +706,16 @@ Respond in a self-contained, complete way:
 """
 
     def format_response_with_emojis(text):
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        # First ensure proper spacing around punctuation
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        # Then handle bold formatting
+        text = re.sub(r'\*{1,2}(.*?)\*{1,2}', r'**\1**', text)
+        # Handle emoji spacing
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+        # Clean up any double spaces
+        text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
     try:
@@ -717,7 +723,7 @@ Respond in a self-contained, complete way:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=400,
+            max_tokens=300,  # Reduced for faster response
             presence_penalty=0.2,
             frequency_penalty=0.3,
             stream=True
@@ -725,33 +731,42 @@ Respond in a self-contained, complete way:
 
         buffer = ""
         final_reply = ""
-        first_chunk = True
+        has_sent_first_chunk = False
+        min_chunk_size = 25  # Increased minimum chunk size
 
         for chunk in response_stream:
+            if time.time() - start_time > 3.0:  # Timeout after 3 seconds
+                break
+
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
                 buffer += token
                 final_reply += token
 
-                # Send chunks at natural break points
-                if len(buffer) > 20 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
+                # Send chunks at natural break points with sufficient content
+                if len(buffer) >= min_chunk_size and token in {'.', '!', '?', ',', ';', ':', '\n'}:
                     formatted = format_response_with_emojis(buffer)
                     if formatted.strip():
-                        if first_chunk:
-                            yield formatted.lstrip()
-                            first_chunk = False
+                        if not has_sent_first_chunk:
+                            yield formatted.lstrip()  # Remove leading whitespace for first chunk
+                            has_sent_first_chunk = True
                         else:
                             yield formatted
-                    buffer = ""
+                        buffer = ""
 
         # Send any remaining content
         if buffer.strip():
             formatted = format_response_with_emojis(buffer)
             if formatted.strip():
-                yield formatted
+                if not has_sent_first_chunk:
+                    yield formatted.lstrip()
+                else:
+                    yield formatted
 
+        # Format the complete reply for storage
         final_reply_cleaned = format_response_with_emojis(final_reply)
 
+        # Update conversation history
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
             "sender": "User",
@@ -766,6 +781,7 @@ Respond in a self-contained, complete way:
             "timestamp": now
         })
 
+        # Update Firestore
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
