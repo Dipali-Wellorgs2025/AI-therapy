@@ -554,21 +554,6 @@ Important Rules:
     return base_prompt
 
 
-# Define term lists (make sure these are defined in your actual code)
-TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "ai training", "dataset", "parameters", "weights", "backpropagation",
-        "gradient descent", "optimization", "loss function", "epochs", "batch size",
-        "learning rate", "overfitting", "underfitting", "regularization",
-        "transformer", "attention mechanism", "fine-tuning", "pre-training",
-        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-        "deployment", "inference", "api", "endpoint", "latency", "throughput",
-        "scaling", "load balancing", "database", "server", "cloud", "docker",
-        "kubernetes", "microservices", "devops", "ci/cd", "version control",
-        "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"
-]
-
 def handle_message(data):
     import re
     from datetime import datetime, timezone
@@ -601,21 +586,20 @@ def handle_message(data):
         "javascript", "html", "css", "framework", "library", "package"
     ]
 
-    ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life", "want to die"]
-    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "prescription", "lawsuit"]
 
-    # Early returns
+
+    # Early returns with clear markers
     lower_msg = user_msg.lower()
     if any(term in lower_msg for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield "||bot_response||I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
     if any(term in lower_msg for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        yield "||bot_response||I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
 
     if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        yield "||bot_response||This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
     # Get session context
@@ -675,11 +659,11 @@ IS_GENERIC: [yes/no]
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # Bot switching
+    # Bot switching with clear marker
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            yield f"||bot_response||I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
     # Prepare prompt
@@ -745,18 +729,22 @@ Respond in a self-contained, complete way:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=250,  # Reduced for faster response
+            max_tokens=300,  # Reduced for faster response
             presence_penalty=0.2,
             frequency_penalty=0.3,
             stream=True
-            
         )
 
         buffer = ""
         final_reply = ""
-        has_responded = False
-        min_chunk_size = 20
+        has_sent_first_chunk = False
+        min_chunk_size = 25
         timeout = 3.0  # 3 second timeout
+
+        # Start with clear bot marker
+        if not has_sent_first_chunk:
+            yield "||bot_response||"
+            has_sent_first_chunk = True
 
         for chunk in response_stream:
             if time.time() - start_time > timeout:
@@ -766,7 +754,6 @@ Respond in a self-contained, complete way:
                 token = chunk.choices[0].delta.content
                 buffer += token
                 final_reply += token
-                has_responded = True
 
                 # Send chunks at natural break points
                 if len(buffer) >= min_chunk_size and token in {'.', '!', '?', ',', ';', ':', '\n'}:
@@ -775,15 +762,16 @@ Respond in a self-contained, complete way:
                         yield formatted
                     buffer = ""
 
-        # Final flush if we have content
+        # Send any remaining content
         if buffer.strip():
             formatted = format_response_with_emojis(buffer)
             if formatted.strip():
                 yield formatted
-        elif not has_responded:  # Guaranteed response
-            yield "Let me think about that for a moment... ✨"
 
-        # Update conversation history
+        # Format the complete reply for storage
+        final_reply_cleaned = format_response_with_emojis(final_reply)
+
+        # Update conversation history with clear separation
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
             "sender": "User",
@@ -794,8 +782,9 @@ Respond in a self-contained, complete way:
         })
         ctx["history"].append({
             "sender": current_bot,
-            "message": final_reply if final_reply else "...",
-            "timestamp": now
+            "message": final_reply_cleaned,
+            "timestamp": now,
+            "is_bot": True  # Mark as bot message
         })
 
         # Update Firestore
@@ -814,7 +803,7 @@ Respond in a self-contained, complete way:
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+        yield "||bot_response||I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
         
 @app.route("/api/stream", methods=["GET"])
 def stream():
