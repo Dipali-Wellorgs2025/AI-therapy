@@ -707,7 +707,7 @@ Respond in a self-contained, complete way:
         # First, yield the user message for display
         yield user_msg.strip()  # No name or label, just plain text
 
-        response_stream = client.chat.completions.create(
+       response_stream = client.chat.completions.create(
           model="deepseek-chat",
           messages=[{"role": "user", "content": prompt}],
           temperature=0.7,
@@ -715,7 +715,7 @@ Respond in a self-contained, complete way:
           presence_penalty=0.2,
           frequency_penalty=0.3,
           stream=True
-       )
+        )
 
        buffer = ""
        final_reply = ""
