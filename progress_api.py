@@ -24,20 +24,19 @@ client = OpenAI(
   api_type="openai",
   api_version="v1"
 )
+
+
 def get_daily_motivational_quote():
     today = date.today().isoformat()
     if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
         return _daily_quote_cache["quote"]
     prompt = "Generate a short, two-line motivational quote for therapy and self-growth."
-    response = deepseek_client.chat.completions.create(
-        model="deepseek-chat",
+    response = client.chat.completions.create(
+        model="deepseek/deepseek-r1-0528-qwen3-8b:free",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
         temperature=0.8,
-        extra_headers={
-        "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-        "X-Title": "AI Therapy"
-        }
+        headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
     )
     quote = response.choices[0].message.content.strip()
     _daily_quote_cache["date"] = today
