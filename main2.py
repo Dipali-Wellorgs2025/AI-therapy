@@ -689,10 +689,12 @@ Respond in a self-contained, complete way:
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        # Ensure exactly one space after each punctuation mark (.,!?:)
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
+        # Remove extra spaces (more than one)
         text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
+ 
 
     try:
         # Store user message immediately before processing response
