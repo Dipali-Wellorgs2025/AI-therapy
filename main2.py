@@ -676,7 +676,7 @@ FORMAT:
 Recent messages:
 {recent}
 
-Message received from user (do not repeat it): \"{user_msg}\"
+User's message: \"{user_msg}\"
 
 
 {context_note}
@@ -706,7 +706,7 @@ Respond in a self-contained, complete way:
         }
         ctx["history"].append(user_message_entry)
         # First, yield the user message for display
-        yield user_msg.strip()  # No name or label, just plain text
+        # yield user_msg.strip()  # No name or label, just plain text
 
         response_stream = client.chat.completions.create(
           model="deepseek-chat",
