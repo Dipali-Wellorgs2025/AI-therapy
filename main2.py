@@ -657,7 +657,7 @@ IS_GENERIC: [yes/no]
                     {"role": "user", "content": classification_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=100
+                max_tokens=100,
                 extra_headers={
                    "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
                     "X-Title": "AI Therapy"
@@ -752,7 +752,7 @@ Respond in a self-contained, complete way:
             max_tokens=250,  # Reduced for faster response
             presence_penalty=0.2,
             frequency_penalty=0.3,
-            stream=True
+            stream=True,
             extra_headers={
              "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
              "X-Title": "AI Therapy"
@@ -909,7 +909,7 @@ Instructions:
         classification = client.chat.completions.create(
             model="deepseek/deepseek-r1:free",
             messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3
+            temperature=0.3,
             extra_headers={
               "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
               "X-Title": "AI Therapy"
@@ -951,7 +951,7 @@ Instructions:
             temperature=0.7,
             max_tokens=150,
             presence_penalty=0.5,
-            frequency_penalty=0.5
+            frequency_penalty=0.5,
             extra_headers={
              "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
              "X-Title": "AI Therapy"
@@ -1055,7 +1055,7 @@ Generate the report now:
             model="deepseek/deepseek-r1:free",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=600
+            max_tokens=600,
             extra_headers={
              "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
              "X-Title": "AI Therapy"
@@ -1247,7 +1247,7 @@ Conversation:
                         model="deepseek/deepseek-r1:free",
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
-                        max_tokens=100
+                        max_tokens=100,
                         extra_headers={
                          "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
                          "X-Title": "AI Therapy"
