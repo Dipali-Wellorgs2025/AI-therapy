@@ -543,7 +543,7 @@ Important Rules:
     return base_prompt
 
 
-Define term lists (make sure these are defined in your actual code)
+# Define term lists (make sure these are defined in your actual code)
 TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
