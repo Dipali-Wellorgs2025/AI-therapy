@@ -82,6 +82,10 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
             temperature=1,
             max_tokens=10000,  # Fixed: use valid range [1, 8192]
             timeout=5  # Increased timeout to 10 seconds
+            extra_headers={
+               "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
+               "X-Title": "AI Therapy"
+            }
         )
         
         result = response.choices[0].message.content.strip()
