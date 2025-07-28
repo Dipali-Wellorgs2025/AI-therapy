@@ -9,18 +9,18 @@ import asyncio
 
 # Simple in-memory cache for daily quote
 _daily_quote_cache = {"date": None, "quote": None}
-
+"""
 # Initialize DeepSeek client (ensure your API key is set in env or here)
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
-
+"""
 def get_daily_motivational_quote():
     today = date.today().isoformat()
     if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
         return _daily_quote_cache["quote"]
     prompt = "Generate a short, two-line motivational quote for therapy and self-growth."
     response = deepseek_client.chat.completions.create(
-        model="deepseek-chat",
+        model="deepseek/deepseek-r1:free",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
         temperature=0.8
