@@ -676,7 +676,8 @@ FORMAT:
 Recent messages:
 {recent}
 
-User's message: \"{user_msg}\"
+Message received from user (do not repeat it): \"{user_msg}\"
+
 
 {context_note}
 
