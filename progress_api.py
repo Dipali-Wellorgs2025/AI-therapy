@@ -28,7 +28,7 @@ def get_daily_motivational_quote():
         model="deepseek/deepseek-r1:free",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
-        temperature=0.8
+        temperature=0.8,
         extra_headers={
         "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
         "X-Title": "AI Therapy"
