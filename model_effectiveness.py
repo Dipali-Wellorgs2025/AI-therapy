@@ -19,7 +19,7 @@ deepseek_client = OpenAI(
 """
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key="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" # ⚠️ Replace with your actual OpenRouter API key
+    api_key=os.getenv("OPENROUTER_API_KEY")
 )
 def async_route(f):
     """Decorator to enable async support in Flask routes"""
