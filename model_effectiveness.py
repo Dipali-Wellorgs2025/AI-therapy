@@ -81,7 +81,7 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
             messages=[{"role": "user", "content": prompt}],
             temperature=1,
             max_tokens=10000,  # Fixed: use valid range [1, 8192]
-            timeout=5  # Increased timeout to 10 seconds
+            timeout=5, # Increased timeout to 10 seconds
             extra_headers={
                "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
                "X-Title": "AI Therapy"
