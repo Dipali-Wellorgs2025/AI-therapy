@@ -704,49 +704,44 @@ Respond in a self-contained, complete way:
             "confidence": confidence
         }
         ctx["history"].append(user_message_entry)
-        
+        # First, yield the user message for display
+        yield user_msg.strip()  # No name or label, just plain text
+
         response_stream = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=400,
-            presence_penalty=0.2,
-            frequency_penalty=0.3,
-            stream=True
-        )
+          model="deepseek-chat",
+          messages=[{"role": "user", "content": prompt}],
+          temperature=0.7,
+          max_tokens=400,
+          presence_penalty=0.2,
+          frequency_penalty=0.3,
+          stream=True
+       )
 
-        buffer = ""
-        final_reply = ""
-        first_chunk = True
+       buffer = ""
+       final_reply = ""
 
-        for chunk in response_stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                token = chunk.choices[0].delta.content
-                buffer += token
-                final_reply += token
+       # Stream and yield clean chunks of bot reply
+       for chunk in response_stream:
+          if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            token = chunk.choices[0].delta.content
+            buffer += token
+            final_reply += token
 
-                # Send chunks at natural break points
-                if len(buffer) > 20 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
-                    formatted = format_response_with_emojis(buffer)
-                    if formatted.strip():
-                        if first_chunk:
-                            # Clear any leading whitespace for the first chunk
-                            yield formatted.lstrip()
-                            first_chunk = False
-                        else:
-                            yield formatted
-                    buffer = ""
+            # Check for sentence boundaries
+            if token in {".", "!", "?", "\n"} and len(buffer.strip()) > 10:
+               formatted = format_response_with_emojis(buffer)
+               if formatted.strip():
+                yield formatted.strip()
+               buffer = ""
 
-        # Send any remaining content
-        if buffer.strip():
-            formatted = format_response_with_emojis(buffer)
-            if formatted.strip():
-                if first_chunk:
-                    yield formatted.lstrip()
-                else:
-                    yield formatted
+      # Flush any final leftover buffer
+      if buffer.strip():
+           formatted = format_response_with_emojis(buffer)
+           if formatted.strip():
+             yield formatted.strip()
 
-        final_reply_cleaned = format_response_with_emojis(final_reply)
+           final_reply_cleaned = format_response_with_emojis(final_reply)
+
 
         # Store bot response in history
         bot_message_entry = {
