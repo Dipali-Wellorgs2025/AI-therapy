@@ -1,4 +1,5 @@
 twilio
+httpx>=0.24.0
 # ==== Core Flask Server ====
 Flask==3.0.3
 flask-cors==6.0.1
