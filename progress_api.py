@@ -9,17 +9,21 @@ import asyncio
 
 # Simple in-memory cache for daily quote
 _daily_quote_cache = {"date": None, "quote": None}
-
+"""
 # Initialize DeepSeek client (ensure your API key is set in env or here)
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 """
 
+from openai import OpenAI
+import os
+
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY")
+  api_key=os.getenv("OPENROUTER_API_KEY"),
+  api_base="https://openrouter.ai/v1",
+  api_type="openai",
+  api_version="v1"
 )
-"""
 def get_daily_motivational_quote():
     today = date.today().isoformat()
     if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
