@@ -538,12 +538,8 @@ Important Rules:
 def handle_message(data):
     import re
     from datetime import datetime, timezone
-    import time
 
-    # Start timing
-    start_time = time.time()
-
-    # Extract message data
+    # Extract message data (unchanged)
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
@@ -552,7 +548,7 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Term lists
+    # Term lists (unchanged)
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -567,30 +563,23 @@ def handle_message(data):
         "javascript", "html", "css", "framework", "library", "package"
     ]
 
-    
-
-    # Early returns
-    lower_msg = user_msg.lower()
-    if any(term in lower_msg for term in TECHNICAL_TERMS):
+    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
         yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
-    if any(term in lower_msg for term in ESCALATION_TERMS):
+    if any(term in user_msg.lower() for term in ESCALATION_TERMS):
         yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
 
-    if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
+    if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
-    # Get session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    # User preferences
-    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", lower_msg))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", lower_msg))
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # Classification
     def classify_topic_with_confidence(message):
         try:
             classification_prompt = f"""
@@ -640,14 +629,12 @@ IS_GENERIC: [yes/no]
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # Bot switching
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    # Prepare prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -693,16 +680,13 @@ Respond in a self-contained, complete way:
 """
 
     def format_response_with_emojis(text):
-        # First ensure proper spacing around punctuation
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        # Then handle bold formatting
-        text = re.sub(r'\*{1,2}(.*?)\*{1,2}', r'**\1**', text)
-        # Handle emoji spacing
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        # Clean up any double spaces
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
 
     try:
@@ -710,7 +694,7 @@ Respond in a self-contained, complete way:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=300,  # Reduced for faster response
+            max_tokens=400,
             presence_penalty=0.2,
             frequency_penalty=0.3,
             stream=True
@@ -719,22 +703,22 @@ Respond in a self-contained, complete way:
         buffer = ""
         final_reply = ""
         first_chunk = True
-        timeout = 3.0  # 3 second timeout
 
         for chunk in response_stream:
-            if time.time() - start_time > timeout:
-                break
-
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
                 buffer += token
                 final_reply += token
 
                 # Send chunks at natural break points
-                if len(buffer) > 25 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
+                if len(buffer) > 20 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
                     formatted = format_response_with_emojis(buffer)
                     if formatted.strip():
-                        yield formatted
+                        if first_chunk:
+                            yield formatted.lstrip()
+                            first_chunk = False
+                        else:
+                            yield formatted
                     buffer = ""
 
         # Send any remaining content
@@ -743,10 +727,8 @@ Respond in a self-contained, complete way:
             if formatted.strip():
                 yield formatted
 
-        # Format the complete reply for storage
         final_reply_cleaned = format_response_with_emojis(final_reply)
 
-        # Update conversation history
         now = datetime.now(timezone.utc).isoformat()
         ctx["history"].append({
             "sender": "User",
@@ -758,11 +740,9 @@ Respond in a self-contained, complete way:
         ctx["history"].append({
             "sender": current_bot,
             "message": final_reply_cleaned,
-            "timestamp": now,
-            "is_bot": True  # Internal marker
+            "timestamp": now
         })
 
-        # Update Firestore
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -779,7 +759,6 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-
         
 @app.route("/api/stream", methods=["GET"])
 def stream():
