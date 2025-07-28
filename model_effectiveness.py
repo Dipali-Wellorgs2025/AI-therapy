@@ -76,7 +76,7 @@ Session content:
 Respond ONLY with two numbers separated by a comma (e.g., "75,4")
 """
         
-        response = deepseek_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="deepseek/deepseek-r1:free",
             messages=[{"role": "user", "content": prompt}],
             temperature=1,
