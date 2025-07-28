@@ -629,11 +629,9 @@ IS_GENERIC: [yes/no]
                 ],
                 temperature=0.1,
                 max_tokens=100,
-                base_url="https://openrouter.ai/api/v1",
-                extra_headers={
-                  "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
-                  "X-Title": "AI-therapy-2"
-                }
+                headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}  # Required by OpenRouter
+                 
+                
             )
             response = classification.choices[0].message.content.strip()
             category, confidence, is_generic = None, None, False
@@ -737,11 +735,8 @@ Respond in a self-contained, complete way:
           presence_penalty=0.2,
           frequency_penalty=0.3,
           stream=True,
-          base_url="https://openrouter.ai/api/v1",
-          extra_headers={
-           "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
-           "X-Title": "AI-therapy-2"
-          }
+          headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+          
         )
 
         buffer = ""
@@ -884,11 +879,7 @@ Instructions:
             model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": classification_prompt}],
             temperature=0.3,
-            base_url="https://openrouter.ai/api/v1",
-            extra_headers={
-               "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
-               "X-Title": "AI-Therapy-2"
-            }
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
 
         category = classification.choices[0].message.content.strip().lower()
@@ -927,11 +918,8 @@ Instructions:
             max_tokens=150,
             presence_penalty=0.5,
             frequency_penalty=0.5,
-            base_url="https://openrouter.ai/api/v1",
-            extra_headers={
-               "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
-               "X-Title": "AI-therapy-2"
-            }
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            
         )
 
         reply = clean_response(response.choices[0].message.content.strip())
@@ -1032,11 +1020,7 @@ Generate the report now:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=600,
-            base_url="https://openrouter.ai/api/v1",
-            extra_headers={
-                "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
-                "X-Title": "AI-therapy-2"
-            }
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
 
         summary_raw = response.choices[0].message.content.strip()
@@ -1225,11 +1209,7 @@ Conversation:
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
                         max_tokens=100,
-                        base_url="https://openrouter.ai/api/v1",
-                        extra_headers={
-                          "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
-                          "X-Title": "AI-therapy-2"
-                        }
+                        headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
                     )
                     summary_text = response.choices[0].message.content.strip()
         except Exception as e:
