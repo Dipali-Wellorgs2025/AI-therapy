@@ -18,14 +18,15 @@ deepseek_client = OpenAI(
     api_key=DEEPSEEK_API_KEY
 )
 """
-import os, httpx
+from openai import OpenAI
+import os
 
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Referer":  "https://ai-therapy-2-jcbx.onrender.com",  # must match your Dashboard allowlist
-    "Content-Type": "application/json"
-}
+client = OpenAI(
+  api_key=os.getenv("OPENROUTER_API_KEY"),
+  api_base="https://openrouter.ai/v1",
+  api_type="openai",
+  api_version="v1"
+)
 
 def async_route(f):
     """Decorator to enable async support in Flask routes"""
@@ -82,13 +83,15 @@ Session content:
 Respond ONLY with two numbers separated by a comma (e.g., "75,4")
 """
         
+
+        
         response = deepseek_client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": prompt}],
             temperature=1,
             max_tokens=10000,  # Fixed: use valid range [1, 8192]
             timeout=5 # Increased timeout to 10 seconds
-
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
         )
         
         result = response.choices[0].message.content.strip()
