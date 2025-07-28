@@ -539,7 +539,7 @@ def handle_message(data):
     import re
     from datetime import datetime, timezone
 
-    # Extract message data (unchanged)
+    # Extract message data
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
@@ -548,7 +548,7 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Term lists (unchanged)
+    # Technical keywords filter
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -690,6 +690,15 @@ Respond in a self-contained, complete way:
         return text.strip()
 
     try:
+        now = datetime.now(timezone.utc).isoformat()
+        ctx["history"].append({
+            "sender": "User",
+            "message": user_msg,
+            "timestamp": now,
+            "classified_topic": category,
+            "confidence": confidence
+        })
+
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
@@ -710,7 +719,6 @@ Respond in a self-contained, complete way:
                 buffer += token
                 final_reply += token
 
-                # Send chunks at natural break points
                 if len(buffer) > 20 and token in {'.', '!', '?', ',', ';', ':', '\n'}:
                     formatted = format_response_with_emojis(buffer)
                     if formatted.strip():
@@ -721,7 +729,6 @@ Respond in a self-contained, complete way:
                             yield formatted
                     buffer = ""
 
-        # Send any remaining content
         if buffer.strip():
             formatted = format_response_with_emojis(buffer)
             if formatted.strip():
@@ -729,14 +736,6 @@ Respond in a self-contained, complete way:
 
         final_reply_cleaned = format_response_with_emojis(final_reply)
 
-        now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({
-            "sender": "User",
-            "message": user_msg,
-            "timestamp": now,
-            "classified_topic": category,
-            "confidence": confidence
-        })
         ctx["history"].append({
             "sender": current_bot,
             "message": final_reply_cleaned,
@@ -747,7 +746,7 @@ Respond in a self-contained, complete way:
             "user_id": user_id,
             "bot_name": current_bot,
             "bot_id": category,
-            "messages": ctx["history"],
+            "messages": ctx["history"][-30:],  # Keep only recent 30 messages
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
@@ -759,6 +758,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
         
 @app.route("/api/stream", methods=["GET"])
 def stream():
