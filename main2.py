@@ -706,7 +706,7 @@ Respond in a self-contained, complete way:
         }
         ctx["history"].append(user_message_entry)
         # First, yield the user message for display
-        # yield user_msg.strip()  # No name or label, just plain text
+        yield user_msg.strip()  # No name or label, just plain text
 
         response_stream = client.chat.completions.create(
           model="deepseek-chat",
