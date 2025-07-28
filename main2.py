@@ -58,14 +58,15 @@ client = OpenAI(
 )
 """
 
-import os, httpx
+from openai import OpenAI
+import os
 
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Referer":  "https://ai-therapy-2-jcbx.onrender.com",  # must match your Dashboard allowlist
-    "Content-Type": "application/json"
-}
+client = OpenAI(
+  api_key=os.getenv("OPENROUTER_API_KEY"),
+  api_base="https://openrouter.ai/v1",
+  api_type="openai",
+  api_version="v1"
+)
 
 
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
