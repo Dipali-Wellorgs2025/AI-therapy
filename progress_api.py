@@ -29,6 +29,10 @@ def get_daily_motivational_quote():
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
         temperature=0.8
+        extra_headers={
+        "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
+        "X-Title": "AI Therapy"
+        }
     )
     quote = response.choices[0].message.content.strip()
     _daily_quote_cache["date"] = today
