@@ -715,7 +715,7 @@ Respond in a self-contained, complete way:
           presence_penalty=0.2,
           frequency_penalty=0.3,
           stream=True
-        )
+       )
 
        buffer = ""
        final_reply = ""
