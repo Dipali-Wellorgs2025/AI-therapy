@@ -54,12 +54,12 @@ db = firestore.client()
 # Initialize DeepSeek client
 client = OpenAI(
     base_url="https://api.deepseek.com/v1",
-    api_key="sk-09e270ba6ccb42f9af9cbe92c6be24d8"
+    api_key="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"
 )
 
 
 
-
+# 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
 
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
 
