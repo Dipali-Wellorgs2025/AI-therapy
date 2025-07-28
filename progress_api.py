@@ -14,6 +14,11 @@ _daily_quote_cache = {"date": None, "quote": None}
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 """
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key="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" # ⚠️ Replace with your actual OpenRouter API key
+)
 def get_daily_motivational_quote():
     today = date.today().isoformat()
     if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
