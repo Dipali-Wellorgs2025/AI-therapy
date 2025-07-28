@@ -726,7 +726,7 @@ Respond in a self-contained, complete way:
           model="deepseek/deepseek-r1-0528-qwen3-8b:free",
           messages=[{"role": "user", "content": prompt}],
           temperature=0.7,
-          max_tokens=400,
+          max_tokens=300,
           presence_penalty=0.2,
           frequency_penalty=0.3,
           stream=True,
