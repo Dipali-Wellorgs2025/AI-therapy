@@ -23,9 +23,6 @@ import os
 
 client = OpenAI(
   api_key=os.getenv("OPENROUTER_API_KEY"),
-  api_base="https://openrouter.ai/v1",
-  api_type="openai",
-  api_version="v1"
 )
 
 def async_route(f):
@@ -91,7 +88,11 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
             temperature=1,
             max_tokens=10000,  # Fixed: use valid range [1, 8192]
             timeout=5, # Increased timeout to 10 seconds
-            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            base_url="https://openrouter.ai/api/v1",
+            extra_headers={
+               "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",  # Required by OpenRouter
+               "X-Title": "AI-therapy-2"
+            }
         )
         
         result = response.choices[0].message.content.strip()
