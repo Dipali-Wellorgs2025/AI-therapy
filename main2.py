@@ -50,15 +50,22 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(firebase_key))
     firebase_admin.initialize_app(cred)
 db = firestore.client()
-
+"""
 # Initialize DeepSeek client
 client = OpenAI(
     base_url="https://api.deepseek.com/v1",
     api_key="sk-09e270ba6ccb42f9af9cbe92c6be24d8"
 )
+"""
 
+import os, httpx
 
-
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+HEADERS = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Referer":  "https://ai-therapy-2-jcbx.onrender.com",  # must match your Dashboard allowlist
+    "Content-Type": "application/json"
+}
 
 
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
