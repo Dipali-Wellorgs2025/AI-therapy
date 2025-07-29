@@ -15,34 +15,45 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 """
 
+import os
+import httpx
+from fastapi import FastAPI
+
+app = FastAPI()
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+
+HEADERS = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Referer":      "https://ai-therapy-2-jcbx.onrender.com",   # Must exactly match your OpenRouter allowed domains
+    "Content-Type": "application/json"
 
 
-from openai import OpenAI
+_daily_quote_cache = {"date": None, "quote": None}
 
-client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key="<OPENROUTER_API_KEY>",
-)
-
-
-def get_daily_motivational_quote():
+async def get_daily_motivational_quote():
     today = date.today().isoformat()
     if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
         return _daily_quote_cache["quote"]
+
     prompt = "Generate a short, two-line motivational quote for therapy and self-growth."
-    response = client.chat.completions.create(
-        model="deepseek/deepseek-r1-0528-qwen3-8b:free",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=60,
-        temperature=0.8,
-        extra_headers={
-            "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com", # Optional. Site URL for rankings on openrouter.ai.
-            "X-Title": "AI-therapy-2", # Optional. Site title for rankings on openrouter.ai.
-        }
-    )
-    quote = response.choices[0].message.content.strip()
+
+    payload = {
+        "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 60,
+        "temperature": 0.8,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(ENDPOINT, headers=HEADERS, json=payload, timeout=10)
+
+    response.raise_for_status()
+    quote = response.json()["choices"][0]["message"]["content"].strip()
+
     _daily_quote_cache["date"] = today
     _daily_quote_cache["quote"] = quote
+
     return quote
 
 
