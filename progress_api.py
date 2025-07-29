@@ -17,9 +17,9 @@ deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEE
 
 import os
 import httpx
-from fastapi import FastAPI
+# from fastapi import FastAPI
 
-app = FastAPI()
+# app = FastAPI()
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
