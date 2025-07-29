@@ -30,7 +30,7 @@ HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
     "Referer":      "https://ai-therapy-2-jcbx.onrender.com",   # Must exactly match your OpenRouter allowed domains
     "Content-Type": "application/json"
-
+}
 def async_route(f):
     """Decorator to enable async support in Flask routes"""
     @wraps(f)
