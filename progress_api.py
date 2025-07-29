@@ -16,14 +16,13 @@ deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEE
 """
 
 
-
-from openai import OpenAI
-
-client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key="<OPENROUTER_API_KEY>",
-)
-
+import os
+import openai
+ 
+openai.api_key     = os.getenv("OPENROUTER_API_KEY")
+openai.api_base    = "https://openrouter.ai/v1"
+openai.api_type    = "openai"
+openai.api_version = "v1"
 
 def get_daily_motivational_quote():
     today = date.today().isoformat()
