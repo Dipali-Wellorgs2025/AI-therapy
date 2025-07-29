@@ -58,19 +58,15 @@ client = OpenAI(
 )
 """
 
+from openai import OpenAI
 import os
-import httpx
-# from fastapi import FastAPI
 
-# app = FastAPI()
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Referer":      "https://ai-therapy-2-jcbx.onrender.com",   # Must exactly match your OpenRouter allowed domains
-    "Content-Type": "application/json"
-}
+client = OpenAI(
+  api_key=os.getenv("OPENROUTER_API_KEY"),
+  api_base="https://openrouter.ai/v1",
+  api_type="openai",
+  api_version="v1"
+)
 
 
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
@@ -546,45 +542,10 @@ Important Rules:
     
     return base_prompt
 
+def handle_message(data):
+    import re
+    from datetime import datetime, timezone
 
-
-TECHNICAL_TERMS = [
-    "training", "algorithm", "model", "neural network", "machine learning", "ml",
-    "ai training", "dataset", "parameters", "weights", "backpropagation",
-    "gradient descent", "optimization", "loss function", "epochs", "batch size",
-    "learning rate", "overfitting", "underfitting", "regularization",
-    "transformer", "attention mechanism", "fine-tuning", "pre-training",
-    "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-    "deployment", "inference", "api", "endpoint", "latency", "throughput",
-    "scaling", "load balancing", "database", "server", "cloud", "docker",
-    "kubernetes", "microservices", "devops", "ci/cd", "version control",
-    "git", "repository", "bug", "debug", "code", "programming", "python",
-    "javascript", "html", "css", "framework", "library", "package"
-]
-
-ESCALATION_TERMS = ["suicide", "kill myself", "end it all", "can't go on"]
-OUT_OF_SCOPE_TOPICS = ["diagnosis", "medication", "prescription", "therapy session"]
-
-def format_response_with_emojis(text):
-    text = re.sub(r'\*{1,2}["\u201c\u201d]?(.*?)["\u201c\u201d]?\*{1,2}', r'**\1**', text)
-    emoji_pattern = r'([\U0001F331\U0001F499\u2728\U0001F64C\U0001F49B\U0001F31F\U0001F504\U0001F49A\U0001F91D\U0001F49C\U0001F308\U0001F614\U0001F629\u2615\U0001F6B6\U0001F3AF\U0001F49D\U0001F338\U0001F98B\U0001F4AC\U0001F4AD\U0001F527])'
-    text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-    text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-    text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
-    text = re.sub(r'\s{2,}', ' ', text)
-    return text.strip()
-
-async def ask(prompt: str):
-    payload = {
-        "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
-        "messages": [{"role": "user", "content": prompt}]
-    }
-    async with httpx.AsyncClient() as client:
-        r = await client.post(ENDPOINT, headers=HEADERS, json=payload, timeout=10)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
-
-async def handle_message(data):
     user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
@@ -593,24 +554,46 @@ async def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
+    TECHNICAL_TERMS = [
+        "training", "algorithm", "model", "neural network", "machine learning", "ml",
+        "ai training", "dataset", "parameters", "weights", "backpropagation",
+        "gradient descent", "optimization", "loss function", "epochs", "batch size",
+        "learning rate", "overfitting", "underfitting", "regularization",
+        "transformer", "attention mechanism", "fine-tuning", "pre-training",
+        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+        "deployment", "inference", "api", "endpoint", "latency", "throughput",
+        "scaling", "load balancing", "database", "server", "cloud", "docker",
+        "kubernetes", "microservices", "devops", "ci/cd", "version control",
+        "git", "repository", "bug", "debug", "code", "programming", "python",
+        "javascript", "html", "css", "framework", "library", "package"
+    ]
+    
+   
+
+    # Early exit checks
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. \ud83d\udd27\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        response = "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield response
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. \ud83d\udc99"
+        response = "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        yield response
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. \ud83e\udd1d"
+        response = "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        yield response
         return
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    skip_deep = bool(re.search(r"\\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\\b(i want to stay|keep this bot|don't switch|stay with)\\b", user_msg.lower()))
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    classification_prompt = f"""
+    def classify_topic_with_confidence(message):
+        try:
+            classification_prompt = f"""
 You are a mental health topic classifier. Analyze the message and determine:
 1. The primary topic category
 2. Confidence level (high/medium/low)
@@ -625,31 +608,47 @@ Categories:
 - crisis
 - general
 
-Message: \"{user_msg}\"
+Message: \"{message}\"
 
+  
+
+print(resp.choices[0].message.content)
 Respond in this format:
 CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
+            classification = client.chat.completions.create(
+                model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+                messages=[
+                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+                    {"role": "user", "content": classification_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=100,
+                headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            )
+            response = classification.choices[0].message.content.strip()
+            category, confidence, is_generic = None, None, False
+            for line in response.split("\n"):
+                if line.startswith("CATEGORY:"):
+                    category = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("CONFIDENCE:"):
+                    confidence = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("IS_GENERIC:"):
+                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
+            return category, confidence, is_generic
+        except Exception as e:
+            print("Classification failed:", e)
+            return "general", "low", True
 
-    try:
-        classification_response = await ask(classification_prompt)
-        category, confidence, is_generic = "general", "low", True
-        for line in classification_response.split("\n"):
-            if line.startswith("CATEGORY:"):
-                category = line.split(":", 1)[1].strip().lower()
-            elif line.startswith("CONFIDENCE:"):
-                confidence = line.split(":", 1)[1].strip().lower()
-            elif line.startswith("IS_GENERIC:"):
-                is_generic = line.split(":", 1)[1].strip().lower() == "yes"
-    except Exception as e:
-        category, confidence, is_generic = "general", "low", True
+    category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? \ud83d\udd04"
+            response = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            yield response
             return
 
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
@@ -681,6 +680,7 @@ FORMAT:
 - 1-2 emojis max
 - Ask 1 thoughtful follow-up question unless user is overwhelmed
 """
+# User's message: \"{user_msg}\"
 
     prompt = f"""{guidance}
 
@@ -689,64 +689,85 @@ FORMAT:
 Recent messages:
 {recent}
 
+
+
 {context_note}
 
 Respond in a self-contained, complete way:
 """
 
+    def format_response_with_emojis(text):
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        # Ensure exactly one space after each punctuation mark (.,!?:)
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
+        # Remove extra spaces (more than one)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
+ 
+
     try:
+        # Store user message immediately before processing response
         now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({
+        user_message_entry = {
             "sender": "User",
             "message": user_msg,
             "timestamp": now,
             "classified_topic": category,
             "confidence": confidence
-        })
-
-        payload = {
-            "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
-            "max_tokens": 300,
-            "presence_penalty": 0.2,
-            "frequency_penalty": 0.3,
-            "stream": True
         }
+        ctx["history"].append(user_message_entry)
+        # First, yield the user message for display
+        # yield user_msg.strip()  # No name or label, just plain text
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            async with client.stream("POST", ENDPOINT, headers=HEADERS, json=payload) as response:
-                buffer = ""
-                final_reply = ""
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:") or "content" not in line:
-                        continue
-                    try:
-                        json_data = line.replace("data: ", "")
-                        token = eval(json_data)["choices"][0]["delta"].get("content", "")
-                        buffer += token
-                        final_reply += token
-                        if token in {".", "!", "?", "\n"} and len(buffer.strip()) > 10:
-                            formatted = format_response_with_emojis(buffer)
-                            if formatted.strip():
-                                yield formatted.strip()
-                            buffer = ""
-                    except Exception:
-                        continue
+        response_stream = client.chat.completions.create(
+          model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+          messages=[{"role": "user", "content": prompt}],
+          temperature=0.7,
+          max_tokens=300,
+          presence_penalty=0.2,
+          frequency_penalty=0.3,
+          stream=True,
+          headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+        )
 
-                if buffer.strip():
-                    formatted = format_response_with_emojis(buffer)
-                    if formatted.strip():
-                        yield formatted.strip()
+        buffer = ""
+        final_reply = ""
 
-                final_reply_cleaned = format_response_with_emojis(final_reply)
+        # Stream and yield clean chunks of bot reply
+        for chunk in response_stream:
+          if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            token = chunk.choices[0].delta.content
+            buffer += token
+            final_reply += token
 
-        ctx["history"].append({
+            # Check for sentence boundaries
+            if token in {".", "!", "?", "\n"} and len(buffer.strip()) > 10:
+               formatted = format_response_with_emojis(buffer)
+               if formatted.strip():
+                yield formatted.strip()
+               buffer = ""
+
+        # Flush any final leftover buffer
+        if buffer.strip():
+           formatted = format_response_with_emojis(buffer)
+           if formatted.strip():
+             yield formatted.strip()
+
+           final_reply_cleaned = format_response_with_emojis(final_reply)
+
+
+        # Store bot response in history
+        bot_message_entry = {
             "sender": current_bot,
             "message": final_reply_cleaned,
             "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        }
+        ctx["history"].append(bot_message_entry)
 
+        # Update Firestore with both messages
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -762,8 +783,7 @@ Respond in a self-contained, complete way:
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. \ud83d\udc99"
-
+        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
 
         
 @app.route("/api/stream", methods=["GET"])
@@ -818,22 +838,7 @@ def start_questionnaire():
 
 # 🧠 PATCH: Enhance bot response generation in /api/message
 @app.route("/api/message", methods=["POST"])
-async def ask(prompt: str, temperature: float = 0.7, max_tokens: int = 300) -> str:
-    payload = {
-        "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "presence_penalty": 0.3,
-        "frequency_penalty": 0.3
-    }
-    async with httpx.AsyncClient() as client:
-        r = await client.post(ENDPOINT, headers=HEADERS, json=payload, timeout=10)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-
-
-async def classify_and_respond():
+def classify_and_respond():
     try:
         data = request.json
         user_message = data.get("message", "")
@@ -843,7 +848,7 @@ async def classify_and_respond():
         issue_description = data.get("issue_description", "")
         preferred_style = data.get("preferred_style", "Balanced")
 
-        # 🧠 Classify message
+        # Classify message
         classification_prompt = f"""
 You are a classifier. Based on the user's message, return one label from the following:
 
@@ -856,31 +861,33 @@ Categories:
 - crisis
 - none
 
-Message: "{user_message}"
+Message: "{user_msg}"
 
 Instructions:
 - If the message is a greeting (e.g., "hi", "hello", "good morning") or does not describe any emotional or psychological issue, return **none**.
 - Otherwise, return the most relevant category.
 - Do not explain your answer. Return only the label.
 """
-        raw_category = await ask(classification_prompt, temperature=0.3, max_tokens=50)
-        category = raw_category.lower().strip()
 
+        classification = client.chat.completions.create(
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+            messages=[{"role": "user", "content": classification_prompt}],
+            temperature=0.3,
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+        )
+
+        category = classification.choices[0].message.content.strip().lower()
         if category == "none":
+            # Let the current bot respond normally using default issue_description
             category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
         elif category not in TOPIC_TO_BOT:
-            return jsonify({
-                "botReply": "This seems like a different issue. Would you like to talk to another therapist?",
-                "needsRedirect": False
-            })
+             yield "This seems like a different issue. Would you like to talk to another therapist?"
+             return
+
 
         correct_bot = TOPIC_TO_BOT[category]
         if correct_bot != current_bot:
-            return jsonify({
-                "botReply": f"This looks like a **{category}** issue. I suggest switching to **{correct_bot}**, who specializes in this.",
-                "needsRedirect": True,
-                "suggestedBot": correct_bot
-            })
+            return jsonify({"botReply": f"This looks like a {category} issue. I suggest switching to {correct_bot} who specializes in this.", "needsRedirect": True, "suggestedBot": correct_bot})
 
         session_id = f"{user_id}_{current_bot}"
         ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
@@ -895,16 +902,22 @@ Instructions:
         filled_prompt = filled_prompt.replace("{{preferred_style}}", preferred_style)
         filled_prompt = filled_prompt.replace("{{session_number}}", str(session_number))
         filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
-
         last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
-        full_prompt = f"{filled_prompt}\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
+        filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
 
-        # 🤖 Generate reply
-        reply = await ask(full_prompt, temperature=0.7, max_tokens=150)
-        reply = clean_response(reply)
+        response = client.chat.completions.create(
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+            messages=[{"role": "user", "content": filled_prompt}],
+            temperature=0.7,
+            max_tokens=150,
+            presence_penalty=0.5,
+            frequency_penalty=0.5,
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+        )
+
+        reply = clean_response(response.choices[0].message.content.strip())
         now = datetime.now(timezone.utc).isoformat()
 
-        # 🧾 Save history
         ctx["history"].append({"sender": "User", "message": user_message, "timestamp": now})
         ctx["history"].append({"sender": current_bot, "message": reply, "timestamp": now})
 
@@ -925,7 +938,6 @@ Instructions:
         print("Error in message processing:", e)
         traceback.print_exc()
         return jsonify({"botReply": "An error occurred. Please try again."}), 500
-
         
 
 def clean_clinical_summary(summary_raw: str) -> str:
@@ -958,7 +970,7 @@ def clean_clinical_summary(summary_raw: str) -> str:
     return cleaned.strip()
 
 @app.route("/api/session_summary", methods=["GET"])
-async def generate_session_summary():
+def generate_session_summary():
     try:
         user_id = request.args.get("user_id")
         bot_name = request.args.get("botName")
@@ -977,7 +989,7 @@ async def generate_session_summary():
         # Build transcript
         transcript = "\n".join([f"{m['sender']}: {m['message']}" for m in messages])
 
-        # Prompt to LLM
+        # LLM prompt
         prompt = f"""
 You are a clinical insights generator. Based on the conversation transcript below, return a 4-part structured analysis with the following section headings:
 
@@ -996,23 +1008,20 @@ Transcript:
 Generate the report now:
 """
 
-        # Send request to OpenRouter
-        payload = {
-            "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5,
-            "max_tokens": 600
-        }
+        response = client.chat.completions.create(
+            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=600,
+            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+        )
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(ENDPOINT, headers=HEADERS, json=payload, timeout=30)
-            response.raise_for_status()
-            summary_raw = response.json()["choices"][0]["message"]["content"].strip()
+        summary_raw = response.choices[0].message.content.strip()
 
-        # Clean result (use your existing function)
+        # ✅ Corrected this line (this was the issue!)
         final_summary = clean_clinical_summary(summary_raw)
 
-        # Save summary to Firestore
+        # Save to Firestore
         db.collection("sessions").document(session_id).update({
             "summary": final_summary,
             "ended_at": firestore.SERVER_TIMESTAMP
@@ -1024,7 +1033,6 @@ Generate the report now:
         print("❌ Error generating session summary:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error generating summary"}), 500
-
 
 
 @app.route("/api/history", methods=["GET"])
@@ -1112,7 +1120,7 @@ def home():
 # from google.cloud.firestore_v1.base import FieldFilter
 
 @app.route("/api/last_active_session", methods=["GET"])
-async def get_last_active_session():
+def get_last_active_session():
     try:
         user_id = request.args.get("user_id")
         if not user_id:
@@ -1164,7 +1172,7 @@ async def get_last_active_session():
         bot_doc = db.collection("ai_therapists").document(final_bot_id).get()
         bot_info = bot_doc.to_dict() if bot_doc.exists else {}
 
-        # 🧠 Generate summary from sessions/{user_id}_{bot_name}
+        # 🧠 Generate summary from global sessions/{user_id}_{bot_name} document
         summary_text = "Session started."
         try:
             composite_doc_id = f"{user_id}_{final_bot_name}"
@@ -1174,7 +1182,7 @@ async def get_last_active_session():
                 all_messages = session_data.get("messages", [])
 
                 if all_messages:
-                    recent_messages = all_messages[-6:]
+                    recent_messages = all_messages[-6:]  # Last 6 msgs
                     transcript = "\n".join(f"{m['sender']}: {m['message']}" for m in recent_messages)
 
                     summary_prompt = f"""Based on this mental health support conversation, write a warm and empathetic 2-line summary that reflects:
@@ -1188,23 +1196,20 @@ Conversation:
 
 2-line summary:"""
 
-                    payload = {
-                        "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
-                        "messages": [{"role": "user", "content": summary_prompt}],
-                        "temperature": 0.5,
-                        "max_tokens": 100
-                    }
 
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post(ENDPOINT, headers=HEADERS, json=payload, timeout=15)
-                        response.raise_for_status()
-                        summary_text = response.json()["choices"][0]["message"]["content"].strip()
-
+                    response = client.chat.completions.create(
+                        model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+                        messages=[{"role": "user", "content": summary_prompt}],
+                        temperature=0.5,
+                        max_tokens=100,
+                        headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+                    )
+                    summary_text = response.choices[0].message.content.strip()
         except Exception as e:
-            print("⚠️ Summary generation failed:", e)
-            traceback.print_exc()
+            print("\u26a0\ufe0f Summary generation failed:", e)
             summary_text = "Summary unavailable."
 
+        # ✅ Final Response
         return jsonify({
             "session_id": latest_doc.id,
             "bot_id": final_bot_id,
@@ -1222,8 +1227,10 @@ Conversation:
         })
 
     except Exception as e:
+        import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving session"}), 500
+
 
 # ================= JOURNAL APIs =================
 import uuid
