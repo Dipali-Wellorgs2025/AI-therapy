@@ -623,8 +623,7 @@ IS_GENERIC: [yes/no]
                     {"role": "user", "content": classification_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=100,
-                headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+                max_tokens=100
             )
             response = classification.choices[0].message.content.strip()
             category, confidence, is_generic = None, None, False
@@ -727,8 +726,7 @@ Respond in a self-contained, complete way:
           max_tokens=300,
           presence_penalty=0.2,
           frequency_penalty=0.3,
-          stream=True,
-          headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+          stream=True
         )
 
         buffer = ""
@@ -870,8 +868,7 @@ Instructions:
         classification = client.chat.completions.create(
             model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": classification_prompt}],
-            temperature=0.3,
-            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            temperature=0.3
         )
 
         category = classification.choices[0].message.content.strip().lower()
@@ -909,8 +906,7 @@ Instructions:
             temperature=0.7,
             max_tokens=150,
             presence_penalty=0.5,
-            frequency_penalty=0.5,
-            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            frequency_penalty=0.5
         )
 
         reply = clean_response(response.choices[0].message.content.strip())
@@ -1010,8 +1006,7 @@ Generate the report now:
             model="deepseek/deepseek-r1-0528-qwen3-8b:free",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=600,
-            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            max_tokens=600
         )
 
         summary_raw = response.choices[0].message.content.strip()
@@ -1199,8 +1194,7 @@ Conversation:
                         model="deepseek/deepseek-r1-0528-qwen3-8b:free",
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
-                        max_tokens=100,
-                        headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+                        max_tokens=100
                     )
                     summary_text = response.choices[0].message.content.strip()
         except Exception as e:
