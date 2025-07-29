@@ -11,7 +11,7 @@ model_effectiveness_bp = Blueprint('model_effectiveness', __name__)
 
 # Load environment variables for Deepseek API
 load_dotenv()
-"""
+
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(
     base_url="https://api.deepseek.com/v1",
@@ -25,7 +25,7 @@ openai.api_key     = os.getenv("OPENROUTER_API_KEY")
 openai.api_base    = "https://openrouter.ai/v1"
 openai.api_type    = "openai"
 openai.api_version = "v1"
-
+"""
 def async_route(f):
     """Decorator to enable async support in Flask routes"""
     @wraps(f)
