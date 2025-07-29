@@ -15,15 +15,13 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 """
 
-from openai import OpenAI
-import os
 
+
+from openai import OpenAI
 
 client = OpenAI(
-  api_key=os.getenv("OPENROUTER_API_KEY"),
-  api_base="https://openrouter.ai/v1",
-  api_type="openai",
-  api_version="v1"
+  base_url="https://openrouter.ai/api/v1",
+  api_key="<OPENROUTER_API_KEY>",
 )
 
 
@@ -37,7 +35,10 @@ def get_daily_motivational_quote():
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
         temperature=0.8,
-        headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+        extra_headers={
+            "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com", # Optional. Site URL for rankings on openrouter.ai.
+            "X-Title": "AI-therapy-2", # Optional. Site title for rankings on openrouter.ai.
+        }
     )
     quote = response.choices[0].message.content.strip()
     _daily_quote_cache["date"] = today
