@@ -87,7 +87,10 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
             temperature=1,
             max_tokens=10000,  # Fixed: use valid range [1, 8192]
             timeout=5, # Increased timeout to 10 seconds
-            headers={"Referer":"https://ai-therapy-2-jcbx.onrender.com"}
+            extra_headers={
+             "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com", # Optional. Site URL for rankings on openrouter.ai.
+             "X-Title": "AI-therapy-2", # Optional. Site title for rankings on openrouter.ai.
+            }
         )
         
         result = response.choices[0].message.content.strip()
