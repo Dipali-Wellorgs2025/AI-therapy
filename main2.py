@@ -60,9 +60,9 @@ client = OpenAI(
 
 import os
 import httpx
-from fastapi import FastAPI
+# from fastapi import FastAPI
 
-app = FastAPI()
+# app = FastAPI()
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
