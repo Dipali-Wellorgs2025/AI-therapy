@@ -58,15 +58,13 @@ client = OpenAI(
 )
 """
 
-from openai import OpenAI
 import os
-
-client = OpenAI(
-  api_key=os.getenv("OPENROUTER_API_KEY"),
-  api_base="https://openrouter.ai/v1",
-  api_type="openai",
-  api_version="v1"
-)
+import openai
+ 
+openai.api_key     = os.getenv("OPENROUTER_API_KEY")
+openai.api_base    = "https://openrouter.ai/v1"
+openai.api_type    = "openai"
+openai.api_version = "v1"
 
 
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
