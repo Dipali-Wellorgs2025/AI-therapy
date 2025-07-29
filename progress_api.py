@@ -28,7 +28,7 @@ HEADERS = {
     "Referer":      "https://ai-therapy-2-jcbx.onrender.com",   # Must exactly match your OpenRouter allowed domains
     "Content-Type": "application/json"
 
-
+}
 _daily_quote_cache = {"date": None, "quote": None}
 
 async def get_daily_motivational_quote():
