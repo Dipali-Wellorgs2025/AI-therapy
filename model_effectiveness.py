@@ -18,12 +18,19 @@ deepseek_client = OpenAI(
     api_key=DEEPSEEK_API_KEY
 )
 """
-from openai import OpenAI
+import os
+import httpx
+from fastapi import FastAPI
 
-client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key="<OPENROUTER_API_KEY>",
-)
+app = FastAPI()
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+
+HEADERS = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Referer":      "https://ai-therapy-2-jcbx.onrender.com",   # Must exactly match your OpenRouter allowed domains
+    "Content-Type": "application/json"
+
 def async_route(f):
     """Decorator to enable async support in Flask routes"""
     @wraps(f)
@@ -50,24 +57,26 @@ async def call_function_async(func, *args, **kwargs):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, func, *args, **kwargs)
 
-def get_effectiveness_from_deepseek(bot_name, session_messages):
-    """Get effectiveness and rating from Deepseek analysis"""
+
+
+async def get_effectiveness_from_deepseek(bot_name, session_messages):
+    """Asynchronously get effectiveness and rating from DeepSeek (OpenRouter)"""
     try:
         if not session_messages:
             print(f"No messages for {bot_name}")
             return None, None
-            
+
         messages_text = "\n".join([
-            msg.get('message', '') if isinstance(msg, dict) else str(msg) 
+            msg.get('message', '') if isinstance(msg, dict) else str(msg)
             for msg in session_messages
-        ])[:1000]  # Limit text size
-        
+        ])[:1000]
+
         if not messages_text.strip():
             print(f"No meaningful messages for {bot_name}")
             return None, None
-        
+
         print(f"Analyzing {bot_name} session with {len(messages_text)} characters...")
-        
+
         prompt = f"""
 Analyze this therapy session with {bot_name} and provide:
 1. Effectiveness score (0-100): How effective was this session?
@@ -78,24 +87,21 @@ Session content:
 
 Respond ONLY with two numbers separated by a comma (e.g., "75,4")
 """
-        
 
-        
-        response = client.chat.completions.create(
-            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=1,
-            max_tokens=10000,  # Fixed: use valid range [1, 8192]
-            timeout=5, # Increased timeout to 10 seconds
-            extra_headers={
-             "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com", # Optional. Site URL for rankings on openrouter.ai.
-             "X-Title": "AI-therapy-2", # Optional. Site title for rankings on openrouter.ai.
-            }
-        )
-        
-        result = response.choices[0].message.content.strip()
-        print(f"Deepseek response for {bot_name}: {result}")
-        
+        payload = {
+            "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 1,
+            "max_tokens": 512,
+        }
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(ENDPOINT, headers=HEADERS, json=payload)
+            r.raise_for_status()
+
+        result = r.json()["choices"][0]["message"]["content"].strip()
+        print(f"DeepSeek response for {bot_name}: {result}")
+
         match = re.search(r"(\d+),(\d+)", result)
         if match:
             effectiveness = int(match.group(1))
@@ -103,12 +109,13 @@ Respond ONLY with two numbers separated by a comma (e.g., "75,4")
             print(f"Extracted effectiveness: {effectiveness}, rating: {rating}")
             return effectiveness, rating
         else:
-            print(f"Could not parse Deepseek response: {result}")
-            
+            print(f"Could not parse DeepSeek response: {result}")
+
     except Exception as e:
-        print(f"Deepseek analysis failed for {bot_name}: {e}")
-    
+        print(f"DeepSeek analysis failed for {bot_name}: {e}")
+
     return None, None
+
 
 @model_effectiveness_bp.route('/model_effectiveness', methods=['GET'])
 def model_effectiveness():
