@@ -33,11 +33,7 @@ def get_daily_motivational_quote():
         model="deepseek/deepseek-r1-0528-qwen3-8b:free",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=60,
-        temperature=0.8,
-        extra_headers={
-            "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com", # Optional. Site URL for rankings on openrouter.ai.
-            "X-Title": "AI-therapy-2", # Optional. Site title for rankings on openrouter.ai.
-        }
+        temperature=0.8
     )
     quote = response.choices[0].message.content.strip()
     _daily_quote_cache["date"] = today
