@@ -50,7 +50,7 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(firebase_key))
     firebase_admin.initialize_app(cred)
 db = firestore.client()
-"""
+
 # Initialize DeepSeek client
 client = OpenAI(
     base_url="https://api.deepseek.com/v1",
@@ -66,7 +66,7 @@ openai.api_base    = "https://openrouter.ai/v1"
 openai.api_type    = "openai"
 openai.api_version = "v1"
 
-
+"""
 # Enhanced Mental Health Bot Prompts with Emojis, Punctuation, Formatting, and Action Cues
 
 # ✅ Bot Prompt Templates (short demo versions, replace with full if needed)
@@ -617,7 +617,7 @@ CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
             classification = client.chat.completions.create(
-                model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
                     {"role": "user", "content": classification_prompt}
@@ -720,7 +720,7 @@ Respond in a self-contained, complete way:
         # yield user_msg.strip()  # No name or label, just plain text
 
         response_stream = client.chat.completions.create(
-          model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+          model="deepseek-chat",
           messages=[{"role": "user", "content": prompt}],
           temperature=0.7,
           max_tokens=300,
@@ -866,7 +866,7 @@ Instructions:
 """
 
         classification = client.chat.completions.create(
-            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": classification_prompt}],
             temperature=0.3
         )
@@ -901,7 +901,7 @@ Instructions:
         filled_prompt += f"\n\nRecent conversation:\n{last_msgs}\n\nUser message:\n{user_message}"
 
         response = client.chat.completions.create(
-            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": filled_prompt}],
             temperature=0.7,
             max_tokens=150,
@@ -1003,7 +1003,7 @@ Generate the report now:
 """
 
         response = client.chat.completions.create(
-            model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=600
@@ -1191,7 +1191,7 @@ Conversation:
 
 
                     response = client.chat.completions.create(
-                        model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+                        model="deepseek-chat",
                         messages=[{"role": "user", "content": summary_prompt}],
                         temperature=0.5,
                         max_tokens=100
