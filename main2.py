@@ -546,18 +546,7 @@ Important Rules:
     
     return base_prompt
 
-import re
-from datetime import datetime, timezone
-import httpx
-from firebase_admin import firestore
 
-ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-HEADERS = {
-    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-    "Content-Type": "application/json",
-    "HTTP-Referer": "https://ai-therapy-2-jcbx.onrender.com",
-    "X-Title": "AI-therapy-2"
-}
 
 TECHNICAL_TERMS = [
     "training", "algorithm", "model", "neural network", "machine learning", "ml",
