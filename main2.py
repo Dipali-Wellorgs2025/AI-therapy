@@ -576,7 +576,246 @@ QUESTIONNAIRES = {
     ]
 }
 
+def handle_message(data):
+    import re
+    from datetime import datetime, timezone
 
+    user_msg = data.get("message", "")
+    user_name = data.get("user_name", "User")
+    user_id = data.get("user_id", "unknown")
+    issue_description = data.get("issue_description", "")
+    preferred_style = data.get("preferred_style", "Balanced")
+    current_bot = data.get("botName")
+    session_id = f"{user_id}_{current_bot}"
+
+    TECHNICAL_TERMS = [
+        "training", "algorithm", "model", "neural network", "machine learning", "ml",
+        "ai training", "dataset", "parameters", "weights", "backpropagation",
+        "gradient descent", "optimization", "loss function", "epochs", "batch size",
+        "learning rate", "overfitting", "underfitting", "regularization",
+        "transformer", "attention mechanism", "fine-tuning", "pre-training",
+        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+        "deployment", "inference", "api", "endpoint", "latency", "throughput",
+        "scaling", "load balancing", "database", "server", "cloud", "docker",
+        "kubernetes", "microservices", "devops", "ci/cd", "version control",
+        "git", "repository", "bug", "debug", "code", "programming", "python",
+        "javascript", "html", "css", "framework", "library", "package"
+    ]
+    
+   
+
+    # Early exit checks
+    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
+        response = "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield response
+        return
+
+    if any(term in user_msg.lower() for term in ESCALATION_TERMS):
+        response = "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        yield response
+        return
+
+    if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
+        response = "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        yield response
+        return
+
+    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
+
+    def classify_topic_with_confidence(message):
+        try:
+            classification_prompt = f"""
+You are a mental health topic classifier. Analyze the message and determine:
+1. The primary topic category
+2. Confidence level (high/medium/low)
+3. Whether it's a generic greeting/small talk
+
+Categories:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+- general
+
+Message: \"{message}\"
+
+  
+
+print(resp.choices[0].message.content)
+Respond in this format:
+CATEGORY: [category]
+CONFIDENCE: [high/medium/low]
+IS_GENERIC: [yes/no]
+"""
+            classification = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+                    {"role": "user", "content": classification_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=100
+            )
+            response = classification.choices[0].message.content.strip()
+            category, confidence, is_generic = None, None, False
+            for line in response.split("\n"):
+                if line.startswith("CATEGORY:"):
+                    category = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("CONFIDENCE:"):
+                    confidence = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("IS_GENERIC:"):
+                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
+            return category, confidence, is_generic
+        except Exception as e:
+            print("Classification failed:", e)
+            return "general", "low", True
+
+    category, confidence, is_generic = classify_topic_with_confidence(user_msg)
+
+    if category and category != "general" and category in TOPIC_TO_BOT:
+        correct_bot = TOPIC_TO_BOT[category]
+        if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
+            response = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            yield response
+            return
+
+    bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
+    bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
+
+    filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
+                              .replace("{{issue_description}}", issue_description)\
+                              .replace("{{preferred_style}}", preferred_style)
+    filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
+
+    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
+    context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep." if skip_deep else ""
+
+    guidance = f"""
+You are {current_bot}, a specialized mental health support bot.
+
+CORE PRINCIPLES:
+- Be **warm, empathetic, and comprehensive**
+- Provide **independent, complete support**
+- Use **natural flow** with appropriate emojis
+- NEVER include stage directions like (inhale) or (smiles)
+- Skip text in parentheses completely
+- Use [inhale 4], [hold 4], [exhale 4] style action cues if guiding breathing
+- Maintain a friendly but **firm** tone when needed
+
+FORMAT:
+- 3-5 sentences, natural tone
+- Bold using **only double asterisks**
+- 1-2 emojis max
+- Ask 1 thoughtful follow-up question unless user is overwhelmed
+"""
+# User's message: \"{user_msg}\"
+
+    prompt = f"""{guidance}
+
+{filled_prompt}
+
+Recent messages:
+{recent}
+
+
+
+{context_note}
+
+Respond in a self-contained, complete way:
+"""
+
+    def format_response_with_emojis(text):
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        # Ensure exactly one space after each punctuation mark (.,!?:)
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
+        # Remove extra spaces (more than one)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
+ 
+
+    try:
+        # Store user message immediately before processing response
+        now = datetime.now(timezone.utc).isoformat()
+        user_message_entry = {
+            "sender": "User",
+            "message": user_msg,
+            "timestamp": now,
+            "classified_topic": category,
+            "confidence": confidence
+        }
+        ctx["history"].append(user_message_entry)
+        # First, yield the user message for display
+        # yield user_msg.strip()  # No name or label, just plain text
+
+        response_stream = client.chat.completions.create(
+          model="deepseek-chat",
+          messages=[{"role": "user", "content": prompt}],
+          temperature=0.7,
+          max_tokens=300,
+          presence_penalty=0.2,
+          frequency_penalty=0.3,
+          stream=True
+        )
+
+        buffer = ""
+        final_reply = ""
+
+        # Stream and yield clean chunks of bot reply
+        for chunk in response_stream:
+          if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            token = chunk.choices[0].delta.content
+            buffer += token
+            final_reply += token
+
+            # Check for sentence boundaries
+            if token in {".", "!", "?", "\n"} and len(buffer.strip()) > 10:
+               formatted = format_response_with_emojis(buffer)
+               if formatted.strip():
+                yield formatted.strip()
+               buffer = ""
+
+        # Flush any final leftover buffer
+        if buffer.strip():
+           formatted = format_response_with_emojis(buffer)
+           if formatted.strip():
+             yield formatted.strip()
+
+           final_reply_cleaned = format_response_with_emojis(final_reply)
+
+
+        # Store bot response in history
+        bot_message_entry = {
+            "sender": current_bot,
+            "message": final_reply_cleaned,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        ctx["history"].append(bot_message_entry)
+
+        # Update Firestore with both messages
+        ctx["session_ref"].set({
+            "user_id": user_id,
+            "bot_name": current_bot,
+            "bot_id": category,
+            "messages": ctx["history"],
+            "last_updated": firestore.SERVER_TIMESTAMP,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style,
+            "is_active": True,
+            "last_topic_confidence": confidence
+        }, merge=True)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
 
 
     
@@ -630,7 +869,20 @@ Important Rules:
     
     return base_prompt
 
-TECHNICAL_TERMS = [
+
+def handle_message(data):
+    import re
+    from datetime import datetime, timezone
+
+    user_msg = data.get("message", "")
+    user_name = data.get("user_name", "User")
+    user_id = data.get("user_id", "unknown")
+    issue_description = data.get("issue_description", "")
+    preferred_style = data.get("preferred_style", "Balanced")
+    current_bot = data.get("botName")
+    session_id = f"{user_id}_{current_bot}"
+
+    TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
         "gradient descent", "optimization", "loss function", "epochs", "batch size",
@@ -641,131 +893,125 @@ TECHNICAL_TERMS = [
         "scaling", "load balancing", "database", "server", "cloud", "docker",
         "kubernetes", "microservices", "devops", "ci/cd", "version control",
         "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"]
-def handle_message(data):
-    user_msg = data.get("message", "")
-    user_name = data.get("user_name", "User")
-    user_id = data.get("user_id", "unknown")
-    issue_description = data.get("issue_description", "")
-    preferred_style = data.get("preferred_style", "Balanced")
-    current_bot = data.get("botName")
-    session_id = f"{user_id}_{current_bot}"
+        "javascript", "html", "css", "framework", "library", "package"
+    ]
 
+    # --- Age/style detection added here ---
+    user_age_style = detect_user_style(user_msg)  # returns "gen_z" or "elder"
+
+    # Early exit checks
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "This seems to be a technical issue. Please contact our developers team for help. 🛠️"
+        response = "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield response
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "This sounds serious. Please contact local emergency services or a trusted person immediately. 📞🚨"
+        response = "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        yield response
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic may be best discussed with a licensed therapist or authority. I'm here for emotional support when you're ready. 💬"
+        response = "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+        yield response
         return
 
-    ctx = get_session_context(user_id=user_id, bot_name=current_bot)
-    session_number = ctx.get("session_number", 1)
+    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    skip_deep = bool(re.search(r"\bquick tip\b|\blight response\b|\bshort reply\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"stay here|stay with (you|this bot)|don’t switch|don’t change", user_msg.lower()))
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    def classify_topic_with_confidence(message):
-        classification = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that classifies mental health messages."},
-                {"role": "user", "content": f"Classify the following message.\n\nMessage: {message}\n\nRespond with a JSON object like this:\n{ '{' }\n  \"category\": \"anxiety\" or \"breakup\" or \"trauma\" or \"loss\" or \"generic\",\n  \"confidence\": \"high\" or \"low\",\n  \"is_generic\": true or false\n{ '}\"}
-            ],
-            temperature=0.4
-        )
-
-        try:
-            json_part = re.search(r"\{.*\}", classification.choices[0].message.content, re.DOTALL).group()
-            parsed = json.loads(json_part)
-            return parsed.get("category"), parsed.get("confidence"), parsed.get("is_generic")
-        except:
-            return "generic", "low", True
-
+    # Classification
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
-    correct_bot = CATEGORY_TO_BOT.get(category, current_bot)
 
-    if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-        yield f"It looks like this may be best handled by **{correct_bot}** who specializes in that area. Would you like to switch? 🔄"
-        return
+    if category and category != "general" and category in TOPIC_TO_BOT:
+        correct_bot = TOPIC_TO_BOT[category]
+        if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
+            response = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            yield response
+            return
 
-    bot_prompt = BOT_PROMPTS.get(current_bot, "")
-    filled_prompt = bot_prompt.replace("{user_name}", user_name).replace("{issue_description}", issue_description)
+    # --- Fetch bot prompt ---
+    bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
+    bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
-    recent = "\n".join(
-        f"{item['sender']}: {item['message']}" for item in ctx.get("history", [])[-6:]
-    )
+    filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
+                              .replace("{{issue_description}}", issue_description)\
+                              .replace("{{preferred_style}}", preferred_style)
+    filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    context_note = "The user prefers a {} tone and wants {} replies.".format(preferred_style, "deeper" if not skip_deep else "lighter")
+    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
+    context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep." if skip_deep else ""
 
-    guidance = """As an expert therapist with over 10+ years of experience:
-- Use **bold**, *italic*, and proper punctuation.
-- Include emojis where helpful 😊🧠❤️.
-- Structure replies clearly, avoid large paragraphs.
-- Use brackets for activities, e.g., [deep breath], [hold 4], [reflect].
-- Ensure human warmth and clarity in your tone.
-- Use markdown formatting directly in your reply.
+    guidance = f"""
+You are {current_bot}, a specialized mental health support bot.
+
+CORE PRINCIPLES:
+- Be **warm, empathetic, and comprehensive**
+- Provide **independent, complete support**
+- Use **natural flow** with appropriate emojis
+- NEVER include stage directions like (inhale) or (smiles)
+- Skip text in parentheses completely
+- Use [inhale 4], [hold 4], [exhale 4] style action cues if guiding breathing
+- Maintain a friendly but **firm** tone when needed
+
+FORMAT:
+- 3-5 sentences, natural tone
+- Bold using **only double asterisks**
+- 1-2 emojis max
+- Ask 1 thoughtful follow-up question unless user is overwhelmed
 """
 
     prompt = f"""{guidance}
+
 {filled_prompt}
+
 Recent messages:
 {recent}
+
 {context_note}
+
 Respond in a self-contained, complete way:
 """
 
-    final_reply = ""
-    buffer = ""
+    # --- Call your age/style-aware response generator ---
+    bot_response = generate_response(BOT_PROMPTS[current_bot], user_msg, user_age_style)
 
     try:
-        response_stream = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            stream=True,
-        )
-
-        for chunk in response_stream:
-            token = chunk.choices[0].delta.content or ""
-            buffer += token
-            final_reply += token
-
-            if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
-                yield buffer.strip() + " "
-                buffer = ""
-
-        if buffer.strip():
-            yield buffer.strip()
-
+        # Store and stream response
         now = datetime.now(timezone.utc).isoformat()
+        ctx["history"].append({
+            "sender": "User",
+            "message": user_msg,
+            "timestamp": now,
+            "classified_topic": category,
+            "confidence": confidence
+        })
 
-        ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
-        ctx["history"].append({"sender": current_bot, "message": final_reply.strip(), "timestamp": now})
+        # Yield the response for streaming
+        yield bot_response
+
+        ctx["history"].append({
+            "sender": current_bot,
+            "message": bot_response,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
 
         ctx["session_ref"].set({
-            "botName": current_bot,
-            "updatedAt": now,
-            "status": "Active",
-            "session_number": session_number,
             "user_id": user_id,
+            "bot_name": current_bot,
+            "bot_id": category,
+            "messages": ctx["history"],
+            "last_updated": firestore.SERVER_TIMESTAMP,
+            "issue_description": issue_description,
             "preferred_style": preferred_style,
-            "history": ctx["history"],
-            "category": category,
-            "confidence": confidence
+            "is_active": True,
+            "last_topic_confidence": confidence
         }, merge=True)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        yield "I'm having a little trouble right now, but I'm here with you. Let's try again in a moment. 🤍"
-
-
-
+        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
 
         
 @app.route("/api/stream", methods=["GET"])
