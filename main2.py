@@ -805,7 +805,7 @@ Respond in a self-contained, complete way:
         # Fix spacing around punctuation - IMPROVED
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove space before punctuation
         
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)  # Add space after punctuation if missing
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
         
         # Clean up multiple spaces
         text = re.sub(r'\s{2,}', ' ', text)
