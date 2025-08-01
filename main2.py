@@ -1051,6 +1051,8 @@ from datetime import datetime
 from datetime import datetime
 from flask import request, jsonify
 
+from datetime import datetime
+
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1070,40 +1072,58 @@ def get_recent_sessions():
         sessions = []
 
         for bot_id, bot_name in bots.items():
+            # Query for user's sessions, most recent first by endedAt or createdAt
             session_ref = db.collection("ai_therapists").document(bot_id).collection("sessions") \
                 .where("userId", "==", user_id) \
-                .order_by("endedAt", direction=firestore.Query.DESCENDING) \
-                .limit(5)  # fetch more to increase chance of valid sessions
+                .order_by("createdAt", direction=firestore.Query.DESCENDING) \
+                .limit(5)  # more per bot in case some are skipped
 
-            for doc in session_ref.stream():
+            docs = session_ref.stream()
+
+            for doc in docs:
                 data = doc.to_dict()
                 raw_status = data.get("status", "").strip().lower()
 
-                if raw_status not in ("end", "exit"):
-                    continue  # only keep End or Exit
+                if raw_status not in ("end", "exit", "active"):
+                    continue
+
+                # Determine timestamp to sort by
+                ended_at = data.get("endedAt")
+                created_at = data.get("createdAt")
+                sort_time = ended_at if raw_status in ("end", "exit") else created_at
+
+                if not sort_time:
+                    continue  # skip if no relevant date
 
                 sessions.append({
                     "session_id": doc.id,
                     "bot_id": bot_id,
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
-                    "status": "completed" if raw_status == "end" else "in_progress",
-                    "endedAt": data.get("endedAt", datetime.min),
+                    "status": (
+                        "completed" if raw_status == "end"
+                        else "in_progress" if raw_status == "exit"
+                        else "active"
+                    ),
+                    "timestamp": sort_time,
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
 
-        # ✅ Sort across all bots and take only last 4
-        recent_sessions = sorted(
+                break  # only keep 1 session per bot
+
+        # Sort by timestamp descending and limit to 4
+        sorted_sessions = sorted(
             sessions,
-            key=lambda x: x["endedAt"] or datetime.min,
+            key=lambda x: x["timestamp"] or datetime.min,
             reverse=True
         )[:4]
 
-        for s in recent_sessions:
-            s["date"] = str(s.pop("endedAt", ""))  # optional formatting
-
-        return jsonify(recent_sessions)
+        # Prepare final response
+        for s in sorted_sessions:
+            s["date"] = str(s.pop("timestamp", ""))
+        
+        return jsonify(sorted_sessions)
 
     except Exception as e:
         import traceback
