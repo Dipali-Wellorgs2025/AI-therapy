@@ -1044,6 +1044,8 @@ def get_history():
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
     
+from datetime import datetime
+
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1065,8 +1067,9 @@ def get_recent_sessions():
         for bot_id, bot_name in bots.items():
             session_ref = db.collection("ai_therapists").document(bot_id).collection("sessions") \
                 .where("userId", "==", user_id) \
+                .where("status", "in", ["end", "exit"]) \
                 .order_by("endedAt", direction=firestore.Query.DESCENDING) \
-                .limit(1)
+                .limit(5)  # you can fetch more per bot in case some don't match
 
             docs = session_ref.stream()
 
@@ -1074,38 +1077,33 @@ def get_recent_sessions():
                 data = doc.to_dict()
                 raw_status = data.get("status", "").strip().lower()
 
-                if raw_status == "end":
-                    status = "completed"
-                elif raw_status in ("exit", "active"):
-                    status = "in_progress"
-                else:
-                    continue  # skip unknown status
+                if raw_status not in ("end", "exit"):
+                    continue
 
                 sessions.append({
                     "session_id": doc.id,
                     "bot_id": bot_id,
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
-                    "status": status,
-                    "createdAt": data.get("createdAt", ""),  # keep for info
-                    "endedAt": data.get("endedAt", ""),       # keep for sorting
+                    "status": "completed" if raw_status == "end" else "in_progress",
+                    "endedAt": data.get("endedAt", datetime.min),
+                    "date": str(data.get("createdAt", "")),
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
 
-        # ✅ Sort by endedAt descending
-        sorted_sessions = sorted(
+        # ✅ Sort across all bots by endedAt descending, then pick top 4
+        recent_sessions = sorted(
             sessions,
             key=lambda x: x["endedAt"] or datetime.min,
             reverse=True
         )[:4]
 
-        # ✅ Clean up response before returning
-        for s in sorted_sessions:
-            s["date"] = str(s.pop("createdAt", ""))  # optional format
+        # ✅ Remove internal fields if needed
+        for s in recent_sessions:
             s.pop("endedAt", None)
 
-        return jsonify(sorted_sessions)
+        return jsonify(recent_sessions)
 
     except Exception as e:
         import traceback
