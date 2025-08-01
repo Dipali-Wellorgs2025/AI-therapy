@@ -1067,7 +1067,7 @@ def get_recent_sessions():
         for bot_id, bot_name in bots.items():
             session_ref = db.collection("ai_therapists").document(bot_id).collection("sessions") \
                 .where("userId", "==", user_id) \
-                .where("status", "in", ["end", "exit"]) \
+                .where("status", "in", ["End", "Exit"]) \
                 .order_by("endedAt", direction=firestore.Query.DESCENDING) \
                 .limit(5)  # you can fetch more per bot in case some don't match
 
@@ -1077,7 +1077,7 @@ def get_recent_sessions():
                 data = doc.to_dict()
                 raw_status = data.get("status", "").strip().lower()
 
-                if raw_status not in ("end", "exit"):
+                if raw_status not in ("End", "Exit"):
                     continue
 
                 sessions.append({
@@ -1085,7 +1085,7 @@ def get_recent_sessions():
                     "bot_id": bot_id,
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
-                    "status": "completed" if raw_status == "end" else "in_progress",
+                    "status": "completed" if raw_status == "End" else "in_progress",
                     "endedAt": data.get("endedAt", datetime.min),
                     "date": str(data.get("createdAt", "")),
                     "user_id": data.get("userId", ""),
