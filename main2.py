@@ -1087,21 +1087,22 @@ def get_recent_sessions():
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
                     "status": status,
-                    "date": str(data.get("createdAt", "")),
-                    "endedAt": data.get("endedAt"),  # needed for sorting
+                    "createdAt": data.get("createdAt", ""),  # keep for info
+                    "endedAt": data.get("endedAt", ""),       # keep for sorting
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
 
-        # Sort sessions by endedAt (desc), then return top 4
+        # ✅ Sort by endedAt descending
         sorted_sessions = sorted(
             sessions,
-            key=lambda x: x["endedAt"] or firestore.SERVER_TIMESTAMP,
+            key=lambda x: x["endedAt"] or datetime.min,
             reverse=True
         )[:4]
 
-        # Remove 'endedAt' from response if not needed
+        # ✅ Clean up response before returning
         for s in sorted_sessions:
+            s["date"] = str(s.pop("createdAt", ""))  # optional format
             s.pop("endedAt", None)
 
         return jsonify(sorted_sessions)
@@ -1111,6 +1112,7 @@ def get_recent_sessions():
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
+
 
 
 @app.route("/")
