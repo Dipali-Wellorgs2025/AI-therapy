@@ -816,11 +816,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-
-
-    
-    
-
+        
 def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
     """Get or create session context with greeting handling"""
     session_ref = db.collection("sessions").document(session_id)
