@@ -896,8 +896,7 @@ def handle_message(data):
         "javascript", "html", "css", "framework", "library", "package"
     ]
 
-    # --- Age/style detection added here ---
-    user_age_style = detect_user_style(user_msg)  # returns "gen_z" or "elder"
+   
 
     # Early exit checks
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
@@ -974,7 +973,7 @@ Respond in a self-contained, complete way:
 """
 
     # --- Call your age/style-aware response generator ---
-    bot_response = generate_response(BOT_PROMPTS[current_bot], user_msg, user_age_style)
+    bot_response = generate_response(BOT_PROMPTS[current_bot], user_msg)
 
     try:
         # Store and stream response
