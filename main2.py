@@ -1079,7 +1079,7 @@ def get_recent_sessions():
                 raw_status = data.get("status", "").strip().lower()
 
                 # ✅ Include only 'end' or 'exit' sessions
-                if raw_status not in ("End", "Exit"):
+                if raw_status not in ("end", "exit"):
                     continue
 
                 sessions.append({
