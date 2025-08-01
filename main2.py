@@ -704,7 +704,7 @@ FORMAT:
 - 1-2 emojis max
 - Ask 1 thoughtful follow-up question unless user is overwhelmed
 """
-
+# User's message: \"{user_msg}\"
     prompt = f"""{guidance}
 
 {filled_prompt}
@@ -712,7 +712,7 @@ FORMAT:
 Recent messages:
 {recent}
 
-User's message: \"{user_msg}\"
+
 
 {context_note}
 
@@ -727,7 +727,8 @@ Respond in a self-contained, complete way:
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
+        # text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
 
     try:
