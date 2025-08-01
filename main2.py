@@ -775,13 +775,13 @@ FORMAT:
 Recent messages:
 {recent}
 
-User's message: "{user_msg}"
+
 
 {context_note}
 
 Respond in a self-contained, complete way:
 """
-
+# User's message: "{user_msg}"
     # ✅ IMPROVED Format cleaner with better spacing
     def format_response_with_emojis(text):
         # Remove parentheses content
