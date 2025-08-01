@@ -601,23 +601,17 @@ def handle_message(data):
         "git", "repository", "bug", "debug", "code", "programming", "python",
         "javascript", "html", "css", "framework", "library", "package"
     ]
-    
-   
 
-    # Early exit checks
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        response = "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
-        yield response
+        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        response = "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
-        yield response
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        response = "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
-        yield response
+        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
@@ -644,9 +638,6 @@ Categories:
 
 Message: \"{message}\"
 
-  
-
-print(resp.choices[0].message.content)
 Respond in this format:
 CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
@@ -680,10 +671,10 @@ IS_GENERIC: [yes/no]
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            response = f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
-            yield response
+            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
+    # ✅ Fixed access to bot_prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -713,7 +704,6 @@ FORMAT:
 - 1-2 emojis max
 - Ask 1 thoughtful follow-up question unless user is overwhelmed
 """
-# User's message: \"{user_msg}\"
 
     prompt = f"""{guidance}
 
@@ -722,84 +712,72 @@ FORMAT:
 Recent messages:
 {recent}
 
-
+User's message: \"{user_msg}\"
 
 {context_note}
 
 Respond in a self-contained, complete way:
 """
 
+    # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
         text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        # Ensure exactly one space after each punctuation mark (.,!?:)
-        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
-        # Remove extra spaces (more than one)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
- 
 
     try:
-        # Store user message immediately before processing response
+        response_stream = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=400,
+            presence_penalty=0.2,
+            frequency_penalty=0.3,
+            stream=True
+        )
+
+        yield "\n\n"
+        buffer = ""
+        final_reply = ""
+        first_token = True
+
+        for chunk in response_stream:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                token = delta.content
+                buffer += token
+                final_reply += token
+                if first_token:
+                    first_token = False
+                    continue
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
+                    yield format_response_with_emojis(buffer) + " "
+                    buffer = ""
+
+        if buffer.strip():
+            yield format_response_with_emojis(buffer)
+
+        final_reply_cleaned = format_response_with_emojis(final_reply)
+
         now = datetime.now(timezone.utc).isoformat()
-        user_message_entry = {
+        ctx["history"].append({
             "sender": "User",
             "message": user_msg,
             "timestamp": now,
             "classified_topic": category,
             "confidence": confidence
-        }
-        ctx["history"].append(user_message_entry)
-        # First, yield the user message for display
-        # yield user_msg.strip()  # No name or label, just plain text
-
-        response_stream = client.chat.completions.create(
-          model="deepseek-chat",
-          messages=[{"role": "user", "content": prompt}],
-          temperature=0.7,
-          max_tokens=300,
-          presence_penalty=0.2,
-          frequency_penalty=0.3,
-          stream=True
-        )
-
-        buffer = ""
-        final_reply = ""
-
-        # Stream and yield clean chunks of bot reply
-        for chunk in response_stream:
-          if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-            token = chunk.choices[0].delta.content
-            buffer += token
-            final_reply += token
-
-            # Check for sentence boundaries
-            if token in {".", "!", "?", "\n"} and len(buffer.strip()) > 10:
-               formatted = format_response_with_emojis(buffer)
-               if formatted.strip():
-                yield formatted.strip()
-               buffer = ""
-
-        # Flush any final leftover buffer
-        if buffer.strip():
-           formatted = format_response_with_emojis(buffer)
-           if formatted.strip():
-             yield formatted.strip()
-
-           final_reply_cleaned = format_response_with_emojis(final_reply)
-
-
-        # Store bot response in history
-        bot_message_entry = {
+        })
+        ctx["history"].append({
             "sender": current_bot,
             "message": final_reply_cleaned,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        ctx["history"].append(bot_message_entry)
+            "timestamp": now
+        })
 
-        # Update Firestore with both messages
         ctx["session_ref"].set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -816,6 +794,7 @@ Respond in a self-contained, complete way:
         import traceback
         traceback.print_exc()
         yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
         
 def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
     """Get or create session context with greeting handling"""
