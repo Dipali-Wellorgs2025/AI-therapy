@@ -1009,7 +1009,7 @@ Respond in a self-contained, complete way:
             stream=True
         )
 
-        yield "\n\n"
+        # yield "\n\n"
         buffer = ""
         final_reply = ""
         first_token = True
