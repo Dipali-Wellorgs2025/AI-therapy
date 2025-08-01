@@ -631,7 +631,10 @@ Important Rules:
     return base_prompt
 
 def handle_message(data):
+    """🧠 Unified: Stream-based bot response with classification, confidence scoring, redirect logic, and session tracking"""
+
     import re
+    import traceback
     from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
@@ -642,161 +645,105 @@ def handle_message(data):
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "ai training", "dataset", "parameters", "weights", "backpropagation",
-        "gradient descent", "optimization", "loss function", "epochs", "batch size",
-        "learning rate", "overfitting", "underfitting", "regularization",
-        "transformer", "attention mechanism", "fine-tuning", "pre-training",
-        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-        "deployment", "inference", "api", "endpoint", "latency", "throughput",
-        "scaling", "load balancing", "database", "server", "cloud", "docker",
-        "kubernetes", "microservices", "devops", "ci/cd", "version control",
-        "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"
-    ]
-
-    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I'm here for mental health support. For technical or development questions, please contact the developer support team at developer-support@company.com."
-        return
-
+    # 🔺 1. Check for crisis keywords and trigger SOS
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or our SOS services."
+        yield "I'm feeling sorry for you! Please don't take harsh decision. I request to please contact __SOS__"
         return
 
+    # --- 🔐 Handle sensitive or unsupported topics
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield "This topic requires a licensed mental health professional. Please consider talking to one directly."
+        yield "I'm really glad you shared that. ❤️ But this topic needs real human support. Please contact a professional or helpline.\n\n"
         return
 
-    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-
-    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
-
-    def classify_topic_with_confidence(message):
-        try:
-            classification_prompt = f"""
-You are a mental health topic classifier. Analyze the message and determine:
-1. The primary topic category
-2. Confidence level (high/medium/low)
-3. Whether it's a generic greeting/small talk
-
-Categories:
-- anxiety
-- breakup
-- self-worth
-- trauma
-- family
-- crisis
-- general
-
-Message: "{message}"
-
-Respond in this format:
-CATEGORY: [category]
-CONFIDENCE: [high/medium/low]
-IS_GENERIC: [yes/no]
-"""
-            classification = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
-                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
-                    {"role": "user", "content": classification_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=100
-            )
-            response = classification.choices[0].message.content.strip()
-            category, confidence, is_generic = None, None, False
-            for line in response.split("\n"):
-                if line.startswith("CATEGORY:"):
-                    category = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("CONFIDENCE:"):
-                    confidence = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("IS_GENERIC:"):
-                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
-            return category, confidence, is_generic
-        except Exception as e:
-            print("Classification failed:", e)
-            return "general", "low", True
-
-    category, confidence, is_generic = classify_topic_with_confidence(user_msg)
-
-    if category and category != "general" and category in TOPIC_TO_BOT:
-        correct_bot = TOPIC_TO_BOT[category]
-        if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"Your message sounds related to {category}. Another bot called {correct_bot} focuses on that area. Would you like to switch?"
-            return
-
-    bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
-    bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
-
-    filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
-                              .replace("{{issue_description}}", issue_description)\
-                              .replace("{{preferred_style}}", preferred_style)
-    filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
-
-    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
-    context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep." if skip_deep else ""
-
-    guidance = f"""
-You are {current_bot}, a specialized mental health support bot.
-
-Guidelines:
-- Be warm, empathetic, and clear
-- Provide helpful, self-contained responses
-- Avoid formatting, markdown, or emojis
-- Do not include any stage directions or text in parentheses
-- If guiding breathing, use plain text like: inhale for 4, hold for 4, exhale for 4
-
-Respond in 3 to 5 sentences with a natural tone.
-"""
-
-    prompt = f"""{guidance}
-
-{filled_prompt}
-
-Recent messages:
-{recent}
-
-{context_note}
-
-Message from user: {user_msg}
-"""
+    # --- 🤖 Handle technical/training questions
+    TECHNICAL_TERMS = ["algorithm", "training", "parameters", "architecture", "model weights", "tokenizer", "prompt", "fine-tune", "inference"]
+    if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
+        yield "I'm here to support your emotional well-being. For questions about how I was built or trained, please contact our development team.\n\n"
+        return
 
     try:
-        now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({
-            "sender": "User",
-            "message": user_msg,
-            "timestamp": now,
-            "classified_topic": category,
-            "confidence": confidence
-        })
+        # --- 🧠 Classification
+        classification_prompt = f"""
+You are a strict classifier. Based on the user's message, return:
+- category: one of [anxiety, breakup, self-worth, trauma, family, crisis, none]
+- confidence: a number between 0 and 1
 
-        response_stream = client.chat.completions.create(
+Message: "{user_msg}"
+
+Instructions:
+- If the message is a greeting (e.g., \"hi\", \"hello\", \"good morning\") or not emotional/psychological, return category: none and confidence: 1.0
+- Do not explain. Return only JSON: {{\"category\": "value", \"confidence\": float}}
+"""
+
+        classification = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=300,
-            presence_penalty=0.2,
-            frequency_penalty=0.3,
-            stream=True
+            messages=[
+                {"role": "system", "content": "You are a strict classifier. You only return valid JSON with a category and confidence."},
+                {"role": "user", "content": classification_prompt}
+            ],
+            temperature=0.0
         )
 
-        full_reply = ""
+        raw_output = classification.choices[0].message.content.strip()
+        print("🔍 RAW CLASSIFICATION:", raw_output)
 
-        for chunk in response_stream:
+        import json
+        result = json.loads(raw_output)
+        category = result.get("category", "none").lower()
+        confidence = float(result.get("confidence", 0))
+        print("🧠 CLASSIFIED:", category, "| Confidence:", confidence)
+
+        if category == "none":
+            category = next((k for k, v in TOPIC_TO_BOT.items() if v == current_bot), "anxiety")
+        elif category not in TOPIC_TO_BOT:
+            yield "This seems like a different issue. Would you like to talk to another therapist?"
+            return
+
+        # --- 🔀 Check confidence for routing
+        correct_bot = TOPIC_TO_BOT[category]
+        if correct_bot != current_bot and confidence > 0.7 and category != "none":
+            yield f"This looks like a **{category}** issue. I suggest switching to **{correct_bot}**, who specializes in this.\n\n"
+            return
+
+        # --- 🔁 Session context
+        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+
+        # --- 🔢 Session number tracking
+        session_number = len([msg for msg in ctx["history"] if msg["sender"] == current_bot]) // 2 + 1
+
+        # --- 📜 Fill prompt
+        bot_prompt = BOT_PROMPTS[current_bot]
+        filled_prompt = bot_prompt.replace("{{user_name}}", user_name) \
+                                 .replace("{{issue_description}}", issue_description) \
+                                 .replace("{{preferred_style}}", preferred_style) \
+                                 .replace("{{session_number}}", str(session_number))
+        filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
+
+        if ctx["history"]:
+            last_msgs = "\n".join(f"{msg['sender']}: {msg['message']}" for msg in ctx["history"][-5:])
+            filled_prompt += f"\n\nRecent conversation:\n{last_msgs}"
+
+        filled_prompt += f"\n\nUser message:\n{user_msg}"
+
+        # --- 🧵 Stream LLM response
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": filled_prompt}],
+            stream=True,
+            temperature=0.7,
+            max_tokens=200,
+            presence_penalty=0.5,
+            frequency_penalty=0.5
+        )
+
+        full_response = ""
+        for chunk in response:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                token = chunk.choices[0].delta.content
-                full_reply += token
-                yield token  # Yield raw token without any formatting or cleanup
+                full_response += chunk.choices[0].delta.content
 
-        ctx["history"].append({
-            "sender": current_bot,
-            "message": full_reply.strip(),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        now = datetime.now(timezone.utc).isoformat()
+        ctx["history"].append({"sender": "User", "message": user_msg, "timestamp": now})
+        ctx["history"].append({"sender": current_bot, "message": full_response, "timestamp": now})
 
         ctx["session_ref"].set({
             "user_id": user_id,
@@ -806,14 +753,16 @@ Message from user: {user_msg}
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
-            "is_active": True,
-            "last_topic_confidence": confidence
+            "session_number": session_number,
+            "is_active": True
         }, merge=True)
 
+        yield full_response + "\n\n"
+
     except Exception as e:
-        import traceback
+        print("❌ Error in handle_message:", e)
         traceback.print_exc()
-        yield "I'm having some trouble responding right now. Let's try again shortly."
+        yield "Sorry, I encountered an error processing your request. Please try again.\n\n"
 
         
 @app.route("/api/stream", methods=["GET"])
