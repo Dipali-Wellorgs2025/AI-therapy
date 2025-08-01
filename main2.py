@@ -1051,14 +1051,13 @@ def get_recent_sessions():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # 🔧 Therapist bot mapping: Firestore doc ID => Display Name
         bots = {
-    "anxiety": "Sage",
-    "breakup": "Jordan",
-    "self-worth": "River",
-    "trauma": "Phoenix",
-    "family": "Ava",
-    "crisis": "Raya"
+            "anxiety": "Sage",
+            "breakup": "Jordan",
+            "self-worth": "River",
+            "trauma": "Phoenix",
+            "family": "Ava",
+            "crisis": "Raya"
         }
 
         sessions = []
@@ -1084,16 +1083,28 @@ def get_recent_sessions():
 
                 sessions.append({
                     "session_id": doc.id,
-                    "bot_id": bot_id,  # ✅ Added bot document ID
+                    "bot_id": bot_id,
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
                     "status": status,
                     "date": str(data.get("createdAt", "")),
+                    "endedAt": data.get("endedAt"),  # needed for sorting
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
 
-        return jsonify(sessions)
+        # Sort sessions by endedAt (desc), then return top 4
+        sorted_sessions = sorted(
+            sessions,
+            key=lambda x: x["endedAt"] or firestore.SERVER_TIMESTAMP,
+            reverse=True
+        )[:4]
+
+        # Remove 'endedAt' from response if not needed
+        for s in sorted_sessions:
+            s.pop("endedAt", None)
+
+        return jsonify(sorted_sessions)
 
     except Exception as e:
         import traceback
