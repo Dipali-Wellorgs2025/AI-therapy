@@ -1046,6 +1046,8 @@ def get_history():
     
 from datetime import datetime
 
+from datetime import datetime
+
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1067,9 +1069,8 @@ def get_recent_sessions():
         for bot_id, bot_name in bots.items():
             session_ref = db.collection("ai_therapists").document(bot_id).collection("sessions") \
                 .where("userId", "==", user_id) \
-                .where("status", "in", ["End", "Exit"]) \
                 .order_by("endedAt", direction=firestore.Query.DESCENDING) \
-                .limit(5)  # you can fetch more per bot in case some don't match
+                .limit(5)  # fetch more per bot to ensure coverage
 
             docs = session_ref.stream()
 
@@ -1077,6 +1078,7 @@ def get_recent_sessions():
                 data = doc.to_dict()
                 raw_status = data.get("status", "").strip().lower()
 
+                # ✅ Include only 'end' or 'exit' sessions
                 if raw_status not in ("End", "Exit"):
                     continue
 
@@ -1087,21 +1089,20 @@ def get_recent_sessions():
                     "problem": data.get("title", "Therapy Session"),
                     "status": "completed" if raw_status == "End" else "in_progress",
                     "endedAt": data.get("endedAt", datetime.min),
-                    "date": str(data.get("createdAt", "")),
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
 
-        # ✅ Sort across all bots by endedAt descending, then pick top 4
+        # ✅ Sort all collected sessions by endedAt, latest first
         recent_sessions = sorted(
             sessions,
             key=lambda x: x["endedAt"] or datetime.min,
             reverse=True
         )[:4]
 
-        # ✅ Remove internal fields if needed
+        # ✅ Format date and remove endedAt field
         for s in recent_sessions:
-            s.pop("endedAt", None)
+            s["date"] = str(s.pop("endedAt", ""))
 
         return jsonify(recent_sessions)
 
@@ -1110,7 +1111,6 @@ def get_recent_sessions():
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
-
 
 
 
