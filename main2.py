@@ -1048,6 +1048,9 @@ from datetime import datetime
 
 from datetime import datetime
 
+from datetime import datetime
+from flask import request, jsonify
+
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1070,39 +1073,35 @@ def get_recent_sessions():
             session_ref = db.collection("ai_therapists").document(bot_id).collection("sessions") \
                 .where("userId", "==", user_id) \
                 .order_by("endedAt", direction=firestore.Query.DESCENDING) \
-                .limit(5)  # fetch more per bot to ensure coverage
+                .limit(5)  # fetch more to increase chance of valid sessions
 
-            docs = session_ref.stream()
-
-            for doc in docs:
+            for doc in session_ref.stream():
                 data = doc.to_dict()
                 raw_status = data.get("status", "").strip().lower()
 
-                # ✅ Include only 'end' or 'exit' sessions
                 if raw_status not in ("end", "exit"):
-                    continue
+                    continue  # only keep End or Exit
 
                 sessions.append({
                     "session_id": doc.id,
                     "bot_id": bot_id,
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
-                    "status": "completed" if raw_status == "End" else "in_progress",
+                    "status": "completed" if raw_status == "end" else "in_progress",
                     "endedAt": data.get("endedAt", datetime.min),
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
 
-        # ✅ Sort all collected sessions by endedAt, latest first
+        # ✅ Sort across all bots and take only last 4
         recent_sessions = sorted(
             sessions,
             key=lambda x: x["endedAt"] or datetime.min,
             reverse=True
         )[:4]
 
-        # ✅ Format date and remove endedAt field
         for s in recent_sessions:
-            s["date"] = str(s.pop("endedAt", ""))
+            s["date"] = str(s.pop("endedAt", ""))  # optional formatting
 
         return jsonify(recent_sessions)
 
