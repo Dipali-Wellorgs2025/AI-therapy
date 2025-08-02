@@ -1,4 +1,3 @@
-
 # 📍 File: progress.py
 # ✅ Show only current day's mood check-ins from recent-checkin collection
 
@@ -101,7 +100,7 @@ def compute_progress_data(user_id):
             except:
                 pass
 
-    # ✅ Count mood check-ins only for current day
+    # ✅ Count mood check-ins only for current day (UTC)
     today_utc = datetime.now(timezone.utc).date()
     mood_checkins_today = 0
     checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
@@ -109,14 +108,35 @@ def compute_progress_data(user_id):
     for doc in checkin_docs:
         data = doc.to_dict()
         ts = data.get("timestamp")
-        if ts:
-            try:
-                # Convert Firestore timestamp to date (UTC safe)
-                checkin_datetime = ts.to_datetime() if hasattr(ts, 'to_datetime') else datetime.fromisoformat(ts)
-                if checkin_datetime.date() == today_utc:
-                    mood_checkins_today += 1
-            except:
-                continue
+        
+        if not ts:
+            continue
+            
+        try:
+            # Handle Firestore Timestamp objects
+            if hasattr(ts, 'to_pydatetime'):
+                checkin_dt = ts.to_pydatetime()
+            # Handle ISO format strings
+            elif isinstance(ts, str) and 'T' in ts:
+                checkin_dt = datetime.fromisoformat(ts)
+            # Handle custom format from screenshot (e.g., "2 August 2025 at 10:04:41 UTC+5:30")
+            else:
+                # Extract timestamp portion and remove trailing text
+                dt_str = ts.split(' (timestamp)')[0].strip()
+                # Parse with timezone information
+                checkin_dt = datetime.strptime(dt_str, "%d %B %Y at %H:%M:%S UTC%z")
+            
+            # Convert to UTC date for comparison
+            if checkin_dt.tzinfo:
+                checkin_dt = checkin_dt.astimezone(timezone.utc)
+            checkin_date = checkin_dt.date()
+            
+            if checkin_date == today_utc:
+                mood_checkins_today += 1
+                
+        except Exception as e:
+            print(f"Error processing timestamp: {ts} - {str(e)}")
+            continue
 
     streak = calculate_streak(message_dates)
     total_sessions = max(session_numbers) if session_numbers else len(sessions)
