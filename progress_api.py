@@ -1,6 +1,5 @@
 # 📍 File: progress.py
-# 🏦 Blueprint: progress_async
-# ✅ Adds update call after session save to ensure fresh milestone/quote tracking
+# 🧠 Fix: Mood checkins count using timestamp from "recent-checkin" collection
 
 import os
 from openai import OpenAI
@@ -9,22 +8,24 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from collections import defaultdict
 
-# Cache quote daily
-_daily_quote_cache = {"date": None, "quote": None}
+# Setup Blueprint
+progress_async_bp = Blueprint('progress_async', __name__)
 
-# Setup DeepSeek
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
+# Setup DeepSeek client
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-xxx")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 
-progress_async_bp = Blueprint('progress_async', __name__)
+# Daily quote cache
+_daily_quote_cache = {"date": None, "quote": None}
 
 def get_firestore_client():
     return firestore.client()
 
 def get_daily_motivational_quote():
     today = date.today().isoformat()
-    if _daily_quote_cache["date"] == today and _daily_quote_cache["quote"]:
+    if _daily_quote_cache["date"] == today:
         return _daily_quote_cache["quote"]
+    
     prompt = "Generate a short, two-line motivational quote for therapy and self-growth."
     response = deepseek_client.chat.completions.create(
         model="deepseek-chat",
@@ -32,6 +33,7 @@ def get_daily_motivational_quote():
         max_tokens=60,
         temperature=0.8
     )
+    
     quote = response.choices[0].message.content.strip()
     _daily_quote_cache["date"] = today
     _daily_quote_cache["quote"] = quote
@@ -67,7 +69,8 @@ def get_total_time(sessions):
     return int(total_minutes // 60)
 
 def calculate_streak(dates):
-    if not dates: return 0
+    if not dates:
+        return 0
     sorted_dates = sorted(set(dates))
     today = date.today()
     if (today - sorted_dates[-1]).days > 1:
@@ -92,27 +95,30 @@ def compute_progress_data(user_id):
                 if 'timestamp' in msg:
                     try:
                         message_dates.add(datetime.fromisoformat(msg['timestamp']).date())
-                    except: pass
+                    except:
+                        pass
         if 'timestamp' in s:
             try:
                 message_dates.add(datetime.fromisoformat(s['timestamp']).date())
-            except: pass
+            except:
+                pass
 
-    # --- MOOD CHECKINS COUNT ---
+    # ✅ MOOD CHECKINS COUNT — Using Firestore `timestamp` field from recent-checkin
     mood_checkins_by_date = defaultdict(int)
     checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
+
     for doc in checkin_docs:
         data = doc.to_dict()
-        timestamp = data.get("timestamp")
-        if timestamp:
+        ts = data.get("timestamp")
+        if ts:
             try:
-                ts = timestamp
-                if hasattr(ts, 'date'):
-                    date_str = ts.date().isoformat()
-                else:
-                    date_str = datetime.fromisoformat(ts).date().isoformat()
-                mood_checkins_by_date[date_str] += 1
-            except: pass
+                if hasattr(ts, 'date'):  # Firestore Timestamp object
+                    checkin_date = ts.date().isoformat()
+                else:  # ISO string fallback
+                    checkin_date = datetime.fromisoformat(ts).date().isoformat()
+                mood_checkins_by_date[checkin_date] += 1
+            except:
+                pass
 
     mood_checkins_total = sum(mood_checkins_by_date.values())
 
@@ -147,7 +153,7 @@ def compute_progress_data(user_id):
         "motivational_quote": quote
     }
 
-# ✅ This function updates the Firestore progress for the user
+# ✅ Update user's progress in Firestore
 def update_user_progress(user_id):
     db = get_firestore_client()
     data = compute_progress_data(user_id)
@@ -158,7 +164,7 @@ def update_user_progress(user_id):
         "motivational_quote": data["motivational_quote"]
     })
 
-# ✅ Use these in your route handlers
+# ✅ API routes
 @progress_async_bp.route('/progress', methods=['GET'])
 def get_progress():
     user_id = request.args.get('user_id')
