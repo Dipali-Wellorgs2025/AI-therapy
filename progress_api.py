@@ -1,21 +1,18 @@
 # 📍 File: progress.py
-# 🧠 Fix: Mood checkins count using timestamp from "recent-checkin" collection
+# ✅ Updated mood_checkins logic from recent-checkin collection with Firestore Timestamp handling
 
 import os
 from openai import OpenAI
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 from collections import defaultdict
 
-# Setup Blueprint
 progress_async_bp = Blueprint('progress_async', __name__)
 
-# Setup DeepSeek client
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 
-# Daily quote cache
 _daily_quote_cache = {"date": None, "quote": None}
 
 def get_firestore_client():
@@ -25,7 +22,7 @@ def get_daily_motivational_quote():
     today = date.today().isoformat()
     if _daily_quote_cache["date"] == today:
         return _daily_quote_cache["quote"]
-    
+
     prompt = "Generate a short, two-line motivational quote for therapy and self-growth."
     response = deepseek_client.chat.completions.create(
         model="deepseek-chat",
@@ -33,7 +30,7 @@ def get_daily_motivational_quote():
         max_tokens=60,
         temperature=0.8
     )
-    
+
     quote = response.choices[0].message.content.strip()
     _daily_quote_cache["date"] = today
     _daily_quote_cache["quote"] = quote
@@ -103,7 +100,7 @@ def compute_progress_data(user_id):
             except:
                 pass
 
-    # ✅ MOOD CHECKINS COUNT — Using Firestore `timestamp` field from recent-checkin
+    # ✅ Mood check-ins using Firestore timestamp
     mood_checkins_by_date = defaultdict(int)
     checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
 
@@ -112,13 +109,13 @@ def compute_progress_data(user_id):
         ts = data.get("timestamp")
         if ts:
             try:
-                if hasattr(ts, 'date'):  # Firestore Timestamp object
-                    checkin_date = ts.date().isoformat()
-                else:  # ISO string fallback
-                    checkin_date = datetime.fromisoformat(ts).date().isoformat()
-                mood_checkins_by_date[checkin_date] += 1
-            except:
-                pass
+                if hasattr(ts, 'to_datetime'):  # Firestore Timestamp object
+                    checkin_date = ts.to_datetime().astimezone(timezone.utc).date()
+                else:  # Fallback if string
+                    checkin_date = datetime.fromisoformat(ts).date()
+                mood_checkins_by_date[checkin_date.isoformat()] += 1
+            except Exception as e:
+                continue
 
     mood_checkins_total = sum(mood_checkins_by_date.values())
 
@@ -153,7 +150,6 @@ def compute_progress_data(user_id):
         "motivational_quote": quote
     }
 
-# ✅ Update user's progress in Firestore
 def update_user_progress(user_id):
     db = get_firestore_client()
     data = compute_progress_data(user_id)
@@ -164,7 +160,6 @@ def update_user_progress(user_id):
         "motivational_quote": data["motivational_quote"]
     })
 
-# ✅ API routes
 @progress_async_bp.route('/progress', methods=['GET'])
 def get_progress():
     user_id = request.args.get('user_id')
