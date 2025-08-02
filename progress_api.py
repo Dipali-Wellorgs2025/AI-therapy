@@ -1,5 +1,5 @@
 # 📍 File: progress.py
-# ✅ Updated mood_checkins logic from recent-checkin collection with Firestore Timestamp handling
+# ✅ Show only current day's mood check-ins from recent-checkin collection
 
 import os
 from openai import OpenAI
@@ -100,8 +100,9 @@ def compute_progress_data(user_id):
             except:
                 pass
 
-    # ✅ Mood check-ins using Firestore timestamp
-    mood_checkins_by_date = defaultdict(int)
+    # ✅ Mood check-ins for only current day
+    today_date = date.today()
+    mood_checkins_today = 0
     checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
 
     for doc in checkin_docs:
@@ -109,15 +110,15 @@ def compute_progress_data(user_id):
         ts = data.get("timestamp")
         if ts:
             try:
-                if hasattr(ts, 'to_datetime'):  # Firestore Timestamp object
+                if hasattr(ts, 'to_datetime'):
                     checkin_date = ts.to_datetime().astimezone(timezone.utc).date()
-                else:  # Fallback if string
+                else:
                     checkin_date = datetime.fromisoformat(ts).date()
-                mood_checkins_by_date[checkin_date.isoformat()] += 1
-            except Exception as e:
-                continue
 
-    mood_checkins_total = sum(mood_checkins_by_date.values())
+                if checkin_date == today_date:
+                    mood_checkins_today += 1
+            except:
+                continue
 
     streak = calculate_streak(message_dates)
     total_sessions = max(session_numbers) if session_numbers else len(sessions)
@@ -137,13 +138,13 @@ def compute_progress_data(user_id):
             "times_showed_up": total_sessions,
             "time_for_yourself": f"{total_hours}h",
             "day_streak": streak,
-            "mood_checkins": mood_checkins_total
+            "mood_checkins": mood_checkins_today
         },
         "milestones": [
             {"title": "You Took the First Step", "achieved": total_sessions >= 1, "progress": min(total_sessions, 1), "target": 1},
             {"title": "You're Showing Up Regularly", "achieved": total_sessions >= 5, "progress": min(total_sessions, 5), "target": 5},
             {"title": "Committed to Growth", "achieved": total_sessions >= 10, "progress": min(total_sessions, 10), "target": 10},
-            {"title": "Checking In With Yourself", "achieved": mood_checkins_total >= 7, "progress": min(mood_checkins_total, 7), "target": 7},
+            {"title": "Checking In With Yourself", "achieved": mood_checkins_today >= 1, "progress": min(mood_checkins_today, 1), "target": 1},
             {"title": "Consistency Champion", "achieved": streak >= 30, "progress": min(streak, 30), "target": 30},
             {"title": "Wellness Warrior", "achieved": total_sessions >= 25, "progress": min(total_sessions, 25), "target": 25}
         ],
