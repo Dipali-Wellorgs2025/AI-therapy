@@ -1,5 +1,4 @@
 # 📍 File: progress.py
-# ✅ Count today's mood check-ins with detailed debugging
 import os
 from openai import OpenAI
 from datetime import date, datetime, timedelta
@@ -7,13 +6,12 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 progress_async_bp = Blueprint('progress_async', __name__)
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-xxxx")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 
 _daily_quote_cache = {"date": None, "quote": None}
@@ -103,74 +101,21 @@ def compute_progress_data(user_id):
             except:
                 pass
 
-    # ✅ DEBUGGING: Enhanced mood check-in counting
     today = date.today()
     today_str = today.strftime("%d-%m-%Y")
     mood_checkins_today = 0
-    
-    logger.info("="*80)
-    logger.info(f"STARTING MOOD CHECK-IN COUNT FOR USER: {user_id}")
-    logger.info(f"TODAY'S DATE: {today_str}")
-    
+
     try:
-        # Get all check-in documents for this user
-        checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
-        total_docs = 0
-        matches = 0
-        
-        for doc in checkin_docs:
-            total_docs += 1
+        docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
+        for doc in docs:
             data = doc.to_dict()
-            
-            logger.info("-"*60)
-            logger.info(f"DOCUMENT ID: {doc.id}")
-            logger.debug(f"FULL DOCUMENT DATA: {data}")
-            
-            # Check for date field with different capitalizations
-            date_value = None
-            date_keys = 'date'
-            for key in date_keys:
-                if key in data:
-                    date_value = data[date]
-                    logger.info(f"Found date field: {date} = {date_value} (type: {type(date_value)})")
-                    break
-            
-            if date_value is None:
-                logger.warning("No date field found in document. Available keys: " + ", ".join(data.date()))
-                continue
-                
-            # Convert to comparable string format
-            if isinstance(date_value, datetime):
-                # Handle Firestore Timestamp
-                date_str = date_value.strftime("%d-%m-%Y")
-                logger.info(f"Converted timestamp to string: {date_str}")
-            elif isinstance(date_value, str):
-                # Handle string date
-                date_str = date_value.strip()
-                # Normalize separators
-                date_str = date_str.replace('/', '-').replace('.', '-')
-                logger.info(f"Normalized date string: {date_str}")
-            else:
-                logger.warning(f"Unsupported date type: {type(date_value)}")
-                continue
-                
-            # Compare with today's date
-            if date_str == today_str:
-                mood_checkins_today += 1
-                matches += 1
-                logger.info("✅ DATE MATCHES TODAY!")
-            else:
-                logger.info(f"Date doesn't match: {date_str} != {today_str}")
-        
-        logger.info("="*60)
-        logger.info(f"PROCESSED DOCUMENTS: {total_docs}")
-        logger.info(f"MATCHES FOUND: {matches}")
-        logger.info(f"TODAY'S MOOD CHECK-INS: {mood_checkins_today}")
-        logger.info("="*80)
-        
+            date_val = data.get("date")
+            if date_val and isinstance(date_val, str):
+                normalized = date_val.replace("/", "-").replace(".", "-").strip()
+                if normalized == today_str:
+                    mood_checkins_today += 1
     except Exception as e:
-        logger.error(f"ERROR COUNTING MOOD CHECK-INS: {str(e)}", exc_info=True)
-        # mood_checkins_today = 0  # Reset to avoid incorrect counts
+        logger.error(f"Error counting mood check-ins: {e}", exc_info=True)
 
     streak = calculate_streak(message_dates)
     total_sessions = max(session_numbers) if session_numbers else len(sessions)
