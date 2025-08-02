@@ -123,6 +123,14 @@ GLOBAL_INSTRUCTIONS = """
 - Give specific, actionable advice
 - Validate emotions before offering solutions
 - Ask thoughtful follow-up questions when appropriate
+- If the user sends a message that is mostly gibberish, random characters, or does not form meaningful words 
+(e.g., "gduehfihfbjmdjfhe" or "vdchg dgeu sdhiuy dgejgf gdiue"), 
+do not try to respond to it. 
+Instead, reply politely:
+
+"Sorry, I didn’t get that. Could you please rephrase? 😊"
+
+Only respond normally to clear, meaningful messages.
 """
 
 # === INDIVIDUAL BOT PROMPTS ===
@@ -576,6 +584,26 @@ QUESTIONNAIRES = {
     ]
 }
 
+import re
+
+def is_gibberish(user_msg: str) -> bool:
+    """Detect if the message is mostly gibberish."""
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True  # Empty message considered gibberish
+
+    gibberish_count = 0
+    for word in words:
+        # Word is gibberish if no vowels OR 4+ consonants in a row
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+
+    # If more than 60% words are gibberish
+    return gibberish_count / len(words) > 0.6
+
+
+
+
 def handle_message(data):
     import re
     from datetime import datetime, timezone
@@ -613,6 +641,12 @@ def handle_message(data):
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
+
+    # --- Use this inside your handle_message ---
+    if is_gibberish(user_msg):
+        yield "Sorry, I didn’t get that. Could you please rephrase? 😊"
+        return
+
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
@@ -697,6 +731,14 @@ CORE PRINCIPLES:
 - Skip text in parentheses completely
 - Use [inhale 4], [hold 4], [exhale 4] style action cues if guiding breathing
 - Maintain a friendly but **firm** tone when needed
+-If the user sends a message that is mostly gibberish, random characters, or does not form meaningful words 
+(e.g., "gduehfihfbjmdjfhe" or "vdchg dgeu sdhiuy dgejgf gdiue"), 
+do not try to respond to it. 
+Instead, reply politely:
+
+"Sorry, I didn’t get that. Could you please rephrase? 😊"
+
+Only respond normally to clear, meaningful messages.
 
 FORMAT:
 - 3-5 sentences, natural tone
@@ -1740,3 +1782,4 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
