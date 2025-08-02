@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 progress_async_bp = Blueprint('progress_async', __name__)
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY","sk-09e270ba6ccb42f9af9cbe92c6be24d8")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-xxxx")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 
 _daily_quote_cache = {"date": None, "quote": None}
@@ -106,14 +106,15 @@ def compute_progress_data(user_id):
     mood_checkins_today = 0
 
     try:
-        docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
+        docs = db.collection("recent-checkin").stream()
         for doc in docs:
             data = doc.to_dict()
-            date_val = data.get("date")
-            if date_val and isinstance(date_val, str):
-                normalized = date_val.replace("/", "-").replace(".", "-").strip()
-                if normalized == today_str:
-                    mood_checkins_today += 1
+            if data.get("uid") == user_id:
+                date_val = data.get("date")
+                if date_val and isinstance(date_val, str):
+                    normalized = date_val.replace("/", "-").replace(".", "-").strip()
+                    if normalized == today_str:
+                        mood_checkins_today += 1
     except Exception as e:
         logger.error(f"Error counting mood check-ins: {e}", exc_info=True)
 
