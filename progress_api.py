@@ -1,12 +1,11 @@
 # 📍 File: progress.py
-# ✅ Show only current day's mood check-ins from recent-checkin collection
+# ✅ Show only current day's mood check-ins from recent-checkin collection using date field
 
 import os
 from openai import OpenAI
 from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from collections import defaultdict
 
 progress_async_bp = Blueprint('progress_async', __name__)
 
@@ -100,43 +99,28 @@ def compute_progress_data(user_id):
             except:
                 pass
 
-    # ✅ Count mood check-ins only for current day (UTC)
-    today_utc = datetime.now(timezone.utc).date()
+    # ✅ Count mood check-ins only for current day using date field (DD-MM-YYYY format)
+    today_str = date.today().strftime("%d-%m-%Y")
     mood_checkins_today = 0
-    checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
+    checkin_docs = db.collection("recent-checkin").where("Uid", "==", user_id).stream()
 
     for doc in checkin_docs:
         data = doc.to_dict()
-        ts = data.get("timestamp")
+        checkin_date = data.get("date")
         
-        if not ts:
+        # Handle both string and timestamp formats
+        if isinstance(checkin_date, datetime):
+            # Convert datetime to DD-MM-YYYY string
+            checkin_date_str = checkin_date.strftime("%d-%m-%Y")
+        elif isinstance(checkin_date, str):
+            # Already in string format
+            checkin_date_str = checkin_date
+        else:
+            # Skip if date is missing or invalid
             continue
             
-        try:
-            # Handle Firestore Timestamp objects
-            if hasattr(ts, 'to_pydatetime'):
-                checkin_dt = ts.to_pydatetime()
-            # Handle ISO format strings
-            elif isinstance(ts, str) and 'T' in ts:
-                checkin_dt = datetime.fromisoformat(ts)
-            # Handle custom format from screenshot (e.g., "2 August 2025 at 10:04:41 UTC+5:30")
-            else:
-                # Extract timestamp portion and remove trailing text
-                dt_str = ts.split(' (timestamp)')[0].strip()
-                # Parse with timezone information
-                checkin_dt = datetime.strptime(dt_str, "%d %B %Y at %H:%M:%S UTC%z")
-            
-            # Convert to UTC date for comparison
-            if checkin_dt.tzinfo:
-                checkin_dt = checkin_dt.astimezone(timezone.utc)
-            checkin_date = checkin_dt.date()
-            
-            if checkin_date == today_utc:
-                mood_checkins_today += 1
-                
-        except Exception as e:
-            print(f"Error processing timestamp: {ts} - {str(e)}")
-            continue
+        if checkin_date_str == today_str:
+            mood_checkins_today += 1
 
     streak = calculate_streak(message_dates)
     total_sessions = max(session_numbers) if session_numbers else len(sessions)
