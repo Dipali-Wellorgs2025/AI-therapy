@@ -12,7 +12,7 @@ from collections import defaultdict
 progress_async_bp = Blueprint('progress_async', __name__)
 
 # Setup DeepSeek client
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-xxx")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 
 # Daily quote cache
