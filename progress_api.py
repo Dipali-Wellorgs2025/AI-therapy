@@ -106,7 +106,11 @@ def compute_progress_data(user_id):
         timestamp = data.get("timestamp")
         if timestamp:
             try:
-                date_str = timestamp.date().isoformat()
+                ts = timestamp
+                if hasattr(ts, 'date'):
+                    date_str = ts.date().isoformat()
+                else:
+                    date_str = datetime.fromisoformat(ts).date().isoformat()
                 mood_checkins_by_date[date_str] += 1
             except: pass
 
