@@ -1,5 +1,5 @@
 # 📍 File: progress.py
-# 📦 Blueprint: progress_async
+# 🏦 Blueprint: progress_async
 # ✅ Adds update call after session save to ensure fresh milestone/quote tracking
 
 import os
@@ -7,6 +7,7 @@ from openai import OpenAI
 from datetime import date, datetime, timedelta
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
+from collections import defaultdict
 
 # Cache quote daily
 _daily_quote_cache = {"date": None, "quote": None}
@@ -79,10 +80,10 @@ def calculate_streak(dates):
     return streak
 
 def compute_progress_data(user_id):
+    db = get_firestore_client()
     sessions = get_user_sessions(user_id)
 
     message_dates = set()
-    mood_checkins = 0
     session_numbers = [s.get('session_number', 0) for s in sessions if 'session_number' in s]
 
     for s in sessions:
@@ -92,15 +93,24 @@ def compute_progress_data(user_id):
                     try:
                         message_dates.add(datetime.fromisoformat(msg['timestamp']).date())
                     except: pass
-                if 'mood' in msg and msg['mood']:
-                    mood_checkins += 1
-        if 'mood' in s and s['mood']:
-            mood_checkins += 1
-        elif 'dailyLogs' in s:
-            for log in s['dailyLogs'].values():
-                if isinstance(log, dict) and 'mood' in log and log['mood']:
-                    mood_checkins += 1
-                    break
+        if 'timestamp' in s:
+            try:
+                message_dates.add(datetime.fromisoformat(s['timestamp']).date())
+            except: pass
+
+    # --- MOOD CHECKINS COUNT ---
+    mood_checkins_by_date = defaultdict(int)
+    checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
+    for doc in checkin_docs:
+        data = doc.to_dict()
+        timestamp = data.get("timestamp")
+        if timestamp:
+            try:
+                date_str = timestamp.date().isoformat()
+                mood_checkins_by_date[date_str] += 1
+            except: pass
+
+    mood_checkins_total = sum(mood_checkins_by_date.values())
 
     streak = calculate_streak(message_dates)
     total_sessions = max(session_numbers) if session_numbers else len(sessions)
@@ -120,13 +130,13 @@ def compute_progress_data(user_id):
             "times_showed_up": total_sessions,
             "time_for_yourself": f"{total_hours}h",
             "day_streak": streak,
-            "mood_checkins": mood_checkins
+            "mood_checkins": mood_checkins_total
         },
         "milestones": [
             {"title": "You Took the First Step", "achieved": total_sessions >= 1, "progress": min(total_sessions, 1), "target": 1},
             {"title": "You're Showing Up Regularly", "achieved": total_sessions >= 5, "progress": min(total_sessions, 5), "target": 5},
             {"title": "Committed to Growth", "achieved": total_sessions >= 10, "progress": min(total_sessions, 10), "target": 10},
-            {"title": "Checking In With Yourself", "achieved": mood_checkins >= 7, "progress": min(mood_checkins, 7), "target": 7},
+            {"title": "Checking In With Yourself", "achieved": mood_checkins_total >= 7, "progress": min(mood_checkins_total, 7), "target": 7},
             {"title": "Consistency Champion", "achieved": streak >= 30, "progress": min(streak, 30), "target": 30},
             {"title": "Wellness Warrior", "achieved": total_sessions >= 25, "progress": min(total_sessions, 25), "target": 25}
         ],
