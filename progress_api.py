@@ -114,7 +114,7 @@ def compute_progress_data(user_id):
     
     try:
         # Get all check-in documents for this user
-        checkin_docs = db.collection("recent-checkin").where("Uid", "==", user_id).stream()
+        checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
         total_docs = 0
         matches = 0
         
@@ -128,15 +128,15 @@ def compute_progress_data(user_id):
             
             # Check for date field with different capitalizations
             date_value = None
-            date_keys = ['date', 'Date', 'DATE']
+            date_keys = 'date'
             for key in date_keys:
                 if key in data:
-                    date_value = data[key]
-                    logger.info(f"Found date field: {key} = {date_value} (type: {type(date_value)})")
+                    date_value = data[date]
+                    logger.info(f"Found date field: {date} = {date_value} (type: {type(date_value)})")
                     break
             
             if date_value is None:
-                logger.warning("No date field found in document. Available keys: " + ", ".join(data.keys()))
+                logger.warning("No date field found in document. Available keys: " + ", ".join(data.date()))
                 continue
                 
             # Convert to comparable string format
