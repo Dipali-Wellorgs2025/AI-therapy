@@ -133,6 +133,17 @@ def compute_progress_data(user_id):
         "motivational_quote": quote
     }
 
+# ✅ This function updates the Firestore progress for the user
+def update_user_progress(user_id):
+    db = get_firestore_client()
+    data = compute_progress_data(user_id)
+    db.collection("users").document(user_id).update({
+        "progress": data["progress"],
+        "healing_journey": data["healing_journey"],
+        "milestones": data["milestones"],
+        "motivational_quote": data["motivational_quote"]
+    })
+
 # ✅ Use these in your route handlers
 @progress_async_bp.route('/progress', methods=['GET'])
 def get_progress():
@@ -155,5 +166,3 @@ def get_milestones():
         return jsonify({'error': 'user_id is required'}), 400
     data = compute_progress_data(user_id)
     return jsonify({"milestones": data["milestones"], "motivational_quote": data["motivational_quote"]})
-
-# ✅ (Optional) Call `compute_progress_data(user_id)` after each session save if needed
