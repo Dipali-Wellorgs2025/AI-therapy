@@ -1,3 +1,4 @@
+
 # 📍 File: progress.py
 # ✅ Show only current day's mood check-ins from recent-checkin collection
 
@@ -100,8 +101,8 @@ def compute_progress_data(user_id):
             except:
                 pass
 
-    # ✅ Mood check-ins for only current day
-    today_date = date.today()
+    # ✅ Count mood check-ins only for current day
+    today_utc = datetime.now(timezone.utc).date()
     mood_checkins_today = 0
     checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
 
@@ -110,12 +111,9 @@ def compute_progress_data(user_id):
         ts = data.get("timestamp")
         if ts:
             try:
-                if hasattr(ts, 'to_datetime'):
-                    checkin_date = ts.to_datetime().astimezone(timezone.utc).date()
-                else:
-                    checkin_date = datetime.fromisoformat(ts).date()
-
-                if checkin_date == today_date:
+                # Convert Firestore timestamp to date (UTC safe)
+                checkin_datetime = ts.to_datetime() if hasattr(ts, 'to_datetime') else datetime.fromisoformat(ts)
+                if checkin_datetime.date() == today_utc:
                     mood_checkins_today += 1
             except:
                 continue
