@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 progress_async_bp = Blueprint('progress_async', __name__)
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-xxxx")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-09e270ba6ccb42f9af9cbe92c6be24d8")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=DEEPSEEK_API_KEY)
 
 _daily_quote_cache = {"date": None, "quote": None}
