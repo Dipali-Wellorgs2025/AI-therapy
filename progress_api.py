@@ -106,15 +106,24 @@ def compute_progress_data(user_id):
     mood_checkins_today = 0
 
     try:
-        docs = db.collection("recent-checkin").stream()
-        for doc in docs:
+        checkin_docs = db.collection("recent-checkin").stream()
+        for doc in checkin_docs:
             data = doc.to_dict()
             if data.get("uid") == user_id:
-                date_val = data.get("date")
-                if date_val and isinstance(date_val, str):
-                    normalized = date_val.replace("/", "-").replace(".", "-").strip()
-                    if normalized == today_str:
-                        mood_checkins_today += 1
+                ts = data.get("timestamp") or data.get("created_at")
+                if ts:
+                    try:
+                        ts_date = datetime.fromisoformat(ts).date()
+                        if ts_date == today:
+                            mood_checkins_today += 1
+                    except:
+                        pass
+                else:
+                    date_val = data.get("date")
+                    if date_val and isinstance(date_val, str):
+                        normalized = date_val.replace("/", "-").replace(".", "-").strip()
+                        if normalized == today_str:
+                            mood_checkins_today += 1
     except Exception as e:
         logger.error(f"Error counting mood check-ins: {e}", exc_info=True)
 
