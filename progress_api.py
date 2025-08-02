@@ -170,7 +170,7 @@ def compute_progress_data(user_id):
         
     except Exception as e:
         logger.error(f"ERROR COUNTING MOOD CHECK-INS: {str(e)}", exc_info=True)
-        mood_checkins_today = 0  # Reset to avoid incorrect counts
+        # mood_checkins_today = 0  # Reset to avoid incorrect counts
 
     streak = calculate_streak(message_dates)
     total_sessions = max(session_numbers) if session_numbers else len(sessions)
