@@ -102,7 +102,7 @@ def compute_progress_data(user_id):
     # ✅ Count mood check-ins only for current day using date field (DD-MM-YYYY format)
     today_str = date.today().strftime("%d-%m-%Y")
     mood_checkins_today = 0
-    checkin_docs = db.collection("recent-checkin").where("Uid", "==", user_id).stream()
+    checkin_docs = db.collection("recent-checkin").where("uid", "==", user_id).stream()
 
     for doc in checkin_docs:
         data = doc.to_dict()
