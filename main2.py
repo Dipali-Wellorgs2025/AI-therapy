@@ -1775,23 +1775,51 @@ def edit_journal():
     return jsonify({'status': True, 'message': 'Journal updated successfully'}), 200
 
 
+@app.route("/get-steps", methods=["GET"])
+def get_steps():
+    # Fetch query parameters from the frontend
+    user_id = request.args.get("user_id")
+    step1 = request.args.get("step1")
+    step2 = request.args.get("step2")
+    step3 = request.args.get("step3")
+
+    # Validate required fields
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+
+    # Prepare response
+    return jsonify({
+        "user_id": user_id,
+        "steps": {
+            "step1": step1,
+            "step2": step2,
+            "step3": step3
+        }
+    })
+
+    
+
 
 @app.route("/therapy-response", methods=["POST"])
 def therapy_response_post():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True)
 
-    user_id = data.get("user_id")
-    step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
+        # Extract fields
+        user_id = data.get("user_id")
+        step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
 
-    if not all([user_id, step1, step2, step3]):
-        return jsonify({"error": "user_id, step1, step2, and step3 are required"}), 400
+        # Validation
+        if not all([user_id, step1, step2, step3]):
+            return jsonify({"error": "user_id, step1, step2, and step3 are required"}), 400
 
-    combined_message = f"Step1: {step1}\nStep2: {step2}\nStep3: {step3}"
+        # Combine message
+        combined_message = f"Step1: {step1}\nStep2: {step2}\nStep3: {step3}"
 
-    # ---- CLASSIFICATION FUNCTION ----
-    def classify_topic_with_confidence(message):
-        try:
-            classification_prompt = f"""
+        # ---- CLASSIFICATION FUNCTION ----
+        def classify_topic_with_confidence(message: str):
+            try:
+                classification_prompt = f"""
 You are a mental health topic classifier. Analyze the message and determine:
 1. The primary topic category
 2. Confidence level (high/medium/low)
@@ -1813,67 +1841,76 @@ CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
-            classification = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
-                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
-                    {"role": "user", "content": classification_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=100
-            )
+                classification = client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[
+                        {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+                        {"role": "user", "content": classification_prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=100
+                )
 
-            response = classification.choices[0].message.content.strip()
-            category, confidence, is_generic = None, None, False
+                response = classification.choices[0].message.content.strip()
+                category, confidence, is_generic = None, None, False
 
-            for line in response.split("\n"):
-                if line.startswith("CATEGORY:"):
-                    category = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("CONFIDENCE:"):
-                    confidence = line.split(":", 1)[1].strip().lower()
-                elif line.startswith("IS_GENERIC:"):
-                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
+                for line in response.split("\n"):
+                    if line.startswith("CATEGORY:"):
+                        category = line.split(":", 1)[1].strip().lower()
+                    elif line.startswith("CONFIDENCE:"):
+                        confidence = line.split(":", 1)[1].strip().lower()
+                    elif line.startswith("IS_GENERIC:"):
+                        is_generic = line.split(":", 1)[1].strip().lower() == "yes"
 
-            return category, confidence, is_generic
+                # Default to general if something is wrong
+                if not category:
+                    category = "general"
 
-        except Exception as e:
-            print("Classification failed:", e)
-            return "general", "low", True
+                return category, confidence, is_generic
 
-    # ---- CLASSIFY USER MESSAGE ----
-    category, confidence, is_generic = classify_topic_with_confidence(combined_message)
+            except Exception as e:
+                print("Classification failed:", e)
+                return "general", "low", True
 
-    # ---- FETCH BOT DETAILS FROM FIRESTORE ----
-    bot_ref = db.collection("ai_therapists").document(category)
-    bot_doc = bot_ref.get()
+        # ---- CLASSIFY USER MESSAGE ----
+        category, confidence, is_generic = classify_topic_with_confidence(combined_message)
 
-    if not bot_doc.exists:
-        # fallback to general bot
-        bot_ref = db.collection("ai_therapists").document("general")
+        # ---- FETCH BOT DETAILS FROM FIRESTORE ----
+        bot_ref = db.collection("ai_therapists").document(category)
         bot_doc = bot_ref.get()
 
         if not bot_doc.exists:
-            return jsonify({"error": f"No bot found for category '{category}'"}), 404
+            # fallback to general bot
+            bot_ref = db.collection("ai_therapists").document("general")
+            bot_doc = bot_ref.get()
 
-    bot_data = bot_doc.to_dict()
+            if not bot_doc.exists:
+                return jsonify({"error": f"No bot found for category '{category}'"}), 404
 
-    return jsonify({
-        "user_id": user_id,
-        "session_id": str(uuid.uuid4()),
-        "bot_id": bot_data.get("id"),
-        "bot_name": bot_data.get("name"),
-        "preferred_style": "balanced",
-        "color": bot_data.get("color"),
-        "icon": bot_data.get("icon"),
-        "image": bot_data.get("image"),
-    
-    })
+        bot_data = bot_doc.to_dict()
+
+        # ---- RETURN FINAL RESPONSE ----
+        return jsonify({
+            "user_id": user_id,
+            "session_id": str(uuid.uuid4()),
+            "bot_id": bot_data.get("id"),
+            "bot_name": bot_data.get("name"),
+            "preferred_style": bot_data.get("preferred_style", "balanced"),
+            "color": bot_data.get("color"),
+            "icon": bot_data.get("icon"),
+            "image": bot_data.get("image"),
+        }), 200
+
+    except Exception as e:
+        print("Error in /therapy-response:", e)
+        return jsonify({"error": "Internal server error"}), 500
 
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
