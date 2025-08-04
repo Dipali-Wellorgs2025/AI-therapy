@@ -1786,58 +1786,95 @@ def therapy_response_post():
 
     combined_message = f"Step1: {step1}\nStep2: {step2}\nStep3: {step3}"
 
-    classification_prompt = f"""
-You are a mental health topic classifier...
-Message: "{combined_message}"
+    # ---- CLASSIFICATION FUNCTION ----
+    def classify_topic_with_confidence(message):
+        try:
+            classification_prompt = f"""
+You are a mental health topic classifier. Analyze the message and determine:
+1. The primary topic category
+2. Confidence level (high/medium/low)
+3. Whether it's a generic greeting/small talk
+
+Categories:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+- general
+
+Message: \"{message}\"
+
 Respond in this format:
 CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
+            classification = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+                    {"role": "user", "content": classification_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=100
+            )
 
-    try:
-        classification = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
-                {"role": "user", "content": classification_prompt}
-            ],
-            temperature=0.1,
-            max_tokens=100
-        )
-        classification_result = classification.choices[0].message.content.strip()
-    except Exception as e:
-        return jsonify({"error": "Classification failed", "details": str(e)}), 500
+            response = classification.choices[0].message.content.strip()
+            category, confidence, is_generic = None, None, False
 
-    category_line = next((line for line in classification_result.split("\n") if "CATEGORY:" in line), None)
-    dominant_category = category_line.split(":")[1].strip().lower() if category_line else None
+            for line in response.split("\n"):
+                if line.startswith("CATEGORY:"):
+                    category = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("CONFIDENCE:"):
+                    confidence = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("IS_GENERIC:"):
+                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
 
-    valid_categories = ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
-    if dominant_category not in valid_categories:
-        return jsonify({"user_id": user_id, "classification": classification_result, "dominant_category": dominant_category, "error": "No bot found"}), 404
+            return category, confidence, is_generic
 
-    bot_doc = db.collection("ai_therapists").document(dominant_category).get()
-    if not bot_doc.exists:
-        return jsonify({"user_id": user_id, "classification": classification_result, "dominant_category": dominant_category, "error": "No bot found"}), 404
+        except Exception as e:
+            print("Classification failed:", e)
+            return "general", "low", True
 
-    bot_data = bot_doc.to_dict()
+    # ---- CLASSIFY USER MESSAGE ----
+    category, confidence, is_generic = classify_topic_with_confidence(combined_message)
+
+    # Example: Topic to Bot Mapping
+    TOPIC_TO_BOT = {
+        "anxiety": "CalmBot",
+        "breakup": "HeartBot",
+        "self-worth": "BoostBot",
+        "trauma": "HealBot",
+        "family": "FamBot",
+        "crisis": "CrisisBot",
+        "general": "GeneralBot"
+    }
+
+    # Default to general bot
+    correct_bot = TOPIC_TO_BOT.get(category, "GeneralBot")
+
+   
+
     return jsonify({
         "user_id": user_id,
         "session_id": str(uuid.uuid4()),
-        "classification": classification_result,
-        "dominant_category": dominant_category,
-        "bot_id": bot_data.get("id"),
-        "bot_name": bot_data.get("name"),
+        "bot_id": bot_doc.get("id"),
+        "bot_name": correct_bot,
         "preferred_style": "balanced",
-        "color": bot_data.get("color"),
-        "icon": bot_data.get("icon"),
-        "image": bot_data.get("image")
+        "color": bot_doc.get("color"),
+        "icon": bot_doc.get("icon"),
+        "image": bot_doc.get("image"),
+        "classified_category": category
     })
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
