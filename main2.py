@@ -1774,12 +1774,127 @@ def edit_journal():
     print("[DEBUG] Journal updated:", update_data)
     return jsonify({'status': True, 'message': 'Journal updated successfully'}), 200
 
+# -------------------- 1️⃣ GET API: Receive User Responses --------------------
+@app.route("/therapy-response", methods=["GET"])
+def get_user_response():
+    # Get the 3 strings from query parameters
+    step1 = request.args.get("step1")
+    step2 = request.args.get("step2")
+    step3 = request.args.get("step3")
+    user_id = request.args.get("user_id")
+
+    # Validate required parameters
+    if not all([user_id, step1, step2, step3]):
+        return jsonify({
+            "error": "Missing required query parameters: user_id, step1, step2, step3"
+        }), 400
+
+    return jsonify({
+        "user_id": user_id,
+        "step1": step1,
+        "step2": step2,
+        "step3": step3,
+        "message": "User responses received successfully."
+    })
+
+
+# -------------------- 2️⃣ POST API: Suggest Bot --------------------
+
+
+from flask import Flask, request, jsonify
+import uuid
+
+@app.route("/suggest-bot", methods=["POST"])
+def suggest_bot():
+    data = request.get_json()
+
+    # Extract fields from JSON
+    user_id = data.get("user_id")
+    step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
+
+    # Validate required fields
+    if not (user_id and step1 and step2 and step3):
+        return jsonify({
+            "error": "user_id, step1, step2, and step3 are all required in JSON body"
+        }), 400
+
+    # Combine steps for classification
+    combined_message = f"Step1: {step1}\nStep2: {step2}\nStep3: {step3}"
+
+    # DeepSeek classification prompt
+    classification_prompt = f"""
+You are a mental health topic classifier. Analyze the message and determine:
+1. The primary topic category
+2. Confidence level (high/medium/low)
+3. Whether it's a generic greeting/small talk
+
+Categories:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+- general
+
+Message: \"{combined_message}\"
+
+Respond in this format:
+CATEGORY: [category]
+CONFIDENCE: [high/medium/low]
+IS_GENERIC: [yes/no]
+"""
+
+    # DeepSeek API call
+    classification = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+            {"role": "user", "content": classification_prompt}
+        ],
+        temperature=0.1,
+        max_tokens=100
+    )
+
+    classification_result = classification.choices[0].message["content"].strip()
+    category_line = next((line for line in classification_result.split("\n") if "CATEGORY:" in line), None)
+    dominant_category = category_line.split(":")[1].strip() if category_line else "general"
+
+    # Fetch bot details from Firestore
+    bot_doc = db.collection("ai_therapists").document(dominant_category).get()
+    if bot_doc.exists:
+        bot_data = bot_doc.to_dict()
+        bot_id = bot_data.get("id")
+        bot_name = bot_data.get("name")
+        preferred_style = "balanced"
+        color = bot_data.get("color")
+        icon = bot_data.get("icon")
+        image = bot_data.get("image")
+
+    # Generate session_id
+    session_id = str(uuid.uuid4())
+
+    # Return final flat JSON
+    return jsonify({
+        "user_id": user_id,
+        "session_id": session_id,
+        "classification": classification_result,
+        "dominant_category": dominant_category,
+        "bot_id": bot_id,
+        "bot_name": bot_name,
+        "preferred_style": preferred_style,
+        "color": color,
+        "icon": icon,
+        "image": image
+    })
+
 
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
