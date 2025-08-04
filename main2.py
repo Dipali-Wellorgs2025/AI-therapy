@@ -1774,6 +1774,8 @@ def edit_journal():
     print("[DEBUG] Journal updated:", update_data)
     return jsonify({'status': True, 'message': 'Journal updated successfully'}), 200
 
+
+
 @app.route("/therapy-response", methods=["POST"])
 def therapy_response_post():
     data = request.get_json(force=True)
@@ -1841,32 +1843,30 @@ IS_GENERIC: [yes/no]
     # ---- CLASSIFY USER MESSAGE ----
     category, confidence, is_generic = classify_topic_with_confidence(combined_message)
 
-    # Example: Topic to Bot Mapping
-    TOPIC_TO_BOT = {
-        "anxiety": "CalmBot",
-        "breakup": "HeartBot",
-        "self-worth": "BoostBot",
-        "trauma": "HealBot",
-        "family": "FamBot",
-        "crisis": "CrisisBot",
-        "general": "GeneralBot"
-    }
+    # ---- FETCH BOT DETAILS FROM FIRESTORE ----
+    bot_ref = db.collection("ai_therapists").document(category)
+    bot_doc = bot_ref.get()
 
-    # Default to general bot
-    correct_bot = TOPIC_TO_BOT.get(category, "GeneralBot")
+    if not bot_doc.exists:
+        # fallback to general bot
+        bot_ref = db.collection("ai_therapists").document("general")
+        bot_doc = bot_ref.get()
 
-   
+        if not bot_doc.exists:
+            return jsonify({"error": f"No bot found for category '{category}'"}), 404
+
+    bot_data = bot_doc.to_dict()
 
     return jsonify({
         "user_id": user_id,
         "session_id": str(uuid.uuid4()),
-        "bot_id": bot_doc.get("id"),
-        "bot_name": correct_bot,
+        "bot_id": bot_data.get("id"),
+        "bot_name": bot_data.get("name"),
         "preferred_style": "balanced",
-        "color": bot_doc.get("color"),
-        "icon": bot_doc.get("icon"),
-        "image": bot_doc.get("image"),
-        "classified_category": category
+        "color": bot_data.get("color"),
+        "icon": bot_data.get("icon"),
+        "image": bot_data.get("image"),
+    
     })
 
 
@@ -1874,6 +1874,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
