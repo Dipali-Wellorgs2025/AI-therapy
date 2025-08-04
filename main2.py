@@ -1774,30 +1774,6 @@ def edit_journal():
     print("[DEBUG] Journal updated:", update_data)
     return jsonify({'status': True, 'message': 'Journal updated successfully'}), 200
 
-# -------------------- 1️⃣ GET API: Receive User Responses --------------------
-@app.route("/therapy-response", methods=["GET"])
-def get_user_response():
-    # Get the 3 strings from query parameters
-    step1 = request.args.get("step1")
-    step2 = request.args.get("step2")
-    step3 = request.args.get("step3")
-    user_id = request.args.get("user_id")
-
-    # Validate required parameters
-    if not all([user_id, step1, step2, step3]):
-        return jsonify({
-            "error": "Missing required query parameters: user_id, step1, step2, step3"
-        }), 400
-
-    return jsonify({
-        "user_id": user_id,
-        "step1": step1,
-        "step2": step2,
-        "step3": step3,
-        "message": "User responses received successfully."
-    })
-
-
 @app.route("/therapy-response", methods=["POST"])
 def therapy_response_post():
     data = request.get_json()
@@ -1830,7 +1806,6 @@ Categories:
 - trauma
 - family
 - crisis
-- general
 
 Message: \"{combined_message}\"
 
@@ -1840,6 +1815,7 @@ CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
 
+    # Call DeepSeek for classification
     classification = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
@@ -1852,19 +1828,38 @@ IS_GENERIC: [yes/no]
 
     classification_result = classification.choices[0].message["content"].strip()
     category_line = next((line for line in classification_result.split("\n") if "CATEGORY:" in line), None)
-    dominant_category = category_line.split(":")[1].strip() if category_line else "general"
+    dominant_category = category_line.split(":")[1].strip().lower() if category_line else None
+
+    # Valid Firestore document IDs
+    valid_categories = ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
+
+    # If DeepSeek returns an invalid category
+    if dominant_category not in valid_categories:
+        return jsonify({
+            "user_id": user_id,
+            "classification": classification_result,
+            "dominant_category": dominant_category,
+            "error": "No bot found for this category"
+        }), 404
 
     # Fetch bot details from Firestore
     bot_doc = db.collection("ai_therapists").document(dominant_category).get()
-    if bot_doc.exists:
-        bot_data = bot_doc.to_dict()
-        bot_id = bot_data.get("id")
-        bot_name = bot_data.get("name")
-        preferred_style = "balanced"
-        color = bot_data.get("color")
-        icon = bot_data.get("icon")
-        image = bot_data.get("image")
-    
+    if not bot_doc.exists:
+        return jsonify({
+            "user_id": user_id,
+            "classification": classification_result,
+            "dominant_category": dominant_category,
+            "error": "No bot found for this category"
+        }), 404
+
+    bot_data = bot_doc.to_dict()
+    bot_id = bot_data.get("id")
+    bot_name = bot_data.get("name")
+    preferred_style = "balanced"
+    color = bot_data.get("color")
+    icon = bot_data.get("icon")
+    image = bot_data.get("image")
+
     # Generate session_id
     session_id = str(uuid.uuid4())
 
@@ -1881,11 +1876,11 @@ IS_GENERIC: [yes/no]
         "image": image
     })
 
-
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
