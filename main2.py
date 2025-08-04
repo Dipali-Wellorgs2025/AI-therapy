@@ -1776,110 +1776,69 @@ def edit_journal():
 
 @app.route("/therapy-response", methods=["POST"])
 def therapy_response_post():
-    data = request.get_json()
+    data = request.get_json(force=True)
 
-    # Extract fields
     user_id = data.get("user_id")
-    step1 = data.get("step1")
-    step2 = data.get("step2")
-    step3 = data.get("step3")
+    step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
 
-    # Validate
-    if not (user_id and step1 and step2 and step3):
-        return jsonify({
-            "error": "user_id, step1, step2, and step3 are required in JSON body"
-        }), 400
+    if not all([user_id, step1, step2, step3]):
+        return jsonify({"error": "user_id, step1, step2, and step3 are required"}), 400
 
-    # Combine for classification
     combined_message = f"Step1: {step1}\nStep2: {step2}\nStep3: {step3}"
 
     classification_prompt = f"""
-You are a mental health topic classifier. Analyze the message and determine:
-1. The primary topic category
-2. Confidence level (high/medium/low)
-3. Whether it's a generic greeting/small talk
-
-Categories:
-- anxiety
-- breakup
-- self-worth
-- trauma
-- family
-- crisis
-
-Message: \"{combined_message}\"
-
+You are a mental health topic classifier...
+Message: "{combined_message}"
 Respond in this format:
 CATEGORY: [category]
 CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
 
-    # Call DeepSeek for classification
-    classification = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
-            {"role": "user", "content": classification_prompt}
-        ],
-        temperature=0.1,
-        max_tokens=100
-    )
+    try:
+        classification = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
+                {"role": "user", "content": classification_prompt}
+            ],
+            temperature=0.1,
+            max_tokens=100
+        )
+        classification_result = classification.choices[0].message.content.strip()
+    except Exception as e:
+        return jsonify({"error": "Classification failed", "details": str(e)}), 500
 
-    classification_result = classification.choices[0].message["content"].strip()
     category_line = next((line for line in classification_result.split("\n") if "CATEGORY:" in line), None)
     dominant_category = category_line.split(":")[1].strip().lower() if category_line else None
 
-    # Valid Firestore document IDs
     valid_categories = ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis"]
-
-    # If DeepSeek returns an invalid category
     if dominant_category not in valid_categories:
-        return jsonify({
-            "user_id": user_id,
-            "classification": classification_result,
-            "dominant_category": dominant_category,
-            "error": "No bot found for this category"
-        }), 404
+        return jsonify({"user_id": user_id, "classification": classification_result, "dominant_category": dominant_category, "error": "No bot found"}), 404
 
-    # Fetch bot details from Firestore
     bot_doc = db.collection("ai_therapists").document(dominant_category).get()
     if not bot_doc.exists:
-        return jsonify({
-            "user_id": user_id,
-            "classification": classification_result,
-            "dominant_category": dominant_category,
-            "error": "No bot found for this category"
-        }), 404
+        return jsonify({"user_id": user_id, "classification": classification_result, "dominant_category": dominant_category, "error": "No bot found"}), 404
 
     bot_data = bot_doc.to_dict()
-    bot_id = bot_data.get("id")
-    bot_name = bot_data.get("name")
-    preferred_style = "balanced"
-    color = bot_data.get("color")
-    icon = bot_data.get("icon")
-    image = bot_data.get("image")
-
-    # Generate session_id
-    session_id = str(uuid.uuid4())
-
     return jsonify({
         "user_id": user_id,
-        "session_id": session_id,
+        "session_id": str(uuid.uuid4()),
         "classification": classification_result,
         "dominant_category": dominant_category,
-        "bot_id": bot_id,
-        "bot_name": bot_name,
-        "preferred_style": preferred_style,
-        "color": color,
-        "icon": icon,
-        "image": image
+        "bot_id": bot_data.get("id"),
+        "bot_name": bot_data.get("name"),
+        "preferred_style": "balanced",
+        "color": bot_data.get("color"),
+        "icon": bot_data.get("icon"),
+        "image": bot_data.get("image")
     })
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
