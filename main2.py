@@ -1798,30 +1798,25 @@ def get_user_response():
     })
 
 
-# -------------------- 2️⃣ POST API: Suggest Bot --------------------
-
-
-from flask import Flask, request, jsonify
-import uuid
-
-@app.route("/suggest-bot", methods=["POST"])
-def suggest_bot():
+@app.route("/therapy-response", methods=["POST"])
+def therapy_response_post():
     data = request.get_json()
 
-    # Extract fields from JSON
+    # Extract fields
     user_id = data.get("user_id")
-    step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
+    step1 = data.get("step1")
+    step2 = data.get("step2")
+    step3 = data.get("step3")
 
-    # Validate required fields
+    # Validate
     if not (user_id and step1 and step2 and step3):
         return jsonify({
-            "error": "user_id, step1, step2, and step3 are all required in JSON body"
+            "error": "user_id, step1, step2, and step3 are required in JSON body"
         }), 400
 
-    # Combine steps for classification
+    # Combine for classification
     combined_message = f"Step1: {step1}\nStep2: {step2}\nStep3: {step3}"
 
-    # DeepSeek classification prompt
     classification_prompt = f"""
 You are a mental health topic classifier. Analyze the message and determine:
 1. The primary topic category
@@ -1845,7 +1840,6 @@ CONFIDENCE: [high/medium/low]
 IS_GENERIC: [yes/no]
 """
 
-    # DeepSeek API call
     classification = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
@@ -1870,11 +1864,10 @@ IS_GENERIC: [yes/no]
         color = bot_data.get("color")
         icon = bot_data.get("icon")
         image = bot_data.get("image")
-
+    
     # Generate session_id
     session_id = str(uuid.uuid4())
 
-    # Return final flat JSON
     return jsonify({
         "user_id": user_id,
         "session_id": session_id,
@@ -1889,11 +1882,11 @@ IS_GENERIC: [yes/no]
     })
 
 
-
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
