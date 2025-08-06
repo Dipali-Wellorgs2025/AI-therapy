@@ -1458,8 +1458,8 @@ def get_recent_sessions():
 
         bots = {
             "anxiety": "Sage",
-            "breakup": "Jordan",
-            "self-worth": "River",
+            "couples": "Jordan",
+            "depression": "River",
             "trauma": "Phoenix",
             "family": "Ava",
             "crisis": "Raya"
@@ -1897,6 +1897,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
