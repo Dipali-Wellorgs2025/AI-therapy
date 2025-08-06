@@ -1396,7 +1396,7 @@ def get_recent_sessions():
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
                 .order_by("createdAt", direction=firestore.Query.DESCENDING)
-                .limit(4)
+                .limit(3)
             )
 
             docs = list(session_ref.stream())
@@ -1450,6 +1450,7 @@ def get_recent_sessions():
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
+
 
 @app.route("/")
 def home():
@@ -1836,6 +1837,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
