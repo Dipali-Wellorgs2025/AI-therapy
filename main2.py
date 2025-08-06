@@ -1368,15 +1368,6 @@ def get_history():
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
     
-from datetime import datetime
-
-from datetime import datetime
-
-from datetime import datetime
-from flask import request, jsonify
-
-from datetime import datetime
-
 from flask import jsonify, request
 from google.cloud import firestore
 from datetime import datetime
@@ -1400,23 +1391,38 @@ def get_recent_sessions():
         sessions = []
 
         for bot_id, bot_name in bots.items():
-            # Query only last session per bot
+            # Fetch the 3 newest sessions per bot (covers active + end/exit)
             session_ref = (
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
-                .where("status", "in", ["End", "Exit"])  # Only completed or in-progress
-                .order_by("endedAt", direction=firestore.Query.DESCENDING)
-                .limit(1)
+                .order_by("createdAt", direction=firestore.Query.DESCENDING)
+                .limit(4)
             )
 
-            docs = session_ref.stream()
+            docs = list(session_ref.stream())
+            if not docs:
+                continue
+
             for doc in docs:
                 data = doc.to_dict()
-                ended_at = data.get("endedAt")
-                if not ended_at:
-                    continue  # Skip if no endedAt
+                raw_status = data.get("status", "").strip().lower()
 
-                status = "completed" if data.get("status", "").lower() == "End" else "in_progress"
+                # Only consider relevant statuses
+                if raw_status not in ["active", "exit", "end"]:
+                    continue
+
+                ended_at = data.get("endedAt")
+                created_at = data.get("createdAt")
+                timestamp = ended_at or created_at
+                if not timestamp:
+                    continue
+
+                # Map status to human-readable
+                status = (
+                    "completed" if raw_status == "end"
+                    else "in_progress" if raw_status == "exit"
+                    else "active"
+                )
 
                 sessions.append({
                     "session_id": doc.id,
@@ -1424,19 +1430,16 @@ def get_recent_sessions():
                     "bot_name": bot_name,
                     "problem": data.get("title", "Therapy Session"),
                     "status": status,
-                    "timestamp": ended_at,
+                    "timestamp": timestamp,
                     "user_id": data.get("userId", ""),
                     "preferred_style": data.get("therapyStyle", "")
                 })
+                break  # Keep only latest session per bot
 
-        # Sort by endedAt descending
-        sorted_sessions = sorted(
-            sessions,
-            key=lambda x: x["timestamp"],
-            reverse=True
-        )[:4]  # take only 4 newest
+        # Sort sessions by timestamp and pick top 4
+        sorted_sessions = sorted(sessions, key=lambda x: x["timestamp"], reverse=True)[:4]
 
-        # Convert timestamp to string for JSON
+        # Convert timestamp to string
         for s in sorted_sessions:
             s["date"] = str(s.pop("timestamp"))
 
@@ -1447,9 +1450,6 @@ def get_recent_sessions():
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
-
-
-
 
 @app.route("/")
 def home():
@@ -1836,6 +1836,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
