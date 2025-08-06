@@ -1391,66 +1391,48 @@ def get_recent_sessions():
         sessions = []
 
         for bot_id, bot_name in bots.items():
-            # Fetch the 3 newest sessions per bot (covers active + end/exit)
+            # ✅ Query using endedAt to always reflect latest updates
             session_ref = (
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
-                .order_by("createdAt", direction=firestore.Query.DESCENDING)
-                .limit(3)
+                .where("status", "in", ["End", "Exit"])  # Ignore active
+                .order_by("endedAt", direction=firestore.Query.DESCENDING)
+                .limit(1)  # Only the latest session per bot
             )
 
             docs = list(session_ref.stream())
             if not docs:
                 continue
 
-            for doc in docs:
-                data = doc.to_dict()
-                raw_status = data.get("status", "").strip().lower()
+            doc = docs[0]
+            data = doc.to_dict()
+            ended_at = data.get("endedAt")
+            if not ended_at:
+                continue  # Skip if no endedAt
 
-                # Only consider relevant statuses
-                if raw_status not in ["active", "exit", "end"]:
-                    continue
+            status = "completed" if data.get("status", "").lower() == "end" else "in_progress"
 
-                ended_at = data.get("endedAt")
-                created_at = data.get("createdAt")
-                timestamp = ended_at or created_at
-                if not timestamp:
-                    continue
+            sessions.append({
+                "session_id": doc.id,
+                "bot_id": bot_id,
+                "bot_name": bot_name,
+                "problem": data.get("title", "Therapy Session"),
+                "status": status,
+                "date": str(ended_at),  # ✅ Only endedAt
+                "user_id": data.get("userId", ""),
+                "preferred_style": data.get("therapyStyle", "")
+            })
 
-                # Map status to human-readable
-                status = (
-                    "completed" if raw_status == "end"
-                    else "in_progress" if raw_status == "exit"
-                    else "active"
-                )
+        # ✅ Sort all sessions by endedAt descending and take top 4
+        sessions = sorted(sessions, key=lambda x: x["date"], reverse=True)[:4]
 
-                sessions.append({
-                    "session_id": doc.id,
-                    "bot_id": bot_id,
-                    "bot_name": bot_name,
-                    "problem": data.get("title", "Therapy Session"),
-                    "status": status,
-                    "timestamp": timestamp,
-                    "user_id": data.get("userId", ""),
-                    "preferred_style": data.get("therapyStyle", "")
-                })
-                break  # Keep only latest session per bot
-
-        # Sort sessions by timestamp and pick top 4
-        sorted_sessions = sorted(sessions, key=lambda x: x["timestamp"], reverse=True)[:4]
-
-        # Convert timestamp to string
-        for s in sorted_sessions:
-            s["date"] = str(s.pop("timestamp"))
-
-        return jsonify(sorted_sessions)
+        return jsonify(sessions)
 
     except Exception as e:
         import traceback
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
-
 
 @app.route("/")
 def home():
@@ -1837,6 +1819,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
