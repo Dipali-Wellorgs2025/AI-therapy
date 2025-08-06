@@ -1369,79 +1369,67 @@ def get_history():
         return jsonify({"error": "Failed to retrieve history"}), 500
 
 
-BOTS = {
-    "anxiety": "Sage",
-    "breakup": "Jordan",
-    "self-worth": "River",
-    "trauma": "Phoenix",
-    "family": "Ava",
-    "crisis": "Raya"
-}
-
-recent_sessions_cache = {}  # Cache per user
-
-def fetch_recent_sessions(user_id):
-    """Fetch 4 most recent ended/exited sessions for a user from Firestore"""
-    sessions = []
-    for bot_id, bot_name in BOTS.items():
-        session_ref = (
-            db.collection("ai_therapists").document(bot_id).collection("sessions")
-            .where("userId", "==", user_id)
-            .where("status", "in", ["end", "exit"])
-            .order_by("endedAt", direction=firestore.Query.DESCENDING)
-            .limit(1)
-        )
-        docs = list(session_ref.stream())
-        if not docs:
-            continue
-
-        doc = docs[0]
-        data = doc.to_dict()
-        ended_at = data.get("endedAt")
-        if not ended_at:
-            continue
-
-        status = "completed" if data.get("status", "").lower() == "end" else "in_progress"
-
-        sessions.append({
-            "session_id": doc.id,
-            "bot_id": bot_id,
-            "bot_name": bot_name,
-            "problem": data.get("title", "Therapy Session"),
-            "status": status,
-            "date": str(ended_at),
-            "user_id": data.get("userId", ""),
-            "preferred_style": data.get("therapyStyle", "")
-        })
-
-    sessions = sorted(sessions, key=lambda x: x["date"], reverse=True)[:4]
-    return sessions
-
 @app.route("/api/recent_sessions", methods=["GET"])
-def recent_sessions():
-    user_id = request.args.get("user_id")
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
+def get_recent_sessions():
+    try:
+        user_id = request.args.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
 
-    # --- Check if request wants SSE streaming ---
-    if request.headers.get("Accept") == "text/event-stream":
-        def event_stream(user_id):
-            last_sessions = []
-            while True:
-                sessions = fetch_recent_sessions(user_id)
+        bots = {
+            "anxiety": "Sage",
+            "breakup": "Jordan",
+            "self-worth": "River",
+            "trauma": "Phoenix",
+            "family": "Ava",
+            "crisis": "Raya"
+        }
 
-                if sessions != last_sessions:
-                    last_sessions = sessions
-                    yield f"data: {json.dumps(sessions)}\n\n"
+        sessions = []
 
-                time.sleep(5)  # Poll interval
+        for bot_id, bot_name in bots.items():
+            # ✅ Query using endedAt to always reflect latest updates
+            session_ref = (
+                db.collection("ai_therapists").document(bot_id).collection("sessions")
+                .where("userId", "==", user_id)
+                .where("status", "in", ["end", "exit"])  # Ignore active
+                .order_by("endedAt", direction=firestore.Query.DESCENDING)
+                .limit(1)  # Only the latest session per bot
+            )
 
-        return Response(event_stream(user_id), mimetype="text/event-stream")
+            docs = list(session_ref.stream())
+            if not docs:
+                continue
 
-    # --- Normal API response ---
-    sessions = fetch_recent_sessions(user_id)
-    return jsonify(sessions)
+            doc = docs[0]
+            data = doc.to_dict()
+            ended_at = data.get("endedAt")
+            if not ended_at:
+                continue  # Skip if no endedAt
 
+            status = "completed" if data.get("status", "").lower() == "end" else "in_progress"
+
+            sessions.append({
+                "session_id": doc.id,
+                "bot_id": bot_id,
+                "bot_name": bot_name,
+                "problem": data.get("title", "Therapy Session"),
+                "status": status,
+                "date": str(ended_at),  # ✅ Only endedAt
+                "user_id": data.get("userId", ""),
+                "preferred_style": data.get("therapyStyle", "")
+            })
+
+        # ✅ Sort all sessions by endedAt descending and take top 4
+        sessions = sorted(sessions, key=lambda x: x["date"], reverse=True)[:4]
+
+        return jsonify(sessions)
+
+    except Exception as e:
+        import traceback
+        print("[❌] Error in /api/recent_sessions:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Server error retrieving sessions"}), 500
 
 
 @app.route("/")
@@ -1829,6 +1817,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
