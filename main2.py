@@ -1390,7 +1390,6 @@ def get_history():
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
 
-
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1839,6 +1838,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
