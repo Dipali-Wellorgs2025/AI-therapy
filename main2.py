@@ -1362,72 +1362,65 @@ def get_history():
             return jsonify({"error": "Missing parameters"}), 400
 
         session_user_id = f"{user_id}_{bot_name}"
+
+        # 🔍 Fetch all sessions for the user-bot pair
         sessions_ref = (
             db.collection("ai_therapists")
               .document(bot_name)
               .collection("sessions")
               .where("userId", "==", session_user_id)
-              .order_by("endedAt", direction=firestore.Query.DESCENDING)
+              .order_by("createdAt", direction=firestore.Query.DESCENDING)
         )
-
         session_docs = list(sessions_ref.stream())
         if not session_docs:
             return jsonify([])
 
-        latest_session = session_docs[0].to_dict()
-        latest_status = latest_session.get("status", "Active")
+        # 🧠 Step 1: Get latest session
+        latest_session_data = session_docs[0].to_dict()
+        latest_status = latest_session_data.get("status", "Active")
 
-        # 🚫 Case 1: latest status is 'End' → no messages
+        # 🚫 Case: Last session is End → don't return history
         if latest_status == "End":
             return jsonify([])
 
-        # ✅ Case 2: Active or Exit → find most recent End session
+        # ✅ Case: Last session is Active or Exit → check for most recent End
         last_end_timestamp = None
         for doc in session_docs:
             data = doc.to_dict()
-            if data.get("status") == "End":
-                last_end_timestamp = data.get("endedAt")
-                break  # we only want the most recent End before current
+            if data.get("status") == "End" and data.get("endedAt"):
+                last_end_timestamp = data["endedAt"]
+                break
 
-        # Fetch message history from sessions collection
+        # 📨 Fetch all messages
         msg_doc = db.collection("sessions").document(session_user_id).get()
         if not msg_doc.exists:
             return jsonify([])
 
         all_messages = msg_doc.to_dict().get("messages", [])
-
         if not last_end_timestamp:
-            # No previous End session → return all messages
+            # No "End" session before → return all
             return jsonify(all_messages)
 
-        # Parse timestamp if string, or use directly if Firestore Timestamp
+        # ⏰ Compare and filter messages by timestamp
+        from dateutil.parser import parse as parse_dt
         from datetime import datetime
-        import dateutil.parser
 
-        if isinstance(last_end_timestamp, str):
-            last_end_dt = dateutil.parser.parse(last_end_timestamp)
-        else:
-            last_end_dt = last_end_timestamp  # assume Firestore Timestamp
+        def to_datetime(val):
+            if isinstance(val, str):
+                return parse_dt(val)
+            return val  # assume it's already a datetime or Firestore Timestamp
 
-        # Filter messages after last 'End' timestamp
-        filtered_msgs = []
-        for msg in all_messages:
-            msg_time = msg.get("timestamp")
-            if not msg_time:
-                continue
-            if isinstance(msg_time, str):
-                msg_dt = dateutil.parser.parse(msg_time)
-            else:
-                msg_dt = msg_time
-
-            if msg_dt > last_end_dt:
-                filtered_msgs.append(msg)
+        filtered_msgs = [
+            msg for msg in all_messages
+            if "timestamp" in msg and to_datetime(msg["timestamp"]) > to_datetime(last_end_timestamp)
+        ]
 
         return jsonify(filtered_msgs)
 
     except Exception as e:
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
+
 
 
 @app.route("/api/recent_sessions", methods=["GET"])
@@ -1878,6 +1871,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
