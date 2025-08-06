@@ -1788,7 +1788,7 @@ def classify_category(step1, step2, step3):
     {text}
     """
 
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2
@@ -1842,6 +1842,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
