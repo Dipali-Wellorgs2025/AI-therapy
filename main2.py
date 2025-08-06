@@ -1358,12 +1358,34 @@ def get_history():
     try:
         user_id = request.args.get("user_id")
         bot_name = request.args.get("botName")
+
         if not user_id or not bot_name:
             return jsonify({"error": "Missing parameters"}), 400
-            
+
         session_id = f"{user_id}_{bot_name}"
-        doc = db.collection("sessions").document(session_id).get()
-        return jsonify(doc.to_dict().get("messages", [])) if doc.exists else jsonify([])
+        doc_ref = db.collection("sessions").document(session_id)
+        doc = doc_ref.get()
+
+        if doc.exists:
+            data = doc.to_dict()
+            status = data.get("status", "Active")  # default to Active
+
+            if status == "End":
+                # Reset session on 'End' status
+                doc_ref.set({
+                    "messages": [],
+                    "status": "Active",  # or keep as 'End' if needed
+                    "started_at": datetime.utcnow()
+                }, merge=True)
+                return jsonify([])
+
+            # Return history for Active and Exit (and any others)
+            return jsonify(data.get("messages", []))
+
+        else:
+            # Session doesn't exist
+            return jsonify([])
+
     except Exception as e:
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
@@ -1817,6 +1839,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
