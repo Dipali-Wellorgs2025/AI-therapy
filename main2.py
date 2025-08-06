@@ -1354,17 +1354,22 @@ Generate the report now:
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
-    """Smart history fetch based on session status and last 'End' timestamp."""
+    """Fetch messages after the last 'End' session unless the latest session is already ended."""
     try:
         from datetime import datetime
         import dateutil.parser
+        from flask import request, jsonify
+        from google.cloud import firestore
 
         user_id = request.args.get("user_id")
         bot_name = request.args.get("botName")
+
         if not user_id or not bot_name:
             return jsonify({"error": "Missing parameters"}), 400
 
         session_user_id = f"{user_id}_{bot_name}"
+
+        # Reference to user's sessions under the bot
         sessions_ref = (
             db.collection("ai_therapists")
               .document(bot_name)
@@ -1374,15 +1379,16 @@ def get_history():
         )
 
         session_docs = list(sessions_ref.stream())
+
         if not session_docs:
             return jsonify([])
 
-        # Check if the LATEST session is End
+        # Check if the latest session is already ended
         latest_session_data = session_docs[0].to_dict()
         if latest_session_data.get("status") == "End":
             return jsonify([])
 
-        # Find the latest 'End' session's endedAt timestamp
+        # Find the last session with status "End"
         last_end_timestamp = None
         for doc in session_docs:
             session_data = doc.to_dict()
@@ -1390,36 +1396,52 @@ def get_history():
                 last_end_timestamp = session_data.get("endedAt")
                 break
 
-        # Fetch all messages from main sessions collection
+        # Get messages from main sessions collection
         msg_doc = db.collection("sessions").document(session_user_id).get()
         if not msg_doc.exists:
             return jsonify([])
 
         all_messages = msg_doc.to_dict().get("messages", [])
-        if not last_end_timestamp:
-            # No 'End' session found — return all messages
-            return jsonify(all_messages)
 
-        # Convert endedAt to datetime
+        if not last_end_timestamp:
+            # No previous End session found — return all messages
+            return jsonify({
+                "after_last_end": all_messages,
+                "count": len(all_messages)
+            })
+
+        # Normalize last_end_timestamp
         if isinstance(last_end_timestamp, str):
             last_end_dt = dateutil.parser.parse(last_end_timestamp)
+        elif hasattr(last_end_timestamp, 'to_datetime'):
+            last_end_dt = last_end_timestamp.to_datetime()
         else:
-            last_end_dt = last_end_timestamp  # Firestore Timestamp assumed
+            last_end_dt = last_end_timestamp  # Assume datetime
 
-        # Filter messages after the last 'End'
+        # Filter messages after last 'End'
         filtered_msgs = []
         for msg in all_messages:
             msg_time = msg.get("timestamp")
             if not msg_time:
                 continue
             try:
-                msg_dt = dateutil.parser.parse(msg_time) if isinstance(msg_time, str) else msg_time
+                if isinstance(msg_time, str):
+                    msg_dt = dateutil.parser.parse(msg_time)
+                elif hasattr(msg_time, 'to_datetime'):
+                    msg_dt = msg_time.to_datetime()
+                else:
+                    msg_dt = msg_time
+
                 if msg_dt > last_end_dt:
                     filtered_msgs.append(msg)
             except Exception as e:
-                continue  # Skip invalid timestamps
+                print(f"Skipping message with invalid timestamp: {e}")
+                continue
 
-        return jsonify(filtered_msgs)
+        return jsonify({
+            "after_last_end": filtered_msgs,
+            "count": len(filtered_msgs)
+        })
 
     except Exception as e:
         print("History error:", e)
@@ -1875,6 +1897,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
