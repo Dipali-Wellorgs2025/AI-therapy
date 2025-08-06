@@ -1469,7 +1469,7 @@ def get_last_active_session():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        db = firestore.client()
+        
 
         bots = {
             "anxiety": "Sage",
@@ -1837,6 +1837,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
