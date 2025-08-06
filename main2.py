@@ -1392,7 +1392,7 @@ def get_recent_sessions():
             session_ref = (
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
-                .where("status", "in", ["end", "exit"])  # Ignore active
+                .where("status", "in", ["End", "Exit"])  # Ignore active
                 .order_by("endedAt", direction=firestore.Query.DESCENDING)
                 .limit(1)  # Only the latest session per bot
             )
@@ -1817,6 +1817,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
