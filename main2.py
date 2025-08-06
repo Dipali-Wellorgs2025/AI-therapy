@@ -1801,11 +1801,20 @@ def classify_category(step1, step2, step3):
 
     return result["category"]
 
-@app.route("/therapy-response", methods=["POST"])
-def therapy_response_post():
-    data = request.get_json(force=True)
-    user_id = data.get("user_id")
-    step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
+@app.route("/therapy-response", methods=["GET", "POST"])
+def therapy_response():
+    if request.method == "GET":
+        user_id = request.args.get("user_id")
+        step1 = request.args.get("step1")
+        step2 = request.args.get("step2")
+        step3 = request.args.get("step3")
+    else:
+        data = request.get_json(force=True)
+        user_id = data.get("user_id")
+        step1, step2, step3 = data.get("step1"), data.get("step2"), data.get("step3")
+
+    # Classify and fetch bot data as before...
+
 
     # Step 1: Classify the message
     category = classify_category(step1, step2, step3)
@@ -1833,6 +1842,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
