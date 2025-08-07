@@ -1467,14 +1467,13 @@ Generate the report now:
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
-    """Fetch messages after the last 'End' session including its messages, using bot name mapping."""
+    """Fetch messages after the last ended session based on bot display name and user ID."""
     try:
-        from datetime import datetime
-        import dateutil.parser
         from flask import request, jsonify
         from google.cloud import firestore
+        import dateutil.parser
 
-        # Bot display name to Firestore ID mapping
+        # Mapping bot display names to internal bot IDs
         bots = {
             "Sage": "anxiety",
             "Jordan": "couples",
@@ -1488,15 +1487,15 @@ def get_history():
         bot_display_name = request.args.get("botName")
 
         if not user_id or not bot_display_name:
-            return jsonify({"error": "Missing parameters"}), 400
+            return jsonify({"error": "Missing user_id or botName"}), 400
 
-        if bot_display_name not in bots:
+        bot_id = bots.get(bot_display_name)
+        if not bot_id:
             return jsonify({"error": "Invalid bot name"}), 400
 
-        bot_id = bots[bot_display_name]
         session_user_id = f"{user_id}_{bot_id}"
 
-        # Step 1: Fetch sessions for this user from ai_therapists/{bot_id}/sessions
+        # Step 1: Find the last ended session from ai_therapists/{bot_id}/sessions
         sessions_ref = (
             db.collection("ai_therapists")
               .document(bot_id)
@@ -1504,49 +1503,55 @@ def get_history():
               .where("userId", "==", session_user_id)
               .order_by("endedAt", direction=firestore.Query.DESCENDING)
         )
-
         session_docs = list(sessions_ref.stream())
 
-        if not session_docs:
-            return jsonify([])
-
-        # Step 2: Find the most recent ended session
-        last_ended_session_id = None
         last_end_timestamp = None
         for doc in session_docs:
             session_data = doc.to_dict()
             if session_data.get("status") == "End":
-                last_ended_session_id = doc.id
                 last_end_timestamp = session_data.get("endedAt")
                 break
 
-        if not last_ended_session_id:
+        if not last_end_timestamp:
             return jsonify({
                 "messages": [],
                 "count": 0,
                 "last_session_status": "No ended session found"
             })
 
-        # Step 3: Fetch messages from that session onward (by session doc IDs)
-        all_msgs = []
-        found = False
-        for doc in reversed(session_docs):  # Oldest to newest
-            sid = doc.id
-            if sid == last_ended_session_id:
-                found = True
+        # Parse the string timestamp if needed
+        if isinstance(last_end_timestamp, str):
+            last_end_dt = dateutil.parser.parse(last_end_timestamp)
+        elif hasattr(last_end_timestamp, 'to_datetime'):
+            last_end_dt = last_end_timestamp.to_datetime()
+        else:
+            last_end_dt = last_end_timestamp
 
-            if found:
-                msg_doc = db.collection("sessions").document(sid).get()
-                if msg_doc.exists:
-                    msgs = msg_doc.to_dict().get("messages", [])
-                    all_msgs.extend(msgs)
+        # Step 2: Fetch messages from main sessions/{session_user_id} after endedAt
+        msg_doc = db.collection("sessions").document(session_user_id).get()
+        if not msg_doc.exists:
+            return jsonify({"messages": [], "count": 0})
+
+        all_messages = msg_doc.to_dict().get("messages", [])
+        filtered_msgs = []
+
+        for msg in all_messages:
+            msg_time_str = msg.get("timestamp")
+            if not msg_time_str:
+                continue
+            try:
+                msg_dt = dateutil.parser.parse(msg_time_str)
+                if msg_dt > last_end_dt:
+                    filtered_msgs.append(msg)
+            except Exception as e:
+                print(f"Skipping invalid timestamp: {e}")
+                continue
 
         return jsonify({
-            "messages": all_msgs,
-            "count": len(all_msgs),
+            "messages": filtered_msgs,
+            "count": len(filtered_msgs),
             "last_session_status": "Ended",
-            "last_session_id": last_ended_session_id,
-            "last_session_end_time": last_end_timestamp.isoformat() if hasattr(last_end_timestamp, 'isoformat') else str(last_end_timestamp)
+            "last_session_end_time": last_end_dt.isoformat()
         })
 
     except Exception as e:
@@ -2001,6 +2006,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
