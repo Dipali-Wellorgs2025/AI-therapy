@@ -1354,7 +1354,7 @@ Generate the report now:
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
-    """Fetch messages after the last 'End' session unless the latest session is already ended."""
+    """Fetch messages after the last 'End' session including the ended session messages."""
     try:
         from datetime import datetime
         import dateutil.parser
@@ -1383,12 +1383,7 @@ def get_history():
         if not session_docs:
             return jsonify([])
 
-        # Check if the latest session is already ended
-        latest_session_data = session_docs[0].to_dict()
-        if latest_session_data.get("status") == "End":
-            return jsonify([])
-
-        # Find the last session with status "End"
+        # Find the most recent session that was ended
         last_end_timestamp = None
         for doc in session_docs:
             session_data = doc.to_dict()
@@ -1396,7 +1391,7 @@ def get_history():
                 last_end_timestamp = session_data.get("endedAt")
                 break
 
-        # Get messages from main sessions collection
+        # Get all messages from main sessions collection
         msg_doc = db.collection("sessions").document(session_user_id).get()
         if not msg_doc.exists:
             return jsonify([])
@@ -1406,8 +1401,9 @@ def get_history():
         if not last_end_timestamp:
             # No previous End session found — return all messages
             return jsonify({
-                "after_last_end": all_messages,
-                "count": len(all_messages)
+                "messages": all_messages,
+                "count": len(all_messages),
+                "last_session_status": "No previous ended session found"
             })
 
         # Normalize last_end_timestamp
@@ -1418,7 +1414,7 @@ def get_history():
         else:
             last_end_dt = last_end_timestamp  # Assume datetime
 
-        # Filter messages after last 'End'
+        # Filter messages from the last ended session onward
         filtered_msgs = []
         for msg in all_messages:
             msg_time = msg.get("timestamp")
@@ -1432,15 +1428,17 @@ def get_history():
                 else:
                     msg_dt = msg_time
 
-                if msg_dt > last_end_dt:
+                if msg_dt >= last_end_dt:  # Changed to >= to include messages from the ended session
                     filtered_msgs.append(msg)
             except Exception as e:
                 print(f"Skipping message with invalid timestamp: {e}")
                 continue
 
         return jsonify({
-            "after_last_end": filtered_msgs,
-            "count": len(filtered_msgs)
+            "messages": filtered_msgs,
+            "count": len(filtered_msgs),
+            "last_session_status": "Ended",
+            "last_session_end_time": last_end_timestamp.isoformat() if hasattr(last_end_timestamp, 'isoformat') else str(last_end_timestamp)
         })
 
     except Exception as e:
@@ -1897,6 +1895,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
