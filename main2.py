@@ -1467,15 +1467,22 @@ Generate the report now:
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
-    """Return user-bot conversation after the last ended session."""
+    """Return conversation after last ended session for a user and bot (user-bot conversation only)."""
     try:
         from flask import request, jsonify
         from google.cloud import firestore
-        from dateutil import parser
+        import dateutil.parser
 
         db = firestore.Client()
 
-        # Mapping from display name to bot ID
+        # Get parameters
+        user_id = request.args.get("user_id")
+        bot_display_name = request.args.get("botName")
+
+        if not user_id or not bot_display_name:
+            return jsonify({"error": "Missing user_id or botName"}), 400
+
+        # Map bot display name to bot ID
         bots = {
             "Sage": "anxiety",
             "Jordan": "couples",
@@ -1485,25 +1492,19 @@ def get_history():
             "Raya": "crisis"
         }
 
-        user_id = request.args.get("user_id")
-        bot_display_name = request.args.get("botName")
-
-        if not user_id or not bot_display_name:
-            return jsonify({"error": "Missing user_id or botName"}), 400
-
         bot_id = bots.get(bot_display_name)
         if not bot_id:
-            return jsonify({"error": "Invalid botName"}), 400
+            return jsonify({"error": f"Invalid bot name: {bot_display_name}"}), 400
 
-        session_user_id = f"{user_id}_{bot_id}"
+        session_user_id = f"{user_id}_{bot_display_name}"
 
-        # Step 1: Fetch last ended session for user-bot
+        # Step 1: Get last ended session timestamp from ai_therapists/{bot_id}/sessions
         sessions_ref = (
             db.collection("ai_therapists")
-            .document(bot_id)
-            .collection("sessions")
-            .where("userId", "==", session_user_id)
-            .order_by("endedAt", direction=firestore.Query.DESCENDING)
+              .document(bot_id)
+              .collection("sessions")
+              .where("userId", "==", session_user_id)
+              .order_by("endedAt", direction=firestore.Query.DESCENDING)
         )
         session_docs = list(sessions_ref.stream())
 
@@ -1515,56 +1516,45 @@ def get_history():
                 break
 
         if not last_end_timestamp:
-            return jsonify({
-                "history": [],
-                "count": 0,
-                "last_session_status": "No ended session found"
-            })
+            return jsonify([])
 
-        # Convert endedAt Firestore Timestamp to datetime
-        last_end_dt = last_end_timestamp.to_datetime()
+        # Normalize timestamp
+        if isinstance(last_end_timestamp, str):
+            last_end_dt = dateutil.parser.parse(last_end_timestamp)
+        elif hasattr(last_end_timestamp, "to_datetime"):
+            last_end_dt = last_end_timestamp.to_datetime()
+        else:
+            last_end_dt = last_end_timestamp
 
-        # Step 2: Fetch all messages from main session document
-        session_doc = db.collection("sessions").document(session_user_id).get()
-        if not session_doc.exists:
-            return jsonify({"history": [], "count": 0})
+        # Step 2: Read messages from sessions/{session_user_id} after endedAt
+        msg_doc = db.collection("sessions").document(session_user_id).get()
+        if not msg_doc.exists:
+            return jsonify([])
 
-        all_messages = session_doc.to_dict().get("messages", [])
+        messages = msg_doc.to_dict().get("messages", [])
+        conversation = []
 
-        # Step 3: Filter messages with timestamp > endedAt
-        filtered_msgs = []
-        for msg in all_messages:
-            timestamp_str = msg.get("timestamp")
-            if not timestamp_str:
+        for msg in messages:
+            ts = msg.get("timestamp")
+            if not ts:
                 continue
             try:
-                msg_dt = parser.parse(timestamp_str)
-                if msg_dt > last_end_dt:
-                    filtered_msgs.append(msg)
-            except Exception:
+                msg_dt = dateutil.parser.parse(ts)
+            except:
                 continue
 
-        # Step 4: Group user and bot messages
-        conversation = []
-        current_pair = {}
+            if msg_dt <= last_end_dt:
+                continue
 
-        for msg in filtered_msgs:
-            sender = msg.get("sender")
-            text = msg.get("text", "").strip()
+            sender = msg.get("sender", "").strip().lower()
+            text = msg.get("message") or msg.get("text")
+            if not text:
+                continue
 
             if sender == "user":
-                if current_pair:
-                    conversation.append(current_pair)
-                    current_pair = {}
-                current_pair["user"] = text
-
-            elif sender == "bot":
-                current_pair["bot"] = text
-                conversation.append(current_pair)
-                current_pair = {}
-
-        if current_pair:
-            conversation.append(current_pair)
+                conversation.append(f"User: {text}")
+            else:
+                conversation.append(f"Bot: {text}")
 
         return jsonify(conversation)
 
@@ -2020,6 +2010,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
