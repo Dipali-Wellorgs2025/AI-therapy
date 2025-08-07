@@ -1467,25 +1467,39 @@ Generate the report now:
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
-    """Fetch messages after the last 'End' session including the ended session messages."""
+    """Fetch messages after the last 'End' session including its messages, using bot name mapping."""
     try:
         from datetime import datetime
         import dateutil.parser
         from flask import request, jsonify
         from google.cloud import firestore
 
-        user_id = request.args.get("user_id")
-        bot_name = request.args.get("botName")
+        # Bot display name to Firestore ID mapping
+        bots = {
+            "Sage": "anxiety",
+            "Jordan": "couples",
+            "River": "depression",
+            "Phoenix": "trauma",
+            "Ava": "family",
+            "Raya": "crisis"
+        }
 
-        if not user_id or not bot_name:
+        user_id = request.args.get("user_id")
+        bot_display_name = request.args.get("botName")
+
+        if not user_id or not bot_display_name:
             return jsonify({"error": "Missing parameters"}), 400
 
-        session_user_id = f"{user_id}_{bot_name}"
+        if bot_display_name not in bots:
+            return jsonify({"error": "Invalid bot name"}), 400
 
-        # Reference to user's sessions under the bot
+        bot_id = bots[bot_display_name]
+        session_user_id = f"{user_id}_{bot_id}"
+
+        # Step 1: Fetch sessions for this user from ai_therapists/{bot_id}/sessions
         sessions_ref = (
             db.collection("ai_therapists")
-              .document(bot_name)
+              .document(bot_id)
               .collection("sessions")
               .where("userId", "==", session_user_id)
               .order_by("endedAt", direction=firestore.Query.DESCENDING)
@@ -1496,69 +1510,48 @@ def get_history():
         if not session_docs:
             return jsonify([])
 
-        # Find the most recent session that was ended
+        # Step 2: Find the most recent ended session
+        last_ended_session_id = None
         last_end_timestamp = None
         for doc in session_docs:
             session_data = doc.to_dict()
             if session_data.get("status") == "End":
+                last_ended_session_id = doc.id
                 last_end_timestamp = session_data.get("endedAt")
                 break
 
-        # Get all messages from main sessions collection
-        msg_doc = db.collection("sessions").document(session_user_id).get()
-        if not msg_doc.exists:
-            return jsonify([])
-
-        all_messages = msg_doc.to_dict().get("messages", [])
-
-        if not last_end_timestamp:
-            # No previous End session found — return all messages
+        if not last_ended_session_id:
             return jsonify({
-                "messages": all_messages,
-                "count": len(all_messages),
-                "last_session_status": "No previous ended session found"
+                "messages": [],
+                "count": 0,
+                "last_session_status": "No ended session found"
             })
 
-        # Normalize last_end_timestamp
-        if isinstance(last_end_timestamp, str):
-            last_end_dt = dateutil.parser.parse(last_end_timestamp)
-        elif hasattr(last_end_timestamp, 'to_datetime'):
-            last_end_dt = last_end_timestamp.to_datetime()
-        else:
-            last_end_dt = last_end_timestamp  # Assume datetime
+        # Step 3: Fetch messages from that session onward (by session doc IDs)
+        all_msgs = []
+        found = False
+        for doc in reversed(session_docs):  # Oldest to newest
+            sid = doc.id
+            if sid == last_ended_session_id:
+                found = True
 
-        # Filter messages from the last ended session onward
-        filtered_msgs = []
-        for msg in all_messages:
-            msg_time = msg.get("timestamp")
-            if not msg_time:
-                continue
-            try:
-                if isinstance(msg_time, str):
-                    msg_dt = dateutil.parser.parse(msg_time)
-                elif hasattr(msg_time, 'to_datetime'):
-                    msg_dt = msg_time.to_datetime()
-                else:
-                    msg_dt = msg_time
-
-                if msg_dt >= last_end_dt:  # Changed to >= to include messages from the ended session
-                    filtered_msgs.append(msg)
-            except Exception as e:
-                print(f"Skipping message with invalid timestamp: {e}")
-                continue
+            if found:
+                msg_doc = db.collection("sessions").document(sid).get()
+                if msg_doc.exists:
+                    msgs = msg_doc.to_dict().get("messages", [])
+                    all_msgs.extend(msgs)
 
         return jsonify({
-            "messages": filtered_msgs,
-            "count": len(filtered_msgs),
+            "messages": all_msgs,
+            "count": len(all_msgs),
             "last_session_status": "Ended",
+            "last_session_id": last_ended_session_id,
             "last_session_end_time": last_end_timestamp.isoformat() if hasattr(last_end_timestamp, 'isoformat') else str(last_end_timestamp)
         })
 
     except Exception as e:
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
-
-
 
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
@@ -2008,6 +2001,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
