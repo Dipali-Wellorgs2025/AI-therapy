@@ -894,7 +894,7 @@ Important Rules:
 
 
 def sse_format(text):
-    return f"data: {text}\n\n"
+    return f"{text}\n\n"
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
@@ -1672,6 +1672,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
