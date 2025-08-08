@@ -634,8 +634,7 @@ def handle_message(data):
     ]
 
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield ("I understand you're asking about technical aspects, "
-               "but I'm designed to focus on mental health support. 🔧")
+        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
@@ -651,7 +650,6 @@ def handle_message(data):
         return
 
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
-
     skip_deep = bool(re.search(r"\b(no deep|not ready|short answer|keep it light)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(stay with|don't switch|keep this bot)\b", user_msg.lower()))
 
@@ -670,7 +668,10 @@ Analyze this mental health message strictly:
 Reply EXACTLY like this:
 CATEGORY: [category]
 CONFIDENCE: [confidence]
-IS_GENERIC: [yes/no]"""
+IS_GENERIC: [yes/no]
+
+Message: "{message}"
+"""
 
             classification = client.chat.completions.create(
                 model="deepseek-chat",
@@ -707,17 +708,16 @@ IS_GENERIC: [yes/no]"""
     if (category in TOPIC_TO_BOT and confidence == "high" and not is_generic
         and not wants_to_stay and TOPIC_TO_BOT[category] != current_bot
         and len(ctx["history"]) > 3):
-        yield (f"I notice you're discussing **{category}** concerns. "
-               f"**{TOPIC_TO_BOT[category]}** specializes here. Switch? 🔄")
+        yield f"I notice you're discussing **{category}** concerns. **{TOPIC_TO_BOT[category]}** specializes here. Switch? 🔄"
         return
 
+    # --- Prompt Prep ---
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
     bot_prompt = bot_prompt.replace("{{user_name}}", user_name)\
                            .replace("{{issue_description}}", issue_description)\
                            .replace("{{preferred_style}}", preferred_style)
     bot_prompt = re.sub(r"\{\{.*?\}\}", "", bot_prompt)
-
     context_note = "Note: Keep response brief and light." if skip_deep else ""
 
     guidance = f"""
@@ -738,28 +738,19 @@ Response:
 
     # --- Formatter ---
     def format_response(text, final=False):
-        text = re.sub(r'\(.*?\)', '', text)                      # Remove stage directions
-        text = re.sub(r'\*{1,2}([^\*]+?)\*{1,2}', r'**\1**', text) # Normalize bold
-        text = re.sub(r'\*+', '', text) if not final else text    # Strip stray stars mid-stream
-        text = re.sub(r'\s+([.,!?])', r'\1', text)                # Fix space before punctuation
-        text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)         # Ensure space after punctuation
-        text = re.sub(r'\s+', ' ', text).strip()                  # Normalize spaces
+        text = re.sub(r'\(.*?\)', '', text)
+        text = re.sub(r'\*{1,2}([^\*]+?)\*{1,2}', r'**\1**', text)
+        text = re.sub(r'\s+([.,!?])', r'\1', text)
+        text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s+', ' ', text)
+        if final:
+            text = text.strip()
+        return text
 
-        # Emoji spacing
-        emoji_pattern = re.compile("["
-            u"\U0001F600-\U0001F64F"
-            u"\U0001F300-\U0001F5FF"
-            u"\U0001F680-\U0001F6FF"
-            u"\U0001F1E0-\U0001F1FF"
-            "]+", flags=re.UNICODE)
-        text = emoji_pattern.sub(lambda m: f" {m.group(0)} ", text)
-        return re.sub(r'\s+', ' ', text).strip()
-
-    # --- Streaming ---
+    # --- Streaming with spacing fix ---
     try:
-        buffer, final_response = "", ""
-        max_chunk_size = 25
-
+        buffer = ""           # holds partial sentence
+        final_response = ""   # full raw response
         yield ""  # kickstart stream
 
         response_stream = client.chat.completions.create(
@@ -777,23 +768,22 @@ Response:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
-            if delta and delta.content:
+            if delta and delta.content is not None:
                 token = delta.content
+                # Preserve leading spaces from model
                 buffer += token
                 final_response += token
 
-                # Yield when sentence or chunk size reached
-                if any(p in buffer for p in [".", "?", "!", "\n\n"]) or len(buffer) >= max_chunk_size:
-                    chunk_to_send = format_response(buffer)
-                    if chunk_to_send:
-                        yield chunk_to_send
+                # Yield sentence-sized chunks
+                if any(p in buffer for p in [".", "?", "!", "\n\n"]) or len(buffer) >= 25:
+                    yield format_response(buffer)
                     buffer = ""
 
-        # Flush last part
+        # Yield remainder
         if buffer.strip():
             yield format_response(buffer, final=True)
 
-        # --- Save History ---
+        # Save history
         if final_response.strip():
             now = datetime.now(timezone.utc).isoformat()
             ctx["history"].append({
@@ -1642,6 +1632,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
