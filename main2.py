@@ -747,10 +747,11 @@ Response:
             text = text.strip()
         return text
 
-    # --- Streaming with spacing fix ---
+    # --- Streaming with persistent spacing fix ---
     try:
         buffer = ""
         final_response = ""
+        last_char = ""  # <-- persist across yields
         yield ""  # kickstart stream
 
         response_stream = client.chat.completions.create(
@@ -771,13 +772,13 @@ Response:
             if delta and delta.content is not None:
                 token = delta.content
 
-                # Preserve spacing between tokens
-                if buffer and not buffer.endswith((" ", "\n")) and not token.startswith((" ", "\n", ".", ",", "!", "?")):
-                    buffer += " " + token
-                else:
-                    buffer += token
+                # Persistent space fix
+                if last_char and not last_char.isspace() and not token.startswith((" ", "\n", ".", ",", "!", "?")):
+                    token = " " + token
 
+                buffer += token
                 final_response += token
+                last_char = token[-1] if token else last_char
 
                 # Yield sentence-sized chunks
                 if any(p in buffer for p in [".", "?", "!", "\n\n"]) or len(buffer) >= 25:
@@ -1637,6 +1638,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
