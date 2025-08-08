@@ -832,9 +832,11 @@ Response:
                     if buffer.strip():
                         formatted_chunk = format_response(buffer)
                         if formatted_chunk:
-                            yield formatted_chunk
-                            if is_first_chunk:
-                                is_first_chunk = False
+                          if is_first_chunk:
+                            yield "\n\n" + formatted_chunk + " "
+                            is_first_chunk = False
+                          else:
+                            yield formatted_chunk + " "
                     buffer = ""
                     chunk_size = 0
         
@@ -1701,6 +1703,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
