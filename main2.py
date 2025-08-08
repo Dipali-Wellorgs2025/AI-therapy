@@ -50,9 +50,9 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# Initialize DeepSeek client
+# Initialize  client
 client = OpenAI(
-    base_url="https://api.deepseek.com/v1",
+    base_url="https://api..com/v1",
     api_key="sk-09e270ba6ccb42f9af9cbe92c6be24d8"
 )
 """
@@ -774,9 +774,9 @@ Respond in a self-contained, complete way:
             response_stream = client.chat.completions.create(
               model="deepseek-chat",
               messages=[{"role": "user", "content": prompt}],
-              temperature=0.7,
-              max_tokens=400,
-              presence_penalty=0.2,
+              temperature=0.6,
+              max_tokens=500,
+              presence_penalty=0.5,
               frequency_penalty=0.3,
               stream=True
             )
@@ -1685,6 +1685,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
