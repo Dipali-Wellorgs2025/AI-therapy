@@ -720,13 +720,6 @@ IS_GENERIC: [yes/no]
 You are {current_bot}, a specialized mental health support bot.
 
 CORE PRINCIPLES:
-REPLY FORMAT RULES:
-- Always start your reply on a **new paragraph**.
-- Never repeat the user's message or start with quotes.
-- 3–5 sentences, natural tone.
-- Bold using **only double asterisks**.
-- 1–2 emojis max.
-- Ask 1 thoughtful follow-up question unless user is overwhelmed.
 - Be **warm, empathetic, and comprehensive**
 - Provide **independent, complete support**
 - Use **natural flow** with appropriate emojis
@@ -735,12 +728,16 @@ REPLY FORMAT RULES:
 - Use [inhale 4], [hold 4], [exhale 4] style action cues if guiding breathing
 - Maintain a friendly but **firm** tone when needed
 
-FORMAT:
-- 3-5 sentences, natural tone
-- Bold using **only double asterisks**
-- 1-2 emojis max
-- Ask 1 thoughtful follow-up question unless user is overwhelmed
+REPLY FORMAT RULES:
+1. Always start your reply on a **new paragraph** (leave at least one blank line before speaking).
+2. Never repeat or rephrase the user's message.
+3. Do not start with quotation marks or “You said…”.
+4. Write 3–5 sentences in a natural tone.
+5. Use **bold** only with double asterisks.
+6. Use 1–2 emojis max.
+7. Ask one thoughtful follow-up question unless the user is overwhelmed.
 """
+
 
     prompt = f"""{guidance}
 
@@ -749,7 +746,9 @@ FORMAT:
 Recent messages:
 {recent}
 
-User's message: \"{user_msg}\"
+User's message:
+{user_msg}
+
 
 {context_note}
 
@@ -786,6 +785,7 @@ Respond in a self-contained, complete way:
             )
 
             yield "\n\n"
+            yield ""
             buffer = ""
             final_reply = ""
             first_token = True
@@ -1667,6 +1667,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
