@@ -1181,10 +1181,7 @@ Generate the report now:
 def get_history():
     """Return conversation after last ended session for a user and bot (user-bot conversation only)."""
     try:
-       
         import dateutil.parser
-
-        
 
         # Get parameters
         user_id = request.args.get("user_id")
@@ -1209,12 +1206,12 @@ def get_history():
 
         session_user_id = f"{user_id}_{bot_display_name}"
 
-        # Step 1: Get last ended session timestamp from ai_therapists/{bot_id}/sessions
+        # Step 1: Get last ended session timestamp using only user_id
         sessions_ref = (
             db.collection("ai_therapists")
               .document(bot_id)
               .collection("sessions")
-              .where("userId", "==", session_user_id)
+              .where("userId", "==", user_id)  # <-- only user_id here
               .order_by("endedAt", direction=firestore.Query.DESCENDING)
         )
         session_docs = list(sessions_ref.stream())
@@ -1237,7 +1234,7 @@ def get_history():
         else:
             last_end_dt = last_end_timestamp
 
-        # Step 2: Read messages from sessions/{session_user_id} after endedAt
+        # Step 2: Get conversation messages from sessions/{session_user_id}
         msg_doc = db.collection("sessions").document(session_user_id).get()
         if not msg_doc.exists:
             return jsonify([])
@@ -1249,9 +1246,10 @@ def get_history():
             ts = msg.get("timestamp")
             if not ts:
                 continue
+
             try:
-                msg_dt = dateutil.parser.parse(ts)
-            except:
+                msg_dt = dateutil.parser.parse(ts)  # parse every timestamp string
+            except Exception:
                 continue
 
             if msg_dt <= last_end_dt:
@@ -1721,6 +1719,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
