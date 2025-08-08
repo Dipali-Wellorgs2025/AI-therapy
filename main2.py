@@ -17,7 +17,7 @@ import re
 from progress_api import progress_async_bp
 from combined_progress_api import combined_progress_bp
 from profile_manager import profile_bp
-from _insights import insights_bp
+from deepseek_insights import insights_bp
 from progress_report import progress_bp
 from gratitude import gratitude_bp
 # from subscription import subscription_bp
@@ -1576,6 +1576,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
