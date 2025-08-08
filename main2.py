@@ -632,148 +632,121 @@ def handle_message(data):
     current_bot = data.get("botName", "Ava")
     session_id = f"{user_id}_{current_bot}"
 
-    # --- Early Filters ---
+    
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
         yield ("I understand you're asking about technical aspects, "
-               "but I'm here for mental health support. "
-               "For technical help, please email [developer-support@company.com]. 🔧")
+               "but I'm designed to focus on mental health support. 🔧")
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield ("I'm really sorry you're feeling this way. "
-               "Please reach out to a crisis line or emergency support near you. 💙")
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line. 💙"
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield ("This topic needs care from a licensed mental health professional. 🤝")
+        yield "This needs care from a licensed professional. 🤝"
         return
 
     if is_gibberish(user_msg):
         yield "Sorry, I didn't get that. Could you please rephrase? 😊"
         return
 
-    # --- Session Setup ---
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    # --- Preference Detection ---
-    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
-    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
+    skip_deep = bool(re.search(r"\b(no deep|not ready|short answer|keep it light)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(stay with|don't switch|keep this bot)\b", user_msg.lower()))
 
-    # --- Topic Classification ---
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # --- Bot Switching Logic ---
-    if (category in TOPIC_TO_BOT and confidence == "high" and not is_generic and 
-        not wants_to_stay and TOPIC_TO_BOT[category] != current_bot and len(ctx["history"]) > 3):
-        last_suggestion = next((msg for msg in reversed(ctx["history"]) 
-                                if msg.get("sender") == current_bot and 
-                                "Would you like to switch?" in msg.get("message", "")), None)
-        if not last_suggestion:
-            yield (f"I notice you're discussing **{category}** concerns. "
-                   f"**{TOPIC_TO_BOT[category]}** specializes in this. "
-                   "Would you like to switch? 🔄 (Reply 'stay' to keep chatting with me)")
-            return
+    if (category in TOPIC_TO_BOT and confidence == "high" and not is_generic
+        and not wants_to_stay and TOPIC_TO_BOT[category] != current_bot
+        and len(ctx["history"]) > 3):
+        yield (f"I notice you're discussing **{category}** concerns. "
+               f"**{TOPIC_TO_BOT[category]}** specializes here. Switch? 🔄")
+        return
 
-    # --- Bot Prompt ---
-    bot_prompt = BOT_PROMPTS.get(current_bot, {}).get("prompt", "")
-    filled_prompt = bot_prompt.replace("{{user_name}}", user_name)\
-                              .replace("{{issue_description}}", issue_description)\
-                              .replace("{{preferred_style}}", preferred_style)
-    filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
+    bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
+    bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
+    bot_prompt = bot_prompt.replace("{{user_name}}", user_name)\
+                           .replace("{{issue_description}}", issue_description)\
+                           .replace("{{preferred_style}}", preferred_style)
+    bot_prompt = re.sub(r"\{\{.*?\}\}", "", bot_prompt)
 
     context_note = "Note: Keep response brief and light." if skip_deep else ""
 
     guidance = f"""
-You are {current_bot}, a mental health support bot. Respond to this message:
+You are {current_bot}, a mental health support bot.
 
 User message: "{user_msg}"
 
 Guidelines:
-- Respond in 3-5 complete sentences
+- Respond in 3-5 sentences
 - Use **bold** for emphasis
 - Include 1-2 relevant emojis
-- Ask one thoughtful follow-up question
-- Never include stage directions or parentheses
+- Ask 1 thoughtful follow-up question
+- No stage directions
 - {context_note}
 
 Response:
 """
 
-    # --- Response Cleaner ---
-    def format_response(text):
-        # Remove unwanted chars
-        text = re.sub(r'\(.*?\)', '', text)
-        # Normalize bold markers
-        text = re.sub(r'\*{1,2}([^\*]+?)\*{1,2}', r'**\1**', text)
-        # Remove duplicate/misplaced bold markers
-        text = re.sub(r'\*{3,}', '**', text)
-        # Space before punctuation cleanup
-        text = re.sub(r'\s+([.,!?])', r'\1', text)
-        # Space after punctuation
-        text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)
-        # Remove extra spaces
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
+    # --- Formatter ---
+    def format_response(text, final=False):
+        text = re.sub(r'\(.*?\)', '', text)                      # Remove stage directions
+        text = re.sub(r'\*{1,2}([^\*]+?)\*{1,2}', r'**\1**', text) # Normalize bold
+        text = re.sub(r'\*+', '', text) if not final else text    # Strip stray stars mid-stream
+        text = re.sub(r'\s+([.,!?])', r'\1', text)                # Fix space before punctuation
+        text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)         # Ensure space after punctuation
+        text = re.sub(r'\s+', ' ', text).strip()                  # Normalize spaces
 
-    # --- Streaming Response ---
+        # Emoji spacing
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"
+            u"\U0001F300-\U0001F5FF"
+            u"\U0001F680-\U0001F6FF"
+            u"\U0001F1E0-\U0001F1FF"
+            "]+", flags=re.UNICODE)
+        text = emoji_pattern.sub(lambda m: f" {m.group(0)} ", text)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    # --- Streaming ---
     try:
-        buffer = ""
-        final_response = ""
-        last_char = " "
-        bold_open = False  # track if we're inside a bold
+        buffer, final_response = "", ""
+        max_chunk_size = 25
 
-        yield ""  # start stream
+        yield ""  # kickstart stream
 
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": f"You are {current_bot}. Respond directly to the user's message."},
+                {"role": "system", "content": f"You are {current_bot}. Respond directly."},
                 {"role": "user", "content": guidance}
             ],
             temperature=0.7 if not skip_deep else 0.3,
             max_tokens=300,
-            stream=True,
-            stop=["User:", "<|endoftext|>"]
+            stream=True
         )
 
         for chunk in response_stream:
             if not chunk.choices:
                 continue
-
             delta = chunk.choices[0].delta
-            if not delta or not delta.content:
-                continue
+            if delta and delta.content:
+                token = delta.content
+                buffer += token
+                final_response += token
 
-            token = delta.content
+                # Yield when sentence or chunk size reached
+                if any(p in buffer for p in [".", "?", "!", "\n\n"]) or len(buffer) >= max_chunk_size:
+                    chunk_to_send = format_response(buffer)
+                    if chunk_to_send:
+                        yield chunk_to_send
+                    buffer = ""
 
-            # Ensure space if token merges with previous char
-            if last_char not in {" ", "\n", "-", "—"} and token[:1] not in {" ", "\n", ".", ",", "!", "?"}:
-                token = " " + token
-
-            # Track bold state
-            if "**" in token:
-                bold_count = token.count("**")
-                if bold_count % 2 != 0:
-                    bold_open = not bold_open
-
-            buffer += token
-            final_response += token
-            last_char = token[-1]
-
-            # Yield on sentence end OR double newline OR closing bold
-            if last_char in {".", "?", "!", "\n"} or "\n\n" in buffer or (not bold_open and buffer.endswith("**")):
-                cleaned_chunk = format_response(buffer)
-                if cleaned_chunk:
-                    yield cleaned_chunk
-                buffer = ""
-
-        # Flush remaining buffer
+        # Flush last part
         if buffer.strip():
-            cleaned_chunk = format_response(buffer)
-            if cleaned_chunk:
-                yield cleaned_chunk
+            yield format_response(buffer, final=True)
 
-        # --- Save Final Response ---
+        # --- Save History ---
         if final_response.strip():
             now = datetime.now(timezone.utc).isoformat()
             ctx["history"].append({
@@ -785,7 +758,7 @@ Response:
             })
             ctx["history"].append({
                 "sender": current_bot,
-                "message": format_response(final_response),
+                "message": format_response(final_response, final=True),
                 "timestamp": now
             })
             ctx["session_ref"].set({
@@ -798,7 +771,7 @@ Response:
 
     except Exception as e:
         print(f"Error generating response: {str(e)}")
-        yield "I'm having trouble responding right now. Could you please try again in a moment. 💙"
+        yield "I'm having trouble responding right now. Please try again later. 💙"
 
 
         
@@ -1623,6 +1596,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
