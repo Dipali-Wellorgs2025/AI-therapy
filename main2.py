@@ -732,7 +732,7 @@ REPLY FORMAT RULES:
 2. Never repeat or rephrase the user's message.
 3. Do not start with quotation marks or “You said…”.
 4. Write 3–5 sentences in a natural tone.
-5. Use **bold** only with double asterisks.
+5. Use bold only with double asterisks.
 6. Use 1–2 emojis max.
 7. Ask one thoughtful follow-up question unless the user is overwhelmed.
 """
@@ -1577,6 +1577,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
