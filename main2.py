@@ -893,8 +893,29 @@ Important Rules:
     return base_prompt
 
 
-    
-        
+def sse_format(text):
+    return f"data: {text}\n\n"
+
+@app.route("/api/stream", methods=["GET"])
+def stream():
+    data = {
+        "message": request.args.get("message", ""),
+        "botName": request.args.get("botName"),
+        "user_name": request.args.get("user_name", "User"),
+        "user_id": request.args.get("user_id", "unknown"),
+        "issue_description": request.args.get("issue_description", ""),
+        "preferred_style": request.args.get("preferred_style", "Balanced")
+    }
+
+    def generate():
+        # First: send an empty message so the client starts a new bot bubble
+        yield sse_format("")
+        for chunk in handle_message(data):
+            yield sse_format(chunk)
+
+    return Response(generate(), mimetype="text/event-stream")
+
+ """       
 @app.route("/api/stream", methods=["GET"])
 def stream():
     """Streaming endpoint for real-time conversation"""
@@ -907,7 +928,7 @@ def stream():
         "preferred_style": request.args.get("preferred_style", "Balanced")
     }
     return Response(handle_message(data), mimetype="text/event-stream")
-
+"""
 @app.route("/api/start_questionnaire", methods=["POST"])
 def start_questionnaire():
     """Endpoint to start a new questionnaire"""
@@ -1665,6 +1686,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
