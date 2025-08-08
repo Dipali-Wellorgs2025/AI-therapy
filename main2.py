@@ -742,15 +742,15 @@ Response:
         text = re.sub(r'\*{1,2}([^\*]+?)\*{1,2}', r'**\1**', text)
         text = re.sub(r'\s+([.,!?])', r'\1', text)
         text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+', ' ', text)
         if final:
+            text = re.sub(r'\s+', ' ', text)
             text = text.strip()
         return text
 
     # --- Streaming with spacing fix ---
     try:
-        buffer = ""           # holds partial sentence
-        final_response = ""   # full raw response
+        buffer = ""
+        final_response = ""
         yield ""  # kickstart stream
 
         response_stream = client.chat.completions.create(
@@ -770,8 +770,13 @@ Response:
             delta = chunk.choices[0].delta
             if delta and delta.content is not None:
                 token = delta.content
-                # Preserve leading spaces from model
-                buffer += token
+
+                # Preserve spacing between tokens
+                if buffer and not buffer.endswith((" ", "\n")) and not token.startswith((" ", "\n", ".", ",", "!", "?")):
+                    buffer += " " + token
+                else:
+                    buffer += token
+
                 final_response += token
 
                 # Yield sentence-sized chunks
@@ -1632,6 +1637,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
