@@ -1190,8 +1190,8 @@ def get_history():
         for doc in session_docs:
             data = doc.to_dict()
             if data.get("status") == "End" and data.get("endedAt"):
-                # Firestore Timestamp → Python datetime
-                last_end_dt = data["endedAt"].to_datetime()
+                # Firestore Timestamp is already a datetime
+                last_end_dt = data["endedAt"]
                 break
 
         if not last_end_dt:
@@ -1223,6 +1223,7 @@ def get_history():
     except Exception as e:
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
+
 
 
 
@@ -1674,6 +1675,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
