@@ -742,6 +742,7 @@ Response:
         text = re.sub(r'\*{1,2}([^\*]+?)\*{1,2}', r'**\1**', text)
         text = re.sub(r'\s+([.,!?])', r'\1', text)
         text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)
+        text = re.sub(r"\*\*(.*?)\*\*(?=\w)", r"**\1** ", text)
         if final:
             text = re.sub(r'\s+', ' ', text)
             text = text.strip()
@@ -782,7 +783,7 @@ Response:
 
                 # Yield sentence-sized chunks
                 if any(p in buffer for p in [".", "?", "!", "\n\n"]) or len(buffer) >= 25:
-                    yield format_response(buffer)
+                    yield format_response(buffer) + " " 
                     buffer = ""
 
         # Yield remainder
@@ -1638,6 +1639,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
