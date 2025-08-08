@@ -601,20 +601,6 @@ def is_gibberish(user_msg: str) -> bool:
     # If more than 60% words are gibberish
     return gibberish_count / len(words) > 0.6
 
-    # --- Constants ---
-TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "ai training", "dataset", "parameters", "weights", "backpropagation",
-        "gradient descent", "optimization", "loss function", "epochs", "batch size",
-        "learning rate", "overfitting", "underfitting", "regularization",
-        "transformer", "attention mechanism", "fine-tuning", "pre-training",
-        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-        "deployment", "inference", "api", "endpoint", "latency", "throughput",
-        "scaling", "load balancing", "database", "server", "cloud", "docker",
-        "kubernetes", "microservices", "devops", "ci/cd", "version control",
-        "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"
-    ]
 def handle_message(data):
     import re
     from datetime import datetime, timezone
@@ -632,7 +618,21 @@ def handle_message(data):
     current_bot = data.get("botName", "Ava")
     session_id = f"{user_id}_{current_bot}"
 
-    
+    # --- Early Filter Lists ---
+    TECHNICAL_TERMS = [
+        "training", "algorithm", "model", "neural network", "machine learning", "ml",
+        "ai training", "dataset", "parameters", "weights", "backpropagation",
+        "gradient descent", "optimization", "loss function", "epochs", "batch size",
+        "learning rate", "overfitting", "underfitting", "regularization",
+        "transformer", "attention mechanism", "fine-tuning", "pre-training",
+        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+        "deployment", "inference", "api", "endpoint", "latency", "throughput",
+        "scaling", "load balancing", "database", "server", "cloud", "docker",
+        "kubernetes", "microservices", "devops", "ci/cd", "version control",
+        "git", "repository", "bug", "debug", "code", "programming", "python",
+        "javascript", "html", "css", "framework", "library", "package"
+    ]
+
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
         yield ("I understand you're asking about technical aspects, "
                "but I'm designed to focus on mental health support. 🔧")
@@ -655,8 +655,55 @@ def handle_message(data):
     skip_deep = bool(re.search(r"\b(no deep|not ready|short answer|keep it light)\b", user_msg.lower()))
     wants_to_stay = bool(re.search(r"\b(stay with|don't switch|keep this bot)\b", user_msg.lower()))
 
+    # --- Embedded Topic Classifier ---
+    def classify_topic_with_confidence(message):
+        try:
+            if len(message.split()) < 3:
+                return "general", "low", True
+
+            classification_prompt = f"""
+Analyze this mental health message strictly:
+1. Primary category (anxiety/breakup/self-worth/trauma/family/crisis/general)
+2. Confidence (high/medium/low)
+3. Is generic (yes/no)
+
+Reply EXACTLY like this:
+CATEGORY: [category]
+CONFIDENCE: [confidence]
+IS_GENERIC: [yes/no]"""
+
+            classification = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "You are a strict classifier. Only respond with the exact format requested."},
+                    {"role": "user", "content": classification_prompt}
+                ],
+                temperature=0.0,
+                max_tokens=50
+            )
+
+            response = classification.choices[0].message.content.strip()
+            category, confidence, is_generic = "general", "low", True
+
+            for line in response.split("\n"):
+                if line.startswith("CATEGORY:"):
+                    category = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("CONFIDENCE:"):
+                    confidence = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("IS_GENERIC:"):
+                    is_generic = line.split(":", 1)[1].strip().lower() == "yes"
+
+            if category not in ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis", "general"]:
+                category = "general"
+
+            return category, confidence, is_generic
+        except Exception as e:
+            print("Classification error:", str(e))
+            return "general", "low", True
+
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
+    # --- Bot Switching Logic ---
     if (category in TOPIC_TO_BOT and confidence == "high" and not is_generic
         and not wants_to_stay and TOPIC_TO_BOT[category] != current_bot
         and len(ctx["history"]) > 3):
@@ -772,7 +819,6 @@ Response:
     except Exception as e:
         print(f"Error generating response: {str(e)}")
         yield "I'm having trouble responding right now. Please try again later. 💙"
-
 
         
 def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
@@ -1596,6 +1642,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
