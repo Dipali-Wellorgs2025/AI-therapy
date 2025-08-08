@@ -799,12 +799,12 @@ Respond in a self-contained, complete way:
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
                     # yield format_response_with_emojis(buffer) + " "
-                    yeild buffer
+                    yield buffer
                     buffer = ""
 
             if buffer.strip():
               # yield format_response_with_emojis(buffer)
-                yeild buffer
+                yield buffer
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -1680,6 +1680,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
