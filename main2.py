@@ -782,8 +782,8 @@ Respond in a self-contained, complete way:
               stream=True
             )
 
-            # yield "\n\n"
-            # yield ""
+            yield "\n\n"
+            yield ""
             buffer = ""
             final_reply = ""
             first_token = True
@@ -798,13 +798,13 @@ Respond in a self-contained, complete way:
                     first_token = False
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
-                    # yield format_response_with_emojis(buffer) + " "
-                    yield buffer
+                    yield format_response_with_emojis(buffer) + " "
+                    # yield buffer
                     buffer = ""
 
             if buffer.strip():
-              # yield format_response_with_emojis(buffer)
-                yield buffer
+              yield format_response_with_emojis(buffer)
+                # yield buffer
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -896,20 +896,13 @@ Important Rules:
 
 
 
-"""def sse_format(text, first_chunk=False):
-    if first_chunk:
-        # Forces UI to start a new bot bubble
-        return f"\n{text}\n\n"
-    return f"{text}\n\n"
-"""
 def sse_format(text, first_chunk=False):
-    # For the first chunk, ensure it's properly separated
     if first_chunk:
-        text = "\n\n" + text.lstrip()
-    # Clean up any accidental double newlines
-    text = text.replace("\n\n", "\n").strip()
-    return f"data: {text}\n\n"
-    
+        text = "\n" + text  # Forces separation
+    clean = text.replace("\n", " ")
+    return f"{clean}\n\n"
+
+
 @app.route("/api/stream", methods=["GET"])
 def stream():
     data = {
@@ -922,13 +915,13 @@ def stream():
     }
 
     def generate():
-        is_first_chunk = True
-        # First chunk: signal new bot bubble
+        # First: send an empty message so the client starts a new bot bubble
+        yield sse_format("")
         for chunk in handle_message(data):
-           yield sse_format(chunk, first_chunk=is_first_chunk)
-           is_first_chunk = False
+            yield sse_format(chunk)
 
     return Response(generate(), mimetype="text/event-stream")
+
         
     
 
