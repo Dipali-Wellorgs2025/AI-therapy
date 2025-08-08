@@ -601,24 +601,20 @@ def is_gibberish(user_msg: str) -> bool:
     # If more than 60% words are gibberish
     return gibberish_count / len(words) > 0.6
 
+
+
 def handle_message(data):
     import re
     from datetime import datetime, timezone
 
-    # --- Input Validation ---
-    user_msg = data.get("message", "").strip()
-    if not user_msg:
-        yield "I didn't receive your message. Could you please try again?"
-        return
-
+    user_msg = data.get("message", "")
     user_name = data.get("user_name", "User")
     user_id = data.get("user_id", "unknown")
     issue_description = data.get("issue_description", "")
     preferred_style = data.get("preferred_style", "Balanced")
-    current_bot = data.get("botName", "Ava")
+    current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # --- 1. Early Filter Checks ---
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
         "ai training", "dataset", "parameters", "weights", "backpropagation",
@@ -634,71 +630,60 @@ def handle_message(data):
     ]
 
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield ("I understand you're asking about technical aspects, "
-               "but I'm designed to focus on mental health support. "
-               "For technical questions, please contact our developers team "
-               "at [developer-support@company.com]. 🔧\n\n"
-               "Is there anything about your mental health I can help with instead?")
+        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield ("I'm really sorry you're feeling this way. "
-               "Please reach out to a crisis line or emergency support near you, "
-               "or our SOS services. You're not alone. 💙")
+        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-        yield ("This topic needs care from a licensed mental health professional. "
-               "Please consider talking with one directly. 🤝")
+        yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
-
     if is_gibberish(user_msg):
         yield "Sorry, I didn't get that. Could you please rephrase? 😊"
         return
 
-    # --- 2. Session Setup ---
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    # --- 3. User Preference Detection ---
-    skip_deep = bool(re.search(
-        r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", 
-        user_msg.lower()
-    ))
-    wants_to_stay = bool(re.search(
-        r"\b(i want to stay|keep this bot|don't switch|stay with)\b", 
-        user_msg.lower()
-    ))
+    skip_deep = bool(re.search(r"\b(no deep|not ready|just answer|surface only|too much|keep it light|short answer)\b", user_msg.lower()))
+    wants_to_stay = bool(re.search(r"\b(i want to stay|keep this bot|don't switch|stay with)\b", user_msg.lower()))
 
-    # --- 4. Topic Classification ---
     def classify_topic_with_confidence(message):
         try:
-            if len(message.split()) < 3:
-                return "general", "low", True
-
             classification_prompt = f"""
-Analyze this mental health message strictly:
-1. Primary category (anxiety/breakup/self-worth/trauma/family/crisis/general)
-2. Confidence (high/medium/low)
-3. Is generic (yes/no)
+You are a mental health topic classifier. Analyze the message and determine:
+1. The primary topic category
+2. Confidence level (high/medium/low)
+3. Whether it's a generic greeting/small talk
 
-Reply EXACTLY like this:
+Categories:
+- anxiety
+- breakup
+- self-worth
+- trauma
+- family
+- crisis
+- general
+
+Message: \"{message}\"
+
+Respond in this format:
 CATEGORY: [category]
-CONFIDENCE: [confidence]
-IS_GENERIC: [yes/no]"""
-            
+CONFIDENCE: [high/medium/low]
+IS_GENERIC: [yes/no]
+"""
             classification = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
-                    {"role": "system", "content": "You are a strict classifier. Only respond with the exact format requested."},
+                    {"role": "system", "content": "You are a precise classifier. Follow the exact format requested."},
                     {"role": "user", "content": classification_prompt}
                 ],
-                temperature=0.0,
-                max_tokens=50
+                temperature=0.1,
+                max_tokens=100
             )
-            
             response = classification.choices[0].message.content.strip()
-            category, confidence, is_generic = "general", "low", True
-            
+            category, confidence, is_generic = None, None, False
             for line in response.split("\n"):
                 if line.startswith("CATEGORY:"):
                     category = line.split(":", 1)[1].strip().lower()
@@ -706,39 +691,20 @@ IS_GENERIC: [yes/no]"""
                     confidence = line.split(":", 1)[1].strip().lower()
                 elif line.startswith("IS_GENERIC:"):
                     is_generic = line.split(":", 1)[1].strip().lower() == "yes"
-            
-            if category not in ["anxiety", "breakup", "self-worth", "trauma", "family", "crisis", "general"]:
-                category = "general"
-            
             return category, confidence, is_generic
         except Exception as e:
-            print("Classification error:", str(e))
+            print("Classification failed:", e)
             return "general", "low", True
 
     category, confidence, is_generic = classify_topic_with_confidence(user_msg)
 
-    # --- 5. Bot Switching Logic ---
-    if (category in TOPIC_TO_BOT and 
-        confidence == "high" and 
-        not is_generic and 
-        not wants_to_stay and 
-        TOPIC_TO_BOT[category] != current_bot and
-        len(ctx["history"]) > 3):
-        
+    if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
-        last_suggestion = next((
-            msg for msg in reversed(ctx["history"]) 
-            if msg.get("sender") == current_bot and 
-            "Would you like to switch?" in msg.get("message", "")
-        ), None)
-        
-        if not last_suggestion:
-            yield (f"I notice you're discussing **{category}** concerns. "
-                  f"**{correct_bot}** specializes in this area. "
-                  "Would you like to switch? 🔄 (Reply 'stay' to keep chatting with me)")
+        if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
+            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    # --- 6. Response Generation ---
+    # ✅ Fixed access to bot_prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -747,138 +713,118 @@ IS_GENERIC: [yes/no]"""
                               .replace("{{preferred_style}}", preferred_style)
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
-    context_note = ("Note: Keep response brief and light." if skip_deep else "")
+    recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
+    context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep." if skip_deep else ""
 
     guidance = f"""
-You are {current_bot}, a mental health support bot. Respond to this message:
+You are {current_bot}, a specialized mental health support bot.
 
-User message: "{user_msg}"
+CORE PRINCIPLES:
+- Be **warm, empathetic, and comprehensive**
+- Provide **independent, complete support**
+- Use **natural flow** with appropriate emojis
+- NEVER include stage directions like (inhale) or (smiles)
+- Skip text in parentheses completely
+- Use [inhale 4], [hold 4], [exhale 4] style action cues if guiding breathing
+- Maintain a friendly but **firm** tone when needed
 
-Guidelines:
-- Respond in 3-5 complete sentences
-- Use **bold** for emphasis when needed
-- Include 1-2 relevant emojis
-- Ask one thoughtful follow-up question
-- Never include stage directions or parentheses
-- {context_note}
-
-Response:
+FORMAT:
+- 3-5 sentences, natural tone
+- Bold using **only double asterisks**
+- 1-2 emojis max
+- Ask 1 thoughtful follow-up question unless user is overwhelmed
 """
 
-    # --- 7. Enhanced Response Formatting ---
-    def format_response(text):
-        # Clean up the response text
-        text = re.sub(r'\(.*?\)', '', text)  # Remove all parentheses content
-        text = re.sub(r'\*{1,2}(.*?)\*{1,2}', r'**\1**', text)  # Normalize bold
-        text = re.sub(r'\s+([.,!?])', r'\1', text)  # Remove space before punctuation
-        text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)  # Add space after punctuation
-        text = re.sub(r'\s+', ' ', text).strip()  # Normalize whitespace
-        
-        # Ensure proper emoji spacing
-        emoji_pattern = re.compile("["
-            u"\U0001F600-\U0001F64F"  # emoticons
-            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-            u"\U0001F680-\U0001F6FF"  # transport & map symbols
-            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-            "]+", flags=re.UNICODE)
-        
-        # Add space around emojis if needed
-        for emoji in set(emoji_pattern.findall(text)):
-            text = text.replace(emoji, f" {emoji} ").replace("  ", " ")
-        
+    prompt = f"""{guidance}
+
+{filled_prompt}
+
+Recent messages:
+{recent}
+
+
+
+{context_note}
+
+Respond in a self-contained, complete way:
+"""
+
+    # ✅ Clean, safe formatter
+    def format_response_with_emojis(text):
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
 
-    # --- 8. Improved Streaming with Clean Responses ---
     try:
-        # Initialize response tracking
-        buffer = ""
-        final_response = ""
-        is_first_chunk = True
-        chunk_size = 0
-        max_chunk_size = 25  # Smaller chunks for smoother streaming
-
-        # Start the stream
         response_stream = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": f"You are {current_bot}. Respond directly to the user's message."},
-                {"role": "user", "content": guidance}
-            ],
-            temperature=0.7 if not skip_deep else 0.3,
-            max_tokens=300,
-            stream=True,
-            stop=["User:", "<|endoftext|>"]
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=400,
+            presence_penalty=0.2,
+            frequency_penalty=0.3,
+            stream=True
         )
 
-        # Initial empty yield to start the stream
-        yield ""
-        
+        yield "\n\n"
+        buffer = ""
+        final_reply = ""
+        first_token = True
+
         for chunk in response_stream:
-            if not chunk.choices:
-                continue
-                
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 token = delta.content
                 buffer += token
-                final_response += token
-                chunk_size += len(token)
-                
-                # Send chunks based on size or punctuation
-                if (chunk_size >= max_chunk_size or 
-                    token in {'.', '?', '!', '\n', ','} or 
-                    "\n\n" in buffer):
-                    
-                    if buffer.strip():
-                        formatted_chunk = format_response(buffer)
-                        if formatted_chunk:
-                          if is_first_chunk:
-                            yield "\n\n" + formatted_chunk + " "
-                            is_first_chunk = False
-                          else:
-                            yield formatted_chunk + " "
+                final_reply += token
+                if first_token:
+                    first_token = False
+                    continue
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
+                    yield format_response_with_emojis(buffer) + " "
                     buffer = ""
-                    chunk_size = 0
-        
-        # Send any remaining content
-        if buffer.strip():
-            formatted_chunk = format_response(buffer)
-            if formatted_chunk:
-                yield formatted_chunk
 
-        # --- 9. Save Conversation History ---
-        if final_response.strip():
-            now = datetime.now(timezone.utc).isoformat()
-            
-            # Save user message
-            ctx["history"].append({
-                "sender": "User",
-                "message": user_msg,
-                "timestamp": now,
-                "classified_topic": category,
-                "confidence": confidence
-            })
-            
-            # Save bot response
-            cleaned_response = format_response(final_response)
-            ctx["history"].append({
-                "sender": current_bot,
-                "message": cleaned_response,
-                "timestamp": now
-            })
-            
-            # Update Firestore
-            ctx["session_ref"].set({
-                "messages": ctx["history"],
-                "last_updated": firestore.SERVER_TIMESTAMP,
-                "is_active": True,
-                "current_topic": category,
-                "topic_confidence": confidence
-            }, merge=True)
+        if buffer.strip():
+            yield format_response_with_emojis(buffer)
+
+        final_reply_cleaned = format_response_with_emojis(final_reply)
+
+        now = datetime.now(timezone.utc).isoformat()
+        ctx["history"].append({
+            "sender": "User",
+            "message": user_msg,
+            "timestamp": now,
+            "classified_topic": category,
+            "confidence": confidence
+        })
+        ctx["history"].append({
+            "sender": current_bot,
+            "message": final_reply_cleaned,
+            "timestamp": now
+        })
+
+        ctx["session_ref"].set({
+            "user_id": user_id,
+            "bot_name": current_bot,
+            "bot_id": category,
+            "messages": ctx["history"],
+            "last_updated": firestore.SERVER_TIMESTAMP,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style,
+            "is_active": True,
+            "last_topic_confidence": confidence
+        }, merge=True)
 
     except Exception as e:
-        print(f"Error generating response: {str(e)}")
-        yield "I'm having trouble responding right now. Could you please try again in a moment? 💙"
+        import traceback
+        traceback.print_exc()
+        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
 
 
         
@@ -1703,6 +1649,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
