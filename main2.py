@@ -926,9 +926,7 @@ def stream():
         # First chunk: signal new bot bubble
         for chunk in handle_message(data):
            yield sse_format(chunk, first_chunk=is_first_chunk)
-            is_first_chunk = False
-        
-            yield sse_format(chunk)
+           is_first_chunk = False
 
     return Response(generate(), mimetype="text/event-stream")
         
@@ -1692,6 +1690,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
