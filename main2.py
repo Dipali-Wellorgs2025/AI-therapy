@@ -765,7 +765,7 @@ Response:
             max_tokens=300,
             stream=True
         )
-
+        first_chunk = True
         for chunk in response_stream:
             if not chunk.choices:
                 continue
@@ -1644,6 +1644,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
