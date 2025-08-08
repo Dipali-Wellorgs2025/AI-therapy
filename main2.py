@@ -914,20 +914,7 @@ def stream():
             yield sse_format(chunk)
 
     return Response(generate(), mimetype="text/event-stream")
-"""       
-@app.route("/api/stream", methods=["GET"])
-def stream():
-    """Streaming endpoint for real-time conversation"""
-    data = {
-        "message": request.args.get("message", ""),
-        "botName": request.args.get("botName"),
-        "user_name": request.args.get("user_name", "User"),
-        "user_id": request.args.get("user_id", "unknown"),
-        "issue_description": request.args.get("issue_description", ""),
-        "preferred_style": request.args.get("preferred_style", "Balanced")
-    }
-    return Response(handle_message(data), mimetype="text/event-stream")
-"""
+
 @app.route("/api/start_questionnaire", methods=["POST"])
 def start_questionnaire():
     """Endpoint to start a new questionnaire"""
@@ -1685,6 +1672,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
