@@ -914,8 +914,7 @@ def stream():
             yield sse_format(chunk)
 
     return Response(generate(), mimetype="text/event-stream")
-
- """       
+"""       
 @app.route("/api/stream", methods=["GET"])
 def stream():
     """Streaming endpoint for real-time conversation"""
@@ -1686,6 +1685,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
