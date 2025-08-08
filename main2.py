@@ -659,8 +659,8 @@ You are a mental health topic classifier. Analyze the message and determine:
 
 Categories:
 - anxiety
-- breakup
-- self-worth
+- couples
+- depression
 - trauma
 - family
 - crisis
@@ -742,7 +742,7 @@ FORMAT:
 Recent messages:
 {recent}
 
-
+User's message: \"{user_msg}\"
 
 {context_note}
 
@@ -760,25 +760,32 @@ Respond in a self-contained, complete way:
         text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
 
-    try:
-        response_stream = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=400,
-            presence_penalty=0.2,
-            frequency_penalty=0.3,
-            stream=True
-        )
+    
+    import time
 
-        yield "\n\n"
-        buffer = ""
-        final_reply = ""
-        first_token = True
+    MAX_RETRIES = 2
+    RETRY_DELAY = 1  # seconds
 
-        for chunk in response_stream:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
+    for attempt in range(MAX_RETRIES):
+          try:
+            response_stream = client.chat.completions.create(
+              model="deepseek-chat",
+              messages=[{"role": "user", "content": prompt}],
+              temperature=0.7,
+              max_tokens=400,
+              presence_penalty=0.2,
+              frequency_penalty=0.3,
+              stream=True
+            )
+
+            yield "\n\n"
+            buffer = ""
+            final_reply = ""
+            first_token = True
+
+            for chunk in response_stream:
+              delta = chunk.choices[0].delta
+              if delta and delta.content:
                 token = delta.content
                 buffer += token
                 final_reply += token
@@ -789,42 +796,46 @@ Respond in a self-contained, complete way:
                     yield format_response_with_emojis(buffer) + " "
                     buffer = ""
 
-        if buffer.strip():
-            yield format_response_with_emojis(buffer)
+            if buffer.strip():
+              yield format_response_with_emojis(buffer)
 
-        final_reply_cleaned = format_response_with_emojis(final_reply)
+            final_reply_cleaned = format_response_with_emojis(final_reply)
 
-        now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({
-            "sender": "User",
-            "message": user_msg,
-            "timestamp": now,
-            "classified_topic": category,
-            "confidence": confidence
-        })
-        ctx["history"].append({
-            "sender": current_bot,
-            "message": final_reply_cleaned,
-            "timestamp": now
-        })
+            now = datetime.now(timezone.utc).isoformat()
+            ctx["history"].append({
+                "sender": "User",
+                "message": user_msg,
+                "timestamp": now,
+                "classified_topic": category,
+                "confidence": confidence
+            })
+            ctx["history"].append({
+                "sender": current_bot,
+                "message": final_reply_cleaned,
+                "timestamp": now
+            })
 
-        ctx["session_ref"].set({
-            "user_id": user_id,
-            "bot_name": current_bot,
-            "bot_id": category,
-            "messages": ctx["history"],
-            "last_updated": firestore.SERVER_TIMESTAMP,
-            "issue_description": issue_description,
-            "preferred_style": preferred_style,
-            "is_active": True,
-            "last_topic_confidence": confidence
-        }, merge=True)
+            ctx["session_ref"].set({
+                "user_id": user_id,
+                "bot_name": current_bot,
+                "bot_id": category,
+                "messages": ctx["history"],
+                "last_updated": firestore.SERVER_TIMESTAMP,
+                "issue_description": issue_description,
+                "preferred_style": preferred_style,
+                "is_active": True,
+                "last_topic_confidence": confidence
+            }, merge=True)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+            break  # success, so exit retry loop
 
+          except Exception as e:
+           if attempt < MAX_RETRIES - 1:
+            time.sleep(RETRY_DELAY)
+            continue
+           import traceback
+           traceback.print_exc()
+           yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
 
 
         
@@ -1649,6 +1660,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
