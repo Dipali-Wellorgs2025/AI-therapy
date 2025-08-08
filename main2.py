@@ -896,13 +896,20 @@ Important Rules:
 
 
 
-def sse_format(text, first_chunk=False):
+"""def sse_format(text, first_chunk=False):
     if first_chunk:
         # Forces UI to start a new bot bubble
         return f"\n{text}\n\n"
     return f"{text}\n\n"
-
-
+"""
+def sse_format(text, first_chunk=False):
+    # For the first chunk, ensure it's properly separated
+    if first_chunk:
+        text = "\n\n" + text.lstrip()
+    # Clean up any accidental double newlines
+    text = text.replace("\n\n", "\n").strip()
+    return f"data: {text}\n\n"
+    
 @app.route("/api/stream", methods=["GET"])
 def stream():
     data = {
@@ -915,12 +922,17 @@ def stream():
     }
 
     def generate():
+        is_first_chunk = True
         # First chunk: signal new bot bubble
-        yield sse_format("", first_chunk=True)
         for chunk in handle_message(data):
+           yield sse_format(chunk, first_chunk=is_first_chunk)
+            is_first_chunk = False
+        
             yield sse_format(chunk)
 
     return Response(generate(), mimetype="text/event-stream")
+        
+    
 
 @app.route("/api/start_questionnaire", methods=["POST"])
 def start_questionnaire():
@@ -1680,6 +1692,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
