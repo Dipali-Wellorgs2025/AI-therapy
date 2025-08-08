@@ -720,6 +720,13 @@ IS_GENERIC: [yes/no]
 You are {current_bot}, a specialized mental health support bot.
 
 CORE PRINCIPLES:
+REPLY FORMAT RULES:
+- Always start your reply on a **new paragraph**.
+- Never repeat the user's message or start with quotes.
+- 3–5 sentences, natural tone.
+- Bold using **only double asterisks**.
+- 1–2 emojis max.
+- Ask 1 thoughtful follow-up question unless user is overwhelmed.
 - Be **warm, empathetic, and comprehensive**
 - Provide **independent, complete support**
 - Use **natural flow** with appropriate emojis
@@ -1660,6 +1667,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
