@@ -892,9 +892,11 @@ Important Rules:
     
     return base_prompt
 
-
-def sse_format(text):
-    return f"{text}\n\n"
+def sse_format(text, first_chunk=False):
+    if first_chunk:
+        text = "\n" + text  # Forces separation
+    clean = text.replace("\n", " ")
+    return f"{clean}\n\n"
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
@@ -1672,6 +1674,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
