@@ -1181,8 +1181,7 @@ Generate the report now:
 def get_history():
     """Return conversation after last ended session for a user and bot (user-bot conversation only)."""
     try:
-        from flask import request, jsonify
-        from google.cloud import firestore
+       
         import dateutil.parser
 
         db = firestore.Client()
@@ -1722,6 +1721,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
