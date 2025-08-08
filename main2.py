@@ -783,8 +783,13 @@ Response:
 
                 # Yield sentence-sized chunks
                 if any(p in buffer for p in [".", "?", "!", "\n\n"]) or len(buffer) >= 25:
-                    yield format_response(buffer) + " " 
-                    buffer = ""
+                   if first_chunk:
+                       yield "\n\n" + format_response(buffer) + " "  # ensure bot starts on new line
+                       first_chunk = False
+                   else:
+                       yield format_response(buffer) + " "
+                   buffer = ""
+                    
 
         # Yield remainder
         if buffer.strip():
@@ -1639,6 +1644,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
