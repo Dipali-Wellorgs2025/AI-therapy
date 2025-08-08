@@ -782,8 +782,8 @@ Respond in a self-contained, complete way:
               stream=True
             )
 
-            yield "\n\n"
-            yield ""
+            # yield "\n\n"
+            # yield ""
             buffer = ""
             final_reply = ""
             first_token = True
@@ -798,11 +798,13 @@ Respond in a self-contained, complete way:
                     first_token = False
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
-                    yield format_response_with_emojis(buffer) + " "
+                    # yield format_response_with_emojis(buffer) + " "
+                    yeild buffer
                     buffer = ""
 
             if buffer.strip():
-              yield format_response_with_emojis(buffer)
+              # yield format_response_with_emojis(buffer)
+                yeild buffer
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -892,11 +894,14 @@ Important Rules:
     
     return base_prompt
 
+
+
 def sse_format(text, first_chunk=False):
     if first_chunk:
-        text = "\n" + text  # Forces separation
-    clean = text.replace("\n", " ")
-    return f"{clean}\n\n"
+        # Forces UI to start a new bot bubble
+        return f"\n{text}\n\n"
+    return f"{text}\n\n"
+
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
@@ -910,8 +915,8 @@ def stream():
     }
 
     def generate():
-        # First: send an empty message so the client starts a new bot bubble
-        yield sse_format("")
+        # First chunk: signal new bot bubble
+        yield sse_format("", first_chunk=True)
         for chunk in handle_message(data):
             yield sse_format(chunk)
 
@@ -1675,6 +1680,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
