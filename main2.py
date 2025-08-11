@@ -786,28 +786,29 @@ Respond in a self-contained, complete way:
             )
 
             yield "\n\n"
-            yield ""
+            # yield ""
             buffer = ""
             final_reply = ""
-            first_token = True
-            import re
-            def clean_text(text):
-                return re.sub(r'([,.!?])(?=\w)', r'\1 ', text) 
+            punctuation_set = set(',.!?:;')
+            last_char=none
+            # first_token = True
+ 
 
             for chunk in response_stream:
               delta = chunk.choices[0].delta
               if delta and delta.content:
                 token = delta.content
                 final_reply += token
-                buffer += token
-                if first_token:
-                    first_token = False
-                    continue
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 1:
-                    yield format_response_with_emojis(clean_text(buffer)) + " "
+                # buffer += token
+                if last_char and last_char in punctuation_set:
+                    if token and token[0].isalnum():
+                        buffer += ' '
+                buffer += token   
+                if token in [".", "!", "?", ",", " ","\n"] and len(buffer.strip()) > 1:
+                    yield format_response_with_emojis(buffer)
                     # yield buffer
                     buffer = ""
-
+                    last_char= None
             if buffer.strip():
               yield format_response_with_emojis(buffer)
                 # yield buffer
@@ -1569,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
