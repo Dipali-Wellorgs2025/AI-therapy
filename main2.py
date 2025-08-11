@@ -758,7 +758,8 @@ Recent messages:
 
 Respond in a self-contained, complete way:
 """
-
+    
+    # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
         text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
@@ -1570,6 +1571,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
