@@ -1071,7 +1071,7 @@ Generate the report now:
 from dateutil import parser
 from flask import request, jsonify
 from google.cloud import firestore
-import markdown  # <-- added
+
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
@@ -1082,7 +1082,6 @@ def get_history():
         if not user_id or not bot_name:
             return jsonify({"error": "Missing parameters"}), 400
 
-        # Map bot name to Firestore document ID
         bots = {
             "Sage": "anxiety",
             "Jordan": "couples",
@@ -1095,7 +1094,6 @@ def get_history():
         if not bot_id:
             return jsonify({"error": f"Invalid bot name: {bot_name}"}), 400
 
-        # --- Step 1: Get the timestamp of the last Ended session ---
         sessions_ref = (
             db.collection("ai_therapists")
               .document(bot_id)
@@ -1113,25 +1111,37 @@ def get_history():
                 break
 
         if not last_end_dt:
-            return jsonify([])
+            # Return all messages if no ended session
+            session_id = f"{user_id}_{bot_name}"
+            doc = db.collection("sessions").document(session_id).get()
+            return jsonify(doc.to_dict().get("messages", [])) if doc.exists else jsonify([])
 
-        # --- Step 2: Get all messages from main session doc ---
+        # Filter messages after last end
         session_id = f"{user_id}_{bot_name}"
         doc = db.collection("sessions").document(session_id).get()
         if not doc.exists:
             return jsonify([])
 
-        messages = [
-            {**msg, "content": markdown.markdown(msg.get("content", ""))}
-            for msg in doc.to_dict().get("messages", [])
-            if msg.get("timestamp") and parser.parse(msg["timestamp"]) > last_end_dt
-        ]
+        all_messages = doc.to_dict().get("messages", [])
+        filtered_messages = []
 
-        return jsonify(messages) if doc.exists else jsonify([])
+        for msg in all_messages:
+            ts_str = msg.get("timestamp")
+            if not ts_str:
+                continue
+            try:
+                msg_dt = parser.parse(ts_str)
+            except Exception:
+                continue
+            if msg_dt > last_end_dt:
+                filtered_messages.append(msg)
+
+        return jsonify(filtered_messages)
 
     except Exception as e:
         print("History error:", e)
         return jsonify({"error": "Failed to retrieve history"}), 500
+
 
 
 
@@ -1584,6 +1594,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
