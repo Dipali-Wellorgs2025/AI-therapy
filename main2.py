@@ -790,18 +790,21 @@ Respond in a self-contained, complete way:
             buffer = ""
             final_reply = ""
             first_token = True
+            import re
+            def clean_text(text):
+                return re.sub(r'([,.!?])(?=\w)', r'\1 ', text) 
 
             for chunk in response_stream:
               delta = chunk.choices[0].delta
               if delta and delta.content:
                 token = delta.content
-                buffer += token
                 final_reply += token
+                buffer += token
                 if first_token:
                     first_token = False
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 1:
-                    yield format_response_with_emojis(buffer) + " "
+                    yield format_response_with_emojis(clean_text(buffer)) + " "
                     # yield buffer
                     buffer = ""
 
@@ -1566,6 +1569,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
