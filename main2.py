@@ -804,7 +804,7 @@ Respond in a self-contained, complete way:
                     first_token = False
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 1:
-                    yield format_response_with_emojis(clean_text(buffer)) + " "
+                    yield format_response_with_emojis(clean_text(buffer))
                     # yield buffer
                     buffer = ""
 
@@ -1570,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
