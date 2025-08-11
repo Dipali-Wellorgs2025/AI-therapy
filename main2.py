@@ -772,10 +772,12 @@ Respond in a self-contained, complete way:
        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
 
        # Remove spaces before punctuation
-       text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+       text = re.sub(r'(?<!\*)\s+([.,!?;:])(?!\*)', r'\1', text)
+
 
        # Ensure space after punctuation
-       text = re.sub(r'([.,!?;:])(?=\S)', r'\1 ', text)
+       # Ensure space after punctuation — but NOT between ** and punctuation
+       text = re.sub(r'(?<!\*)([.,!?;:])(?!\*)(?=\S)', r'\1 ', text)
 
        # Collapse multiple spaces
        text = re.sub(r'\s{2,}', ' ', text)
@@ -1594,6 +1596,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
