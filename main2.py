@@ -702,7 +702,6 @@ IS_GENERIC: [yes/no]
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    # ✅ Fixed access to bot_prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -736,7 +735,6 @@ REPLY FORMAT RULES:
 7. Ask one thoughtful follow-up question unless the user is overwhelmed.
 """
 
-
     prompt = f"""{guidance}
 
 {filled_prompt}
@@ -751,37 +749,21 @@ Recent messages:
 Respond in a self-contained, complete way:
 """
 
-    # ✅ Clean, safe formatter
-    def format_response_with_emojis(text):
-        
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
-        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        # text = re.sub(r'([.,!?;:])(?=[^\s\]\)\}\>\'\"\*\`])', r'\1 ', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s{2,}', ' ', text)
-
-        return text.strip()
-
-    
     import time
 
     MAX_RETRIES = 2
     RETRY_DELAY = 1  # seconds
 
     for attempt in range(MAX_RETRIES):
-          try:
+        try:
             response_stream = client.chat.completions.create(
-              model="deepseek-chat",
-              messages=[{"role": "user", "content": prompt}],
-              temperature=0.6,
-              max_tokens=500,
-              presence_penalty=0.5,
-              frequency_penalty=0.3,
-              stream=True
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                max_tokens=500,
+                presence_penalty=0.5,
+                frequency_penalty=0.3,
+                stream=True
             )
 
             yield "\n\n"
@@ -791,24 +773,20 @@ Respond in a self-contained, complete way:
             first_token = True
 
             for chunk in response_stream:
-              delta = chunk.choices[0].delta
-              if delta and delta.content:
-                token = delta.content
-                buffer += token
-                final_reply += token
-                if first_token:
-                    first_token = False
-                    continue
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
-                    yield format_response_with_emojis(buffer) + " "
-                    # yield buffer
-                    buffer = ""
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    token = delta.content
+                    buffer += token
+                    final_reply += token
+                    if first_token:
+                        first_token = False
+                        continue
+                    if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
+                        yield buffer
+                        buffer = ""
 
             if buffer.strip():
-              yield format_response_with_emojis(buffer)
-                # yield buffer
-
-            final_reply_cleaned = format_response_with_emojis(final_reply)
+                yield buffer
 
             now = datetime.now(timezone.utc).isoformat()
             ctx["history"].append({
@@ -820,7 +798,7 @@ Respond in a self-contained, complete way:
             })
             ctx["history"].append({
                 "sender": current_bot,
-                "message": final_reply_cleaned,
+                "message": final_reply,
                 "timestamp": now
             })
 
@@ -838,13 +816,13 @@ Respond in a self-contained, complete way:
 
             break  # success, so exit retry loop
 
-          except Exception as e:
-           if attempt < MAX_RETRIES - 1:
-            time.sleep(RETRY_DELAY)
-            continue
-           import traceback
-           traceback.print_exc()
-           yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+                continue
+            import traceback
+            traceback.print_exc()
+            yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
 
 
         
@@ -1566,6 +1544,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
