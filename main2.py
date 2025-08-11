@@ -806,7 +806,7 @@ Respond in a self-contained, complete way:
               if delta and delta.content:
                 token = delta.content
                 final_reply += token
-                # buffer += token
+                buffer += token
  
                 # Flush buffer on natural break points
                 if token in [".", "!", "?", ",", " ", "\n"] and len(buffer.strip()) > 1:
@@ -1578,6 +1578,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
