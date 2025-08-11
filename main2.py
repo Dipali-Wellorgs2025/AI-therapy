@@ -760,30 +760,46 @@ Respond in a self-contained, complete way:
 """
     
     import re
+    
 
+    def fix_markdown_bold_spacing(text):
+       # Fix missing spaces after opening bold **
+       text = re.sub(r'\*\*(\S)', r'** \1', text)
+    
+       # Fix missing spaces before closing bold **
+       # This is optional, usually no space before closing **
+       # but if you want to enforce no space before closing:
+       text = re.sub(r'(\S)\*\*', r'\1**', text)
+    
+       # Fix unclosed bold pairs by adding closing ** at end if odd count
+       count = text.count('**')
+       if count % 2 != 0:
+          text += '**'  # Add closing bold at end if missing
+    
+       return text
     # ✅ One unified cleaner + formatter
     def format_response_with_emojis(text):
-       # Temporarily protect bold markdown
-       text = re.sub(r'\*\*(.*?)\*\*', r'@@BOLD\1@@', text)
-  
-       # Emoji spacing
+       text = fix_markdown_bold_spacing(text)
+       # You can add your emoji spacing and punctuation rules here
        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+  
+
 
        # Remove spaces before punctuation
-       text = re.sub(r'(?<!\*)\s+([.,!?;:])(?!\*)', r'\1', text)
+       
+       text = re.sub(r'\s+([.,!?;:])', r'\1', text)
 
 
        # Ensure space after punctuation
        # Ensure space after punctuation — but NOT between ** and punctuation
-       text = re.sub(r'(?<!\*)([.,!?;:])(?!\*)(?=\S)', r'\1 ', text)
+       text = re.sub(r'([.,!?;:])(?!\s)', r'\1 ', text)
 
        # Collapse multiple spaces
        text = re.sub(r'\s{2,}', ' ', text)
 
-       # Restore bold markdown
-       text = re.sub(r'@@BOLD(.*?)@@', r'**\1**', text)
+       
 
        return text.strip()
 
@@ -826,7 +842,7 @@ Respond in a self-contained, complete way:
 
                     if token == " " and last_was_punct:
                         buffer = buffer[:-len(token)] + " " + token
-                        yield format_response_with_emojis(buffer)
+                        yield format_response_with_emojis(buffer) + " "
                         buffer = ""
                         last_was_punct = False
                         continue
@@ -1596,6 +1612,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
