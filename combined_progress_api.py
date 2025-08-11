@@ -14,28 +14,27 @@ def get_today_mood_checkins(user_id):
     db = firestore.client()
     checkins_ref = db.collection("recent-checkin")
 
-    # Start and end of today in UTC
     today_start = datetime.combine(date.today(), datetime.min.time())
     today_end = datetime.combine(date.today(), datetime.max.time())
 
-    # Query for Timestamp-type date fields
-    timestamp_docs = checkins_ref.where("uid", "==", user_id) \
-        .where("date", ">=", today_start) \
-        .where("date", "<=", today_end) \
-        .stream()
+    # Query only by uid (no date filter yet)
+    docs = checkins_ref.where("uid", "==", user_id).stream()
 
-    count = sum(1 for _ in timestamp_docs)
+    count = 0
+    for doc in docs:
+        data = doc.to_dict()
+        doc_date = data.get("date")
 
-    # If no Timestamp matches, try string date format "dd-mm-yyyy"
-    if count == 0:
-        today_str = date.today().strftime("%d-%m-%Y")
-        string_docs = checkins_ref.where("uid", "==", user_id) \
-            .where("date", "==", today_str) \
-            .stream()
-        count = sum(1 for _ in string_docs)
+        # Handle Timestamp
+        if isinstance(doc_date, datetime):
+            if today_start <= doc_date <= today_end:
+                count += 1
+        # Handle string dates like "dd-mm-yyyy"
+        elif isinstance(doc_date, str):
+            if doc_date == date.today().strftime("%d-%m-%Y"):
+                count += 1
 
     return count
-
 
 # ---------------- API Route ----------------
 @combined_progress_bp.route('/progress/combined', methods=['GET'])
