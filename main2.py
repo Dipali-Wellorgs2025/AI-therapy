@@ -811,6 +811,7 @@ Respond in a self-contained, complete way:
                         continue
 
                     if token == " " and last_was_punct:
+                        buffer = buffer[:-len(token)] + " " + token
                         yield format_response_with_emojis(clean_text(buffer))
                         buffer = ""
                         last_was_punct = False
@@ -1571,6 +1572,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
