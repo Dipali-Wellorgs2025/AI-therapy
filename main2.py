@@ -653,6 +653,38 @@ def format_response_with_emojis(text):
 
     return result
 
+import re
+
+def format_response_with_emojis(text):
+    """
+    Formats a chatbot response:
+    - Preserves markdown
+    - Ensures punctuation & emoji spacing
+    - Handles tricky bold/italic punctuation cases
+    """
+    # Normalize all bold/italic patterns to consistent markdown
+    text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+
+    emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+
+    # --- Emoji spacing ---
+    text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)   # space before emoji
+    text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)   # space after emoji
+
+    # --- Punctuation spacing ---
+    text = re.sub(r'\s+([.,!?;:])', r'\1', text)                # no space before punctuation
+    text = re.sub(r'([.,!?;:])(?=[^\s\]\)\}\>\'\"\*\`])', r'\1 ', text)  # space after punctuation
+
+    # --- Special case: punctuation + bold markers ---
+    # Ensure ".**" → ". **" when punctuation is outside bold
+    text = re.sub(r'([.,!?;:])(\*\*)(?=\s|$)', r'\1 \2', text)
+    # Ensure "**word.**next" → "**word.** next"
+    text = re.sub(r'(\*\*[^\*]+?\.\*\*)(?=\S)', r'\1 ', text)
+
+    # Collapse multiple spaces
+    text = re.sub(r'\s{2,}', ' ', text)
+
+    return text.strip()
 
 def handle_message(data):
     import re
@@ -805,20 +837,20 @@ Respond in a self-contained, complete way:
 """
 
     # ✅ Clean, safe formatter
-    def format_response_with_emojis(text):
+    # def format_response_with_emojis(text):
         
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
-        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        # text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        # emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        # text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        # text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
         # text = re.sub(r'([.,!?;:])(?=[^\s\]\)\}\>\'\"\*\`])', r'\1 ', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+        # text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        # text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        # text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        # text = re.sub(r'\s{2,}', ' ', text)
         # text = re.sub(r'([.,!?;:])(\*\*)', r'\1 \2', text)
         # text = re.sub(r'(\*\*)([.,!?;:])', r'\1 \2', text)
-        return text.strip()
+        # return text.strip()
 
     
     import time
@@ -1620,6 +1652,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
