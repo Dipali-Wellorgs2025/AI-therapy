@@ -756,16 +756,17 @@ Recent messages:
 Respond in a self-contained, complete way:
 """
 
+# ✅ Clean, safe formatter
     def format_response_with_emojis(text):
         text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        # Ensure exactly one space after each punctuation mark (.,!?:)
-        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
-        # Remove extra spaces (more than one)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
-        return text.strip()
+        text = re.sub(r'([.,!?;:])\s*', r'\1 \2 ', text)
+        return text.strip())
     
     import time
 
@@ -1569,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
