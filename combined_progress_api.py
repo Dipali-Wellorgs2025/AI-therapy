@@ -100,7 +100,7 @@ def get_combined_progress():
                 current_day = current_day - timedelta(days=1)
 
     # Mood check-ins count for **today only**
-    "mood_checkins" = get_today_mood_checkins(user_id)
+    mood_checkins = get_today_mood_checkins(user_id)
 
     healing_journey_data = {
         "times_showed_up": total_sessions,
