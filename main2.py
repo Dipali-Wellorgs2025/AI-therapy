@@ -756,7 +756,7 @@ Recent messages:
 Respond in a self-contained, complete way:
 """
 
-# ✅ Clean, safe formatter
+    # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
         text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
@@ -765,8 +765,8 @@ Respond in a self-contained, complete way:
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
-        text = re.sub(r'([.,!?;:])\s*', r'\1 \2 ', text)
         return text.strip()
+
     
     import time
 
@@ -804,7 +804,7 @@ Respond in a self-contained, complete way:
                     first_token = False
                     continue
                 if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 1:
-                    yield format_response_with_emojis(clean_text(buffer))
+                    yield format_response_with_emojis(clean_text(buffer)) + " "
                     # yield buffer
                     buffer = ""
 
@@ -1570,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
