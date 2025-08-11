@@ -720,6 +720,8 @@ You are {current_bot}, a specialized mental health support bot.
 
 CORE PRINCIPLES:
 - Be **warm, empathetic, and comprehensive**
+- be friendly therapist start with greetings then ask question about issues try to solve like human ask how user feeling.
+- Don't use robotic tone
 - Provide **independent, complete support**
 - Use **natural flow** with appropriate emojis
 - NEVER include stage directions like (inhale) or (smiles)
@@ -1564,6 +1566,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
