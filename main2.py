@@ -604,6 +604,8 @@ def is_gibberish(user_msg: str) -> bool:
 
 def handle_message(data):
     import re
+    import time
+    import traceback
     from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
@@ -629,7 +631,12 @@ def handle_message(data):
     ]
 
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield (
+            "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+            "For technical questions about training algorithms, system architecture, or development-related topics, "
+            "please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you. 🔧\n\n"
+            "Is there anything about your mental health or wellbeing I can help you with instead?"
+        )
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
@@ -639,6 +646,7 @@ def handle_message(data):
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
+
     if is_gibberish(user_msg):
         yield "Sorry, I didn't get that. Could you please rephrase? 😊"
         return
@@ -703,7 +711,6 @@ IS_GENERIC: [yes/no]
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
-    # ✅ Fixed access to bot_prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -720,7 +727,7 @@ You are {current_bot}, a specialized mental health support bot.
 
 CORE PRINCIPLES:
 - Be **warm, empathetic, and comprehensive**
-- be friendly therapist start with greetings then ask question about issues try to solve like human ask how user feeling.
+- Be a friendly therapist: start with greetings, then ask about issues, try to help like a human would.
 - Don't use robotic tone
 - Provide **independent, complete support**
 - Use **natural flow** with appropriate emojis
@@ -738,9 +745,7 @@ REPLY FORMAT RULES:
 6. Use 1–2 emojis max.
 7. Ask one thoughtful follow-up question unless the user is overwhelmed.
 8. Use bold italic only with three asterisks.
-
 """
-
 
     prompt = f"""{guidance}
 
@@ -749,14 +754,11 @@ REPLY FORMAT RULES:
 Recent messages:
 {recent}
 
-
-
 {context_note}
 
 Respond in a self-contained, complete way:
 """
 
-    # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
         text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
@@ -768,50 +770,58 @@ Respond in a self-contained, complete way:
         text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
         return text.strip()
 
-    
-    import time
+    def clean_text(text):
+        return re.sub(r'([,.!?])(?=\w)', r'\1 ', text)
 
     MAX_RETRIES = 2
-    RETRY_DELAY = 1  # seconds
+    RETRY_DELAY = 1
 
     for attempt in range(MAX_RETRIES):
-          try:
+        try:
             response_stream = client.chat.completions.create(
-              model="deepseek-chat",
-              messages=[{"role": "user", "content": prompt}],
-              temperature=0.6,
-              max_tokens=500,
-              presence_penalty=0.5,
-              frequency_penalty=0.3,
-              stream=True
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                max_tokens=500,
+                presence_penalty=0.5,
+                frequency_penalty=0.3,
+                stream=True
             )
 
             yield "\n\n"
-            yield ""
             buffer = ""
             final_reply = ""
             first_token = True
-            import re
-            def clean_text(text):
-                return re.sub(r'([,.!?])(?=\w)', r'\1 ', text) 
+            last_was_punct = False
 
             for chunk in response_stream:
-              delta = chunk.choices[0].delta
-              if delta and delta.content:
-                token = delta.content
-                final_reply += token
-                buffer += token
-                if first_token:
-                    first_token = False
-                    continue
-                if token in [".", "!", "?", ","] and len(buffer.strip()) > 1:
-                    yield format_response_with_emojis(clean_text(buffer)) + " "
-                    # yield buffer
-                    buffer = ""
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    token = delta.content
+                    final_reply += token
+                    buffer += token
+
+                    if first_token:
+                        first_token = False
+                        continue
+
+                    if token in [".", "!", "?", ","]:
+                        last_was_punct = True
+                        continue
+
+                    if token == " " and last_was_punct:
+                        yield format_response_with_emojis(clean_text(buffer))
+                        buffer = ""
+                        last_was_punct = False
+                        continue
+
+                    if last_was_punct:
+                        yield format_response_with_emojis(clean_text(buffer))
+                        buffer = ""
+                        last_was_punct = False
 
             if buffer.strip():
-              yield format_response_with_emojis(buffer)
-                # yield buffer
+                yield format_response_with_emojis(buffer)
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -841,15 +851,15 @@ Respond in a self-contained, complete way:
                 "last_topic_confidence": confidence
             }, merge=True)
 
-            break  # success, so exit retry loop
+            break
 
-          except Exception as e:
-           if attempt < MAX_RETRIES - 1:
-            time.sleep(RETRY_DELAY)
-            continue
-           import traceback
-           traceback.print_exc()
-           yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+                continue
+            traceback.print_exc()
+            yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
 
         
 def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
@@ -1560,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
