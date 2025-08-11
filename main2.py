@@ -771,7 +771,7 @@ Respond in a self-contained, complete way:
         return text.strip()
 
     def clean_text(text):
-        return re.sub(r'([,.!?])(?=\w)', r'\1 ', text)
+        return re.sub(r'([,.!?])(?=(?!\*)(?!\s)[^\*])', r'\1 ', text)
 
     MAX_RETRIES = 2
     RETRY_DELAY = 1
@@ -1570,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
