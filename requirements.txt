@@ -9,6 +9,7 @@ python-dotenv
 gunicorn
 openai>=1.0.0
 python-dateutil>=2.8.0
+markdown
 
 
 # ==== Google Gemini SDK ====
@@ -25,5 +26,6 @@ Flask-Bcrypt==1.0.1
 
 # ==== Optional: SQLAlchemy ORM ====
 Flask-SQLAlchemy==3.1.1
+
 
 
