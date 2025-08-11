@@ -100,13 +100,13 @@ def get_combined_progress():
                 current_day = current_day - timedelta(days=1)
 
     # Mood check-ins count for **today only**
-    mood_checkins_today = get_today_mood_checkins(user_id)
+    "mood_checkins" = get_today_mood_checkins(user_id)
 
     healing_journey_data = {
         "times_showed_up": total_sessions,
         "time_for_yourself": f"{total_hours}h",
         "day_streak": hj_day_streak,
-        "mood_checkins_today": mood_checkins_today
+        "mood_checkins": "mood_checkins"
     }
 
     # --- Milestones logic ---
@@ -138,8 +138,8 @@ def get_combined_progress():
         {
             "title": "Checking In With Yourself",
             "description": "Logged your mood for 7 days",
-            "achieved": mood_checkins_today >= 7,  # Updated to use today's check-ins if needed
-            "progress": min(mood_checkins_today, 7),
+            "achieved": mood_checkins >= 7,  # Updated to use today's check-ins if needed
+            "progress": min(mood_checkins, 7),
             "target": 7
         },
         {
