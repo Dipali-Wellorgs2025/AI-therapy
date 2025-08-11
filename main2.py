@@ -790,7 +790,7 @@ Respond in a self-contained, complete way:
             buffer = ""
             final_reply = ""
             punctuation_set = set(',.!?:;')
-            last_char=none
+            last_char= None
             # first_token = True
  
 
@@ -1570,6 +1570,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
