@@ -17,7 +17,6 @@ def get_today_mood_checkins(user_id):
     today_start = datetime.combine(date.today(), datetime.min.time())
     today_end = datetime.combine(date.today(), datetime.max.time())
 
-    # Query only by uid (no date filter yet)
     docs = checkins_ref.where("uid", "==", user_id).stream()
 
     count = 0
@@ -25,16 +24,14 @@ def get_today_mood_checkins(user_id):
         data = doc.to_dict()
         doc_date = data.get("date")
 
-        # Handle Timestamp
         if isinstance(doc_date, datetime):
             if today_start <= doc_date <= today_end:
                 count += 1
-        # Handle string dates like "dd-mm-yyyy"
         elif isinstance(doc_date, str):
             if doc_date == date.today().strftime("%d-%m-%Y"):
                 count += 1
 
-    return count
+    return count  # Always an int, never None
 
 # ---------------- API Route ----------------
 @combined_progress_bp.route('/progress/combined', methods=['GET'])
