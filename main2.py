@@ -755,18 +755,26 @@ Recent messages:
 
 Respond in a self-contained, complete way:
 """
-
+    
     # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-        text = re.sub(r'([,.!?;:])(?=\w)', r'\1 ', text)
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
-        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+        # Fix punctuation spacing first
+        text = re.sub(r'([,.!?;:])(?=[^\s])', r'\1 ', text)  # Add space after punctuation
+        text = re.sub(r'([,.!?;:])\s+', r'\1 ', text)  # Normalize spaces after punctuation
+    
+        # Normalize markdown formatting
+        text = re.sub(r'(\*{1,3})([^*]+?)\1', r'**\2**', text)
+    
+        # Add space around emojis
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧🟡️💤])'
+        text = re.sub(r'(\S)' + emoji_pattern, r'\1 \2', text)  # Space before emoji
+        text = re.sub(emoji_pattern + r'(\S)', r'\1 \2', text)  # Space after emoji
+    
+        # Clean up whitespace
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove spaces before punctuation
+        text = re.sub(r'\s{2,}', ' ', text)  # Reduce multiple spaces
         return text.strip()
+
     
     import time
 
@@ -793,25 +801,23 @@ Respond in a self-contained, complete way:
             last_char= None
             # first_token = True
  
-
             for chunk in response_stream:
               delta = chunk.choices[0].delta
               if delta and delta.content:
                 token = delta.content
                 final_reply += token
                 # buffer += token
-                if last_char and last_char in punctuation_set:
-                    if token and token[0].isalnum():
-                        buffer += ' '
-                buffer += token   
-                if token in [".", "!", "?", ",", " ","\n"] and len(buffer.strip()) > 1:
-                    yield format_response_with_emojis(buffer)
-                    # yield buffer
-                    buffer = ""
-                    last_char= None
+ 
+                # Flush buffer on natural break points
+                if token in [".", "!", "?", ",", " ", "\n"] and len(buffer.strip()) > 1:
+                   formatted_chunk = format_response_with_emojis(buffer)
+                   yield formatted_chunk
+                   buffer = ""
+                
             if buffer.strip():
-              yield format_response_with_emojis(buffer)
+              formatted_chunk = format_response_with_emojis(buffer)
                 # yield buffer
+              yield formatted_chunk
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -1572,6 +1578,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
