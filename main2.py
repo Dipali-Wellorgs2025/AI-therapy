@@ -1048,6 +1048,7 @@ Generate the report now:
 from dateutil import parser
 from flask import request, jsonify
 from google.cloud import firestore
+import markdown  # <-- added
 
 @app.route("/api/history", methods=["GET"])
 def get_history():
@@ -1085,12 +1086,11 @@ def get_history():
         for doc in session_docs:
             data = doc.to_dict()
             if data.get("status") == "End" and data.get("endedAt"):
-                # Firestore Timestamp is already a datetime
                 last_end_dt = data["endedAt"]
                 break
 
         if not last_end_dt:
-            return jsonify([])  # No ended session → nothing to filter
+            return jsonify([])
 
         # --- Step 2: Get all messages from main session doc ---
         session_id = f"{user_id}_{bot_name}"
@@ -1106,11 +1106,13 @@ def get_history():
             if not ts_str:
                 continue
             try:
-                msg_dt = parser.parse(ts_str)  # string → datetime
+                msg_dt = parser.parse(ts_str)
             except Exception:
                 continue
 
             if msg_dt > last_end_dt:
+                # Convert markdown to HTML (bold, italic, etc.)
+                msg["content"] = markdown.markdown(msg.get("content", ""))
                 filtered_messages.append(msg)
 
         return jsonify(filtered_messages)
@@ -1570,6 +1572,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
