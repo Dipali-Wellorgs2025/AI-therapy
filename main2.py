@@ -738,7 +738,7 @@ REPLY FORMAT RULES:
 6. Use 1–2 emojis max.
 7. Ask one thoughtful follow-up question unless the user is overwhelmed.
 8. Use bold italic only with three asterisks.
-9. 
+
 """
 
 
@@ -755,24 +755,17 @@ Recent messages:
 
 Respond in a self-contained, complete way:
 """
-    
+
     # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
-        # Fix punctuation spacing first
-        text = re.sub(r'([,.!?;:])(?=[^\s])', r'\1 ', text)  # Add space after punctuation
-        text = re.sub(r'([,.!?;:])\s+', r'\1 ', text)  # Normalize spaces after punctuation
-    
-        # Normalize markdown formatting
-        text = re.sub(r'(\*{1,3})([^*]+?)\1', r'**\2**', text)
-    
-        # Add space around emojis
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧🟡️💤])'
-        text = re.sub(r'(\S)' + emoji_pattern, r'\1 \2', text)  # Space before emoji
-        text = re.sub(emoji_pattern + r'(\S)', r'\1 \2', text)  # Space after emoji
-    
-        # Clean up whitespace
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)  # Remove spaces before punctuation
-        text = re.sub(r'\s{2,}', ' ', text)  # Reduce multiple spaces
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
         return text.strip()
 
     
@@ -794,30 +787,31 @@ Respond in a self-contained, complete way:
             )
 
             yield "\n\n"
-            # yield ""
+            yield ""
             buffer = ""
             final_reply = ""
-            punctuation_set = set(',.!?:;')
-            last_char= None
-            # first_token = True
- 
+            first_token = True
+            import re
+            def clean_text(text):
+                return re.sub(r'([,.!?])(?=\w)', r'\1 ', text) 
+
             for chunk in response_stream:
               delta = chunk.choices[0].delta
               if delta and delta.content:
                 token = delta.content
                 final_reply += token
                 buffer += token
- 
-                # Flush buffer on natural break points
-                if token in [".", "!", "?", ",", " ", "\n"] and len(buffer.strip()) > 1:
-                   formatted_chunk = format_response_with_emojis(buffer)
-                   yield formatted_chunk
-                   buffer = ""
-                
+                if first_token:
+                    first_token = False
+                    continue
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 1:
+                    yield format_response_with_emojis(clean_text(buffer)) + " "
+                    # yield buffer
+                    buffer = ""
+
             if buffer.strip():
-              formatted_chunk = format_response_with_emojis(buffer)
+              yield format_response_with_emojis(buffer)
                 # yield buffer
-              yield formatted_chunk
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -856,7 +850,6 @@ Respond in a self-contained, complete way:
            import traceback
            traceback.print_exc()
            yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-
 
         
 def get_session_context(session_id: str, user_name: str, issue_description: str, preferred_style: str):
@@ -1578,6 +1571,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
