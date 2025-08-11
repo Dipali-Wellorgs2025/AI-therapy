@@ -772,7 +772,10 @@ Respond in a self-contained, complete way:
         return text.strip()
 
     def clean_text(text):
-        return re.sub(r'([,.!?])(?=\S)', r'\1 ', text)
+        text = re.sub(r'\*\*(.*?)\*\*', r'@@BOLD\1@@', text)
+        text = re.sub(r'([,.!?])(?=\S)', r'\1 ', text)
+        text = re.sub(r'@@BOLD(.*?)@@', r'**\1**', text)
+        return text
 
     MAX_RETRIES = 2
     RETRY_DELAY = 1
@@ -806,7 +809,7 @@ Respond in a self-contained, complete way:
                         first_token = False
                         continue
 
-                    if token in [".", "!", "?", ","]:
+                    if token in [".", "!", "?", ","," "]:
                         last_was_punct = True
                         continue
 
@@ -1572,6 +1575,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
