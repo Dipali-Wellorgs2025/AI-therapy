@@ -759,23 +759,32 @@ Recent messages:
 Respond in a self-contained, complete way:
 """
     
-    # ✅ Clean, safe formatter
-    def format_response_with_emojis(text):
-        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
-        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
-        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
-        text = re.sub(r'\s{2,}', ' ', text)
-        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
-        return text.strip()
+    import re
 
-    def clean_text(text):
-        text = re.sub(r'\*\*(.*?)\*\*', r'@@BOLD\1@@', text)
-        text = re.sub(r'([,.!?])(?=\S)', r'\1 ', text)
-        text = re.sub(r'@@BOLD(.*?)@@', r'**\1**', text)
-        return text
+    # ✅ One unified cleaner + formatter
+    def format_response_with_emojis(text):
+       # Temporarily protect bold markdown
+       text = re.sub(r'\*\*(.*?)\*\*', r'@@BOLD\1@@', text)
+  
+       # Emoji spacing
+       emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+       text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+       text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+
+       # Remove spaces before punctuation
+       text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+
+       # Ensure space after punctuation
+       text = re.sub(r'([.,!?;:])(?=\S)', r'\1 ', text)
+
+       # Collapse multiple spaces
+       text = re.sub(r'\s{2,}', ' ', text)
+
+       # Restore bold markdown
+       text = re.sub(r'@@BOLD(.*?)@@', r'**\1**', text)
+
+       return text.strip()
+
 
     MAX_RETRIES = 2
     RETRY_DELAY = 1
@@ -1575,6 +1584,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
