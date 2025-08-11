@@ -1097,24 +1097,13 @@ def get_history():
         if not doc.exists:
             return jsonify([])
 
-        all_messages = doc.to_dict().get("messages", [])
-        filtered_messages = []
+        messages = [
+            {**msg, "content": markdown.markdown(msg.get("content", ""))}
+            for msg in doc.to_dict().get("messages", [])
+            if msg.get("timestamp") and parser.parse(msg["timestamp"]) > last_end_dt
+        ]
 
-        for msg in all_messages:
-            ts_str = msg.get("timestamp")
-            if not ts_str:
-                continue
-            try:
-                msg_dt = parser.parse(ts_str)
-            except Exception:
-                continue
-
-            if msg_dt > last_end_dt:
-                # Convert markdown to HTML (bold, italic, etc.)
-                msg["content"] = markdown.markdown(msg.get("content", ""))
-                filtered_messages.append(msg)
-
-        return jsonify(filtered_messages)
+        return jsonify(messages) if doc.exists else jsonify([])
 
     except Exception as e:
         print("History error:", e)
@@ -1571,6 +1560,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
