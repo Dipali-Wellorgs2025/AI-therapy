@@ -613,10 +613,10 @@ def format_response_with_emojis(text):
         r'`[^`]*`',                   # inline code
         r'!\[[^\]]*\]\([^\)]*\)',     # images
         r'\[[^\]]*\]\([^\)]*\)',      # links
-        r'\*\*[^*]*\*\*',             # **bold**
-        r'__[^_]*__',                 # __bold__
-        r'\*[^*]*\*',                 # *italic*
-        r'_[^_]*_'                    # _italic_
+        r'\*\*[^*]+\*\*',             # **bold**
+        r'__[^_]+__',                 # __bold__
+        r'\*[^*]+\*',                 # *italic*
+        r'_[^_]+_'                    # _italic_
     ]
     combined = '(' + '|'.join(md_patterns) + ')'
 
@@ -628,17 +628,17 @@ def format_response_with_emojis(text):
     # Protect markdown spans
     safe = re.sub(combined, _protect, text, flags=re.DOTALL)
 
-    # Emoji list (same as yours)
+    # Emoji list
     emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
 
     # 1) Remove spaces before punctuation (e.g. "word , " -> "word,")
     safe = re.sub(r'\s+([.,!?;:])', r'\1', safe)
 
-    # 2) Ensure space after punctuation if it's immediately followed by a non-space,
-    #    but avoid adding inside closing markdown characters (]), ), }, quotes, * or backtick.
+    # 2) Ensure space after punctuation if followed by a non-space
+    #    Avoid touching immediately after *, _, `, or ]/)/} which are often in markdown.
     safe = re.sub(r'([.,!?;:])(?=[^\s\]\)\}\>\'\"\*\`])', r'\1 ', safe)
 
-    # 3) Add spaces around emojis (but emojis inside placeholders were protected)
+    # 3) Add spaces around emojis
     safe = re.sub(r'(?<!\s)'+emoji_pattern, r' \1', safe)
     safe = re.sub(emoji_pattern+r'(?!\s)', r'\1 ', safe)
 
@@ -669,11 +669,11 @@ def appears_unbalanced(s):
 
     # bold/italic heuristics: check '**' and single '*' counts (approx)
     if s.count('**') % 2 != 0: return True
-    # count single * after removing all '**' groups
     singles = s.replace('**', '')
     if singles.count('*') % 2 != 0: return True
 
     return False
+
 
 
 def handle_message(data):
@@ -1642,6 +1642,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
