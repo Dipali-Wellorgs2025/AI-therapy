@@ -600,12 +600,84 @@ def is_gibberish(user_msg: str) -> bool:
     # If more than 60% words are gibberish
     return gibberish_count / len(words) > 0.6
 
+import re
+
+def format_response_with_emojis(text):
+    """
+    Protect markdown spans, fix spacing (punctuation & emojis) on the rest,
+    then restore markdown so we don't break bold/italic/code/link syntax.
+    """
+    # Patterns to protect (non-greedy / DOTALL for codeblocks)
+    md_patterns = [
+        r'```[\s\S]*?```',            # code blocks
+        r'`[^`]*`',                   # inline code
+        r'!\[[^\]]*\]\([^\)]*\)',     # images
+        r'\[[^\]]*\]\([^\)]*\)',      # links
+        r'\*\*[^*]*\*\*',             # **bold**
+        r'__[^_]*__',                 # __bold__
+        r'\*[^*]*\*',                 # *italic*
+        r'_[^_]*_'                    # _italic_
+    ]
+    combined = '(' + '|'.join(md_patterns) + ')'
+
+    placeholders = []
+    def _protect(m):
+        placeholders.append(m.group(0))
+        return f'<<<MD{len(placeholders)-1}>>>'
+
+    # Protect markdown spans
+    safe = re.sub(combined, _protect, text, flags=re.DOTALL)
+
+    # Emoji list (same as yours)
+    emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+
+    # 1) Remove spaces before punctuation (e.g. "word , " -> "word,")
+    safe = re.sub(r'\s+([.,!?;:])', r'\1', safe)
+
+    # 2) Ensure space after punctuation if it's immediately followed by a non-space,
+    #    but avoid adding inside closing markdown characters (]), ), }, quotes, * or backtick.
+    safe = re.sub(r'([.,!?;:])(?=[^\s\]\)\}\>\'\"\*\`])', r'\1 ', safe)
+
+    # 3) Add spaces around emojis (but emojis inside placeholders were protected)
+    safe = re.sub(r'(?<!\s)'+emoji_pattern, r' \1', safe)
+    safe = re.sub(emoji_pattern+r'(?!\s)', r'\1 ', safe)
+
+    # 4) Collapse repeated spaces
+    safe = re.sub(r'\s{2,}', ' ', safe).strip()
+
+    # Restore markdown placeholders
+    def _restore(m):
+        idx = int(m.group(1))
+        return placeholders[idx]
+    result = re.sub(r'<<<MD(\d+)>>>', _restore, safe)
+
+    return result
+
+
+def appears_unbalanced(s):
+    """
+    Heuristic checks for obviously unbalanced markdown in a buffer.
+    If any of these are True, we should NOT emit this chunk yet while streaming.
+    """
+    # backticks
+    if s.count('```') % 2 != 0: return True
+    if s.count('`') % 2 != 0: return True
+
+    # brackets / parens
+    if s.count('[') != s.count(']'): return True
+    if s.count('(') != s.count(')'): return True
+
+    # bold/italic heuristics: check '**' and single '*' counts (approx)
+    if s.count('**') % 2 != 0: return True
+    # count single * after removing all '**' groups
+    singles = s.replace('**', '')
+    if singles.count('*') % 2 != 0: return True
+
+    return False
 
 
 def handle_message(data):
     import re
-    import time
-    import traceback
     from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
@@ -631,12 +703,7 @@ def handle_message(data):
     ]
 
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield (
-            "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
-            "For technical questions about training algorithms, system architecture, or development-related topics, "
-            "please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you. 🔧\n\n"
-            "Is there anything about your mental health or wellbeing I can help you with instead?"
-        )
+        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
@@ -646,7 +713,6 @@ def handle_message(data):
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
-
     if is_gibberish(user_msg):
         yield "Sorry, I didn't get that. Could you please rephrase? 😊"
         return
@@ -711,6 +777,7 @@ IS_GENERIC: [yes/no]
             yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
             return
 
+    # ✅ Fixed access to bot_prompt
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
     bot_prompt = bot_prompt_dict.get("prompt", "") if isinstance(bot_prompt_dict, dict) else str(bot_prompt_dict)
 
@@ -727,8 +794,6 @@ You are {current_bot}, a specialized mental health support bot.
 
 CORE PRINCIPLES:
 - Be **warm, empathetic, and comprehensive**
-- Be a friendly therapist: start with greetings, then ask about issues, try to help like a human would.
-- Don't use robotic tone
 - Provide **independent, complete support**
 - Use **natural flow** with appropriate emojis
 - NEVER include stage directions like (inhale) or (smiles)
@@ -741,11 +806,11 @@ REPLY FORMAT RULES:
 2. Never repeat or rephrase the user's message.
 3. Do not start with quotation marks or “You said…”.
 4. Write 3–5 sentences in a natural tone.
-5. Use bold only with double or four asterisks.
+5. Use bold only with double asterisks.
 6. Use 1–2 emojis max.
 7. Ask one thoughtful follow-up question unless the user is overwhelmed.
-8. Use bold italic only with three asterisks.
 """
+
 
     prompt = f"""{guidance}
 
@@ -754,106 +819,69 @@ REPLY FORMAT RULES:
 Recent messages:
 {recent}
 
+
+
 {context_note}
 
 Respond in a self-contained, complete way:
 """
-    
-    import re
-    
 
-    def fix_markdown_bold_spacing(text):
-       # Fix missing spaces after opening bold **
-       text = re.sub(r'\*\*(\S)', r'** \1', text)
-    
-       # Fix missing spaces before closing bold **
-       # This is optional, usually no space before closing **
-       # but if you want to enforce no space before closing:
-       text = re.sub(r'(\S)\*\*', r'\1**', text)
-    
-       # Fix unclosed bold pairs by adding closing ** at end if odd count
-       count = text.count('**')
-       if count % 2 != 0:
-          text += '**'  # Add closing bold at end if missing
-    
-       return text
-    # ✅ One unified cleaner + formatter
+    # ✅ Clean, safe formatter
     def format_response_with_emojis(text):
-       text = fix_markdown_bold_spacing(text)
-       # You can add your emoji spacing and punctuation rules here
-       emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
-       text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
-       text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
-  
+        
+        text = re.sub(r'\*{1,2}["“”]?(.*?)["“”]?\*{1,2}', r'**\1**', text)
+        emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
+        text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
+        text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+        text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
 
-
-       # Remove spaces before punctuation
-       
-       text = re.sub(r'\s+([.,!?;:])', r'\1', text)
-
-
-       # Ensure space after punctuation
-       # Ensure space after punctuation — but NOT between ** and punctuation
-       text = re.sub(r'([.,!?;:])(?!\s)', r'\1 ', text)
-
-       # Collapse multiple spaces
-       text = re.sub(r'\s{2,}', ' ', text)
-
-       
-
-       return text.strip()
-
+    
+    import time
 
     MAX_RETRIES = 2
-    RETRY_DELAY = 1
+    RETRY_DELAY = 1  # seconds
 
     for attempt in range(MAX_RETRIES):
-        try:
+          try:
             response_stream = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.6,
-                max_tokens=500,
-                presence_penalty=0.5,
-                frequency_penalty=0.3,
-                stream=True
+              model="deepseek-chat",
+              messages=[{"role": "user", "content": prompt}],
+              temperature=0.6,
+              max_tokens=500,
+              presence_penalty=0.5,
+              frequency_penalty=0.3,
+              stream=True
             )
 
             yield "\n\n"
+            yield ""
             buffer = ""
             final_reply = ""
             first_token = True
-            last_was_punct = False
 
             for chunk in response_stream:
-                delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    token = delta.content
-                    final_reply += token
-                    buffer += token
-
-                    if first_token:
-                        first_token = False
-                        continue
-
-                    if token in [".", "!", "?", ","," "]:
-                        last_was_punct = True
-                        continue
-
-                    if token == " " and last_was_punct:
-                        buffer = buffer[:-len(token)] + " " + token
-                        yield format_response_with_emojis(buffer) + " "
-                        buffer = ""
-                        last_was_punct = False
-                        continue
-
-                    if last_was_punct:
-                        yield format_response_with_emojis(buffer)
-                        buffer = ""
-                        last_was_punct = False
-
+              delta = chunk.choices[0].delta
+              if delta and delta.content:
+                token = delta.content
+                buffer += token
+                final_reply += token
+                if first_token:
+                    first_token = False
+                    continue
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 12:
+                  if not appears_unbalanced(buffer):
+                    yield format_response_with_emojis(buffer) + " "
+                    # yield buffer
+                    buffer = ""
+                  else:
+                      continue
             if buffer.strip():
-                yield format_response_with_emojis(buffer)
+              yield format_response_with_emojis(buffer)
+                # yield buffer
 
             final_reply_cleaned = format_response_with_emojis(final_reply)
 
@@ -883,14 +911,16 @@ Respond in a self-contained, complete way:
                 "last_topic_confidence": confidence
             }, merge=True)
 
-            break
+            break  # success, so exit retry loop
 
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_DELAY)
-                continue
-            traceback.print_exc()
-            yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+          except Exception as e:
+           if attempt < MAX_RETRIES - 1:
+            time.sleep(RETRY_DELAY)
+            continue
+           import traceback
+           traceback.print_exc()
+           yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
+
 
 
         
@@ -1612,6 +1642,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
