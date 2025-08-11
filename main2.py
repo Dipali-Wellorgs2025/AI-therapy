@@ -603,6 +603,7 @@ def is_gibberish(user_msg: str) -> bool:
 
 def handle_message(data):
     import re
+    import time
     from datetime import datetime, timezone
 
     user_msg = data.get("message", "")
@@ -628,16 +629,25 @@ def handle_message(data):
     ]
 
     if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-        yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. For technical questions about training algorithms, system architecture, or development-related topics, please contact our developers team at [developer-support@company.com]. They'll be better equipped to help you with these technical concerns. 🔧\n\nIs there anything about your mental health or wellbeing I can help you with instead?"
+        yield (
+            "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+            "For technical questions about training algorithms, system architecture, or development-related topics, "
+            "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
+            "Is there anything about your mental health or wellbeing I can help you with instead?"
+        )
         return
 
     if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-        yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+        yield (
+            "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you "
+            "or you can reach out to our SOS services. You're not alone in this. 💙"
+        )
         return
 
     if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
         yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
         return
+
     if is_gibberish(user_msg):
         yield "Sorry, I didn't get that. Could you please rephrase? 😊"
         return
@@ -699,7 +709,10 @@ IS_GENERIC: [yes/no]
     if category and category != "general" and category in TOPIC_TO_BOT:
         correct_bot = TOPIC_TO_BOT[category]
         if confidence == "high" and not is_generic and not wants_to_stay and correct_bot != current_bot:
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            yield (
+                f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area "
+                f"and can provide more targeted support. Would you like to switch? 🔄"
+            )
             return
 
     bot_prompt_dict = BOT_PROMPTS.get(current_bot, {})
@@ -711,7 +724,10 @@ IS_GENERIC: [yes/no]
     filled_prompt = re.sub(r"\{\{.*?\}\}", "", filled_prompt)
 
     recent = "\n".join(f"{m['sender']}: {m['message']}" for m in ctx["history"][-6:]) if ctx["history"] else ""
-    context_note = "Note: User prefers lighter conversation - keep response supportive but not too deep." if skip_deep else ""
+    context_note = (
+        "Note: User prefers lighter conversation - keep response supportive but not too deep."
+        if skip_deep else ""
+    )
 
     guidance = f"""
 You are {current_bot}, a specialized mental health support bot.
@@ -742,14 +758,10 @@ REPLY FORMAT RULES:
 Recent messages:
 {recent}
 
-
-
 {context_note}
 
 Respond in a self-contained, complete way:
 """
-
-    import time
 
     MAX_RETRIES = 2
     RETRY_DELAY = 1  # seconds
@@ -766,27 +778,31 @@ Respond in a self-contained, complete way:
                 stream=True
             )
 
+            # --- OOM-safe streaming ---
             yield "\n\n"
-            yield ""
             buffer = ""
-            final_reply = ""
+            reply_parts = []  # for final logging only
             first_token = True
 
             for chunk in response_stream:
                 delta = chunk.choices[0].delta
                 if delta and delta.content:
                     token = delta.content
-                    buffer += token
-                    final_reply += token
+                    reply_parts.append(token)  # store for final reply later
+
                     if first_token:
                         first_token = False
                         continue
+
+                    buffer += token
                     if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
                         yield buffer
                         buffer = ""
 
             if buffer.strip():
                 yield buffer
+
+            final_reply = "".join(reply_parts)
 
             now = datetime.now(timezone.utc).isoformat()
             ctx["history"].append({
@@ -814,7 +830,7 @@ Respond in a self-contained, complete way:
                 "last_topic_confidence": confidence
             }, merge=True)
 
-            break  # success, so exit retry loop
+            break  # success
 
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
@@ -1544,6 +1560,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
