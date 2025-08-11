@@ -12,10 +12,30 @@ combined_progress_bp = Blueprint('combined_progress', __name__)
 # ---------------- Helper: Get today's mood check-in count ----------------
 def get_today_mood_checkins(user_id):
     db = firestore.client()
-    today_str = date.today().strftime("%d-%m-%Y")  # Match Firestore's date format
     checkins_ref = db.collection("recent-checkin")
-    docs = checkins_ref.where("uid", "==", user_id).where("date", "==", today_str).stream()
-    return sum(1 for _ in docs)
+
+    # Start and end of today in UTC
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_end = datetime.combine(date.today(), datetime.max.time())
+
+    # Query for Timestamp-type date fields
+    timestamp_docs = checkins_ref.where("uid", "==", user_id) \
+        .where("date", ">=", today_start) \
+        .where("date", "<=", today_end) \
+        .stream()
+
+    count = sum(1 for _ in timestamp_docs)
+
+    # If no Timestamp matches, try string date format "dd-mm-yyyy"
+    if count == 0:
+        today_str = date.today().strftime("%d-%m-%Y")
+        string_docs = checkins_ref.where("uid", "==", user_id) \
+            .where("date", "==", today_str) \
+            .stream()
+        count = sum(1 for _ in string_docs)
+
+    return count
+
 
 # ---------------- API Route ----------------
 @combined_progress_bp.route('/progress/combined', methods=['GET'])
