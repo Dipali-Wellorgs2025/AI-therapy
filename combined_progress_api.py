@@ -106,7 +106,7 @@ def get_combined_progress():
         "times_showed_up": total_sessions,
         "time_for_yourself": f"{total_hours}h",
         "day_streak": hj_day_streak,
-        "mood_checkins": "mood_checkins"
+        "mood_checkins": mood_checkins
     }
 
     # --- Milestones logic ---
