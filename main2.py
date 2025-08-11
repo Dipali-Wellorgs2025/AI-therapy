@@ -765,6 +765,7 @@ Respond in a self-contained, complete way:
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'([.,!?;:])\s*', r'\1 ', text)
         return text.strip()
 
     
@@ -1570,6 +1571,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
