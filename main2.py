@@ -654,28 +654,6 @@ def format_response_with_emojis(text):
     return result
 
 
-def appears_unbalanced(s):
-    """
-    Heuristic checks for obviously unbalanced markdown in a buffer.
-    If any of these are True, we should NOT emit this chunk yet while streaming.
-    """
-    # backticks
-    if s.count('```') % 2 != 0: return True
-    if s.count('`') % 2 != 0: return True
-
-    # brackets / parens
-    if s.count('[') != s.count(']'): return True
-    if s.count('(') != s.count(')'): return True
-
-    # bold/italic heuristics: check '**' and single '*' counts (approx)
-    if s.count('**') % 2 != 0: return True
-    singles = s.replace('**', '')
-    if singles.count('*') % 2 != 0: return True
-
-    return False
-
-
-
 def handle_message(data):
     import re
     from datetime import datetime, timezone
@@ -833,10 +811,13 @@ Respond in a self-contained, complete way:
         emoji_pattern = r'([🌱💙✨🧘‍♀️💛🌟🔄💚🤝💜🌈😔😩☕🚶‍♀️🎯💝🌸🦋💬💭🔧])'
         text = re.sub(r'([^\s])' + emoji_pattern, r'\1 \2', text)
         text = re.sub(emoji_pattern + r'([^\s])', r'\1 \2', text)
+        text = re.sub(r'([.,!?;:])(?=[^\s\]\)\}\>\'\"\*\`])', r'\1 ', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s+([.,!?;:])', r'\1', text)
         text = re.sub(r'([.,!?;:])([^\s])', r'\1 \2', text)
         text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'([.,!?;:])(\*\*)', r'\1 \2', text)
+        text = re.sub(r'(\*\*)([.,!?;:])', r'\1 \2', text)
         return text.strip()
 
     
@@ -872,13 +853,11 @@ Respond in a self-contained, complete way:
                 if first_token:
                     first_token = False
                     continue
-                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 12:
-                  if not appears_unbalanced(buffer):
+                if token in [".", "!", "?", ",", " "] and len(buffer.strip()) > 10:
                     yield format_response_with_emojis(buffer) + " "
                     # yield buffer
                     buffer = ""
-                  else:
-                      continue
+
             if buffer.strip():
               yield format_response_with_emojis(buffer)
                 # yield buffer
@@ -920,7 +899,6 @@ Respond in a self-contained, complete way:
            import traceback
            traceback.print_exc()
            yield "I'm having a little trouble right now. Let's try again in a moment – I'm still here for you. 💙"
-
 
 
         
@@ -1642,6 +1620,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
