@@ -1988,7 +1988,7 @@ def journal_list():
     if not uid:
         return jsonify([])
 
-    db = firestore.client()
+    
     journals = db.collection('journals')\
                  .where('uid', '==', uid)\
                  .order_by('timestamp', direction=firestore.Query.DESCENDING)\
@@ -2172,6 +2172,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
