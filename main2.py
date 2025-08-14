@@ -554,7 +554,7 @@ ESCALATION_TERMS = [
 ]
 # Constants
 OUT_OF_SCOPE_TOPICS = ["addiction", "suicide", "overdose", "bipolar", "self-harm","acidity"]
-TECH_KEYWORDS = ["algorithm", "training", "parameters", "architecture", "how are you trained"]
+TECH_ = ["algorithm", "training", "parameters", "architecture", "how are you trained"]
 FREE_SESSION_LIMIT = 2
 
 # Bot configurations
@@ -597,8 +597,8 @@ BOT_MAP = {
     "family": "Ava",
     "trauma": "Phoenix",
 }
-#--------------------------BOT KEYWORDS--------------------------
-BOT_KEYWORDS = {
+#--------------------------BOT --------------------------
+BOT_ = {
     "Sage": [  # Anxiety
         "anxiety", "panic", "panic attack", "nervous", "worry", "overthinking", "stress", "uneasy",
         "fear", "restless", "tension", "pressure", "apprehensive", "can't relax", "overwhelmed",
@@ -710,7 +710,7 @@ BOT_KEYWORDS = {
 KEYWORD_RESPONSES = {
     # Greetings
     "greeting": {
-        "keywords": ["hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon", "good evening"],
+        "": ["hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon", "good evening"],
         "responses": [
             "Hello! How are you feeling today? 😊",
             "Hey there! What's on your mind? 💙",
@@ -720,7 +720,7 @@ KEYWORD_RESPONSES = {
     },
     # Farewells
     "farewell": {
-        "keywords": ["bye", "goodbye", "see you", "talk later", "later"],
+        "": ["bye", "goodbye", "see you", "talk later", "later"],
         "responses": [
             "Goodbye! Take care and talk soon. 💙",
             "See you later! Remember, I'm always here if you want to chat. 🌟",
@@ -730,7 +730,7 @@ KEYWORD_RESPONSES = {
     },
     # Thank you / appreciation
     "thanks": {
-        "keywords": ["thanks", "thank you", "thx", "ty"],
+        "": ["thanks", "thank you", "thx", "ty"],
         "responses": [
             "You're welcome! Glad I could help. 😊",
             "Anytime! I'm here for you. 💙",
@@ -740,7 +740,7 @@ KEYWORD_RESPONSES = {
     },
     # Encouragement / positivity
     "encourage": {
-        "keywords": ["i can't", "i failed", "hard", "struggle", "tough"],
+        "": ["i can't", "i failed", "hard", "struggle", "tough"],
         "responses": [
             "It's okay to struggle sometimes. You're doing your best! 💪",
             "Challenges are normal. Let's figure this out together. 🌟",
@@ -750,7 +750,7 @@ KEYWORD_RESPONSES = {
     },
     # Check-in
     "checkin": {
-        "keywords": ["how are you", "how's it going", "how do you feel"],
+        "": ["how are you", "how's it going", "how do you feel"],
         "responses": [
             "I'm here to focus on you. How are you really feeling today? 💙",
             "I appreciate you asking! Right now, I want to hear about you. 🌟",
@@ -759,7 +759,7 @@ KEYWORD_RESPONSES = {
     },
     # Self-care
     "selfcare": {
-        "keywords": ["tired", "exhausted", "burned out", "overwhelmed", "stressed"],
+        "": ["tired", "exhausted", "burned out", "overwhelmed", "stressed"],
         "responses": [
             "It sounds like you might need some self-care. Have you taken time for yourself today? 💙",
             "When we feel this way, even small breaks can help. What helps you recharge? 🌟",
@@ -768,7 +768,7 @@ KEYWORD_RESPONSES = {
     },
     # Help requests
     "help": {
-        "keywords": ["help me", "what should i do", "i need help", "advice"],
+        "": ["help me", "what should i do", "i need help", "advice"],
         "responses": [
             "I'm here to help. Can you tell me more about what's troubling you? 💙",
             "Let's work through this together. What's the main challenge you're facing? 🌟",
@@ -1070,41 +1070,33 @@ def markov_generate_response(bot_name, user_input, max_length=150):
         return get_contextual_fallback(user_input)
 
 def detect_category_with_keywords(text):
-    """Detect category using weighted keyword matching"""
+    """
+    Strict single-keyword category detection
+    Returns: (category, confidence_score) where confidence is 1.0 for matches or 0.0 for no match
+    """
     if not text or not isinstance(text, str):
         return None, 0.0
         
-    text_lower = text.lower()
-    category_scores = {category: 0 for category in CATEGORIES}
+    text_lower = f" {text.lower()} "  # Add spaces for exact matching
     
-    # Crisis has highest priority
-    crisis_matches = sum(
-        2 if ' ' in kw else 1
-        for kw in BOT_KEYWORDS["Raya"] 
-        if f' {kw} ' in f' {text_lower} '
-    )
-    if crisis_matches >= 1:
-        return "crisis", min(1.0, crisis_matches * 0.4)
+    # 1. Crisis detection (absolute priority)
+    for keyword in BOT_KEYWORDS["Raya"]:
+        if f" {keyword} " in text_lower:
+            return "crisis", 1.0  # Immediate high confidence
     
-    # Score other categories
+    # 2. Check other categories
     for category in CATEGORIES:
         if category == "crisis":
             continue
             
         bot_name = BOT_MAP[category]
         for keyword in BOT_KEYWORDS[bot_name]:
-            weight = 2.0 if ' ' in keyword else 1.0
-            if f' {keyword} ' in f' {text_lower} ':
-                category_scores[category] += weight
-    
-    best_category = max(CATEGORIES, key=lambda x: category_scores[x])
-    max_score = category_scores[best_category]
-    
-    if max_score >= 2.0:
-        confidence = min(max_score / 4.0, 1.0)
-        return best_category, confidence
+            if f" {keyword} " in text_lower:
+                return category, 1.0  # Return first match with high confidence
     
     return None, 0.0
+
+
 
 def is_gibberish(user_msg):
     """Detect nonsensical input"""
@@ -1165,10 +1157,9 @@ def newstream():
 
                 # Bot switching logic
                 category, confidence = detect_category_with_keywords(user_msg)
-                if category and confidence >= 0.6:
-                    correct_bot = BOT_MAP.get(category, "Ava")
-                    if correct_bot != current_bot:
-                        yield f"I notice you're talking about {category}-related concerns. "
+                if confidence == 1.0 and BOT_MAP.get(category) != current_bot:
+                    correct_bot = BOT_MAP[category]
+                    yield f"I notice you're talking about {category}-related concerns. "
                         f"**{correct_bot}** has more expertise in this area. "
                         f"Would you like me to connect you with {correct_bot}? (Yes/No)"
                         return
@@ -2172,6 +2163,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
