@@ -705,20 +705,6 @@ BOT_KEYWORDS = {
 
 
 
-# ------------------ Bot Configuration ------------------
-CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
-BOT_MAP = {
-    "anxiety": "Sage",
-    "couples": "Jordan",
-    "crisis": "Raya",
-    "depression": "River",
-    "family": "Ava",
-    "trauma": "Phoenix",
-}
-
-
-
-
 
 # ------------------ Enhanced Keyword Responses ------------------
 KEYWORD_RESPONSES = {
@@ -836,178 +822,309 @@ def stream_response(reply):
             yield chunk + " "
 
 def get_bot_responses():
-    """Fetch bot responses from GitHub or cache"""
+    """Fetch bot responses from GitHub or cache with enhanced error handling and logging"""
     with CACHE_LOCK:
         if not BOT_RESPONSES_CACHE:
             try:
-                resp = requests.get(GITHUB_JSON_URL, timeout=10)
-                resp.raise_for_status()
-                data = resp.json()
-                BOT_RESPONSES_CACHE.update({
-                    bot["name"]: bot["conversations"] 
-                    for bot in data.get("bots", [])
-                })
+                # Add headers to prevent rate limiting
+                headers = {
+                    'User-Agent': 'MentalHealthBot/1.0',
+                    'Accept': 'application/vnd.github.v3+json'
+                }
                 
-                # Enhanced Markov model initialization
-                for bot_name, conversations in BOT_RESPONSES_CACHE.items():
-                    training_text = "\n".join([
-                        msg["content"].strip()
-                        for msg in conversations 
-                        if (msg["role"] == "assistant" and 
-                            len(msg["content"].split()) > 3)
-                    ])
-                    MARKOV_MODELS[bot_name] = markovify.Text(
-                        training_text,
-                        state_size=2,
-                        well_formed=False,
-                        reject_reg=r'^(?:%s)' % '|'.join([
-                            r'\W+$',
-                            r'^[^A-Z]'
-                        ])
-                    )
+                resp = requests.get(GITHUB_JSON_URL, headers=headers, timeout=15)
+                resp.raise_for_status()
+                
+                try:
+                    data = resp.json()
+                except ValueError as e:
+                    print(f"[ERROR] Invalid JSON received: {e}")
+                    return BOT_RESPONSES_CACHE
+                
+                # Validate data structure before processing
+                if not isinstance(data.get("bots"), list):
+                    print("[ERROR] Invalid data format: 'bots' key missing or not a list")
+                    return BOT_RESPONSES_CACHE
+                
+                # Process bot data with additional validation
+                for bot in data.get("bots", []):
+                    if not isinstance(bot, dict):
+                        continue
+                    bot_name = bot.get("name")
+                    conversations = bot.get("conversations", [])
                     
+                    if bot_name and isinstance(conversations, list):
+                        BOT_RESPONSES_CACHE[bot_name] = conversations
+                        
+                        # Enhanced Markov model initialization with better text filtering
+                        training_text = "\n".join([
+                            msg["content"].strip()
+                            for msg in conversations 
+                            if (msg.get("role") == "assistant" and 
+                                len(msg.get("content", "").split()) > 3 and
+                                len(msg.get("content", "")) < 200 and
+                                msg.get("content", "").endswith(('.', '?', '!'))
+                            )
+                        ])
+                        
+                        if training_text:
+                            try:
+                                MARKOV_MODELS[bot_name] = markovify.Text(
+                                    training_text,
+                                    state_size=2,
+                                    well_formed=False,
+                                    reject_reg=r'^(?:%s)' % '|'.join([
+                                        r'\W+$',
+                                        r'^[^A-Z]',
+                                        r'^(?:Yeah|Yes|No|Okay)\b',
+                                        r'^.{0,3}$'  # Reject very short sentences
+                                    ])
+                                )
+                            except Exception as model_error:
+                                print(f"[ERROR] Markov model creation failed for {bot_name}: {model_error}")
+                
+            except requests.exceptions.RequestException as e:
+                print(f"[NETWORK ERROR] Failed to fetch bot responses: {e}")
             except Exception as e:
-                print(f"[ERROR] Failed to load bot responses: {e}")
+                print(f"[UNEXPECTED ERROR] in get_bot_responses: {e}")
+                
         return BOT_RESPONSES_CACHE
 
-def find_best_response(bot_name, user_input, threshold=0.6):  # Increased threshold
-    """Find best matching response from bot's history"""
+def find_best_response(bot_name, user_input, threshold=0.65):  # Slightly increased threshold
+    """Find best matching response from bot's history with improved matching"""
     conversations = get_bot_responses().get(bot_name, [])
-    best_score, best_reply = 0, None
+    if not conversations:
+        return None
+        
+    best_score, best_reply = threshold, None  # Start at threshold to ensure minimum quality
+    user_input_clean = re.sub(r'[^\w\s]', '', user_input.lower())
     
     for i in range(0, len(conversations) - 1, 2):
-        if (conversations[i]["role"] == "user" and 
-            conversations[i+1]["role"] == "assistant"):
+        if not (conversations[i]["role"] == "user" and 
+                conversations[i+1]["role"] == "assistant"):
+            continue
             
-            score = SequenceMatcher(
-                None,
-                user_input.lower(),
-                conversations[i]["content"].lower()
-            ).ratio()
-            
-            if score > best_score:
-                best_score, best_reply = score, conversations[i+1]["content"]
+        # Clean the conversation input for better matching
+        conv_content = conversations[i].get("content", "")
+        conv_content_clean = re.sub(r'[^\w\s]', '', conv_content.lower())
+        
+        # Use both sequence matching and word overlap for better results
+        sequence_score = SequenceMatcher(
+            None,
+            user_input_clean,
+            conv_content_clean
+        ).ratio()
+        
+        # Calculate word overlap score
+        user_words = set(user_input_clean.split())
+        conv_words = set(conv_content_clean.split())
+        overlap_score = len(user_words & conv_words) / max(len(user_words), 1)
+        
+        # Combined score (weighted average)
+        combined_score = (sequence_score * 0.7) + (overlap_score * 0.3)
+        
+        if combined_score > best_score:
+            best_score = combined_score
+            best_reply = conversations[i+1].get("content")
     
     return best_reply if best_score >= threshold else None
 
 def validate_response(response, user_input):
-    """Ensure response meets quality standards"""
+    """Enhanced response validation with more quality checks"""
+    if not response or not isinstance(response, str):
+        return False
+        
+    # Clean the response for validation
+    response = response.strip()
     if not response:
         return False
         
+    # Length checks
     words = response.split()
-    if len(words) < 4 or len(words) > 25:
+    if len(words) < 4 or len(words) > 30:  # Slightly increased max length
         return False
         
+    # Punctuation and capitalization checks
     if not response[-1] in '.?!':
         return False
+    if not response[0].isupper():
+        return False
         
-    user_words = set(user_input.lower().split())
-    response_words = set(response.lower().split())
+    # Content quality checks
+    if any(bad_start in response.lower().split()[:3] for bad_start in 
+           ['um', 'uh', 'like', 'so', 'well']):
+        return False
+        
+    # Relevance check
+    user_words = set(re.sub(r'[^\w\s]', '', user_input.lower()).split())
+    response_words = set(re.sub(r'[^\w\s]', '', response.lower()).split())
     common_words = user_words & response_words
-    return len(common_words) >= 1
+    
+    # Require at least 1 common word or 2 common words for longer inputs
+    min_common = 1 if len(user_words) < 6 else 2
+    return len(common_words) >= min_common
 
 def get_contextual_fallback(user_input):
-    """Intelligent fallback based on context"""
+    """Improved contextual fallback with more categories and better responses"""
+    if not user_input or not isinstance(user_input, str):
+        return fake_response()
+        
     lower_input = user_input.lower()
     
-    family_words = ["mother", "father", "parent", "family", "mom", "dad"]
-    if any(word in lower_input for word in family_words):
-        return random.choice([
+    # Expanded category detection
+    categories = {
+        'family': ["mother", "father", "parent", "family", "mom", "dad", "sister", "brother"],
+        'relationships': ["partner", "boyfriend", "girlfriend", "husband", "wife", "dating", "relationship"],
+        'work': ["job", "work", "boss", "colleague", "career", "office"],
+        'school': ["school", "class", "teacher", "homework", "exam", "college"],
+        'emotions': ["feel", "feeling", "depressed", "anxious", "happy", "sad", "angry"]
+    }
+    
+    responses = {
+        'family': [
             "Family relationships can be complex. How does this make you feel?",
             "It sounds like this family situation is affecting you. Would you like to talk more?",
             "Family dynamics can be challenging. What would you like to see change?"
-        ])
-    
-    relationship_words = ["partner", "boyfriend", "girlfriend", "husband", "wife"]
-    if any(word in lower_input for word in relationship_words):
-        return random.choice([
+        ],
+        'relationships': [
             "Relationships can bring both joy and pain. Tell me more about this.",
-            "It sounds like this relationship is important to you. What are you feeling?",
+            "It sounds like this relationship is important to you. What are you feeling right now?",
             "How is this situation affecting you emotionally?"
-        ])
+        ],
+        'work': [
+            "Work situations can be stressful. What about this is most concerning to you?",
+            "It sounds like your work life is affecting you. Would you like to explore this further?",
+            "Work challenges can be difficult. What would be your ideal resolution?"
+        ],
+        'school': [
+            "School can create a lot of pressure. What aspect is most troubling you?",
+            "It sounds like your education situation is on your mind. Want to share more?",
+            "Academic challenges can feel overwhelming. What support would help you?"
+        ],
+        'emotions': [
+            "I hear you're feeling that way. Can you describe the feeling more?",
+            "Emotions can be powerful. Where do you feel this in your body?",
+            "That sounds like a significant feeling. How long have you felt this way?"
+        ]
+    }
     
+    # Detect category
+    detected_category = None
+    for category, keywords in categories.items():
+        if any(keyword in lower_input for keyword in keywords):
+            detected_category = category
+            break
+    
+    # Return category-specific response if found
+    if detected_category and detected_category in responses:
+        return random.choice(responses[detected_category])
+    
+    # Default fallback
     return fake_response()
 
-def markov_generate_response(bot_name, user_input, max_length=120):
-    """Generate more context-aware responses"""
+def markov_generate_response(bot_name, user_input, max_length=150):  # Slightly increased max length
+    """Enhanced Markov response generation with better context awareness"""
+    if not user_input or not isinstance(user_input, str):
+        return get_contextual_fallback(user_input)
+        
     try:
         model = MARKOV_MODELS.get(bot_name)
         if not model:
             return get_contextual_fallback(user_input)
             
+        # Extract relevant keywords with priority
         relevant_keywords = [
             kw for kw in BOT_KEYWORDS.get(bot_name, []) 
             if kw.lower() in user_input.lower()
         ]
         
-        for _ in range(10):
-            if relevant_keywords:
+        # Try with keywords first
+        if relevant_keywords:
+            for _ in range(5):  # Fewer tries to be faster
                 try:
+                    keyword = random.choice(relevant_keywords)
                     response = model.make_sentence_with_start(
-                        random.choice(relevant_keywords),
+                        keyword,
                         max_chars=max_length,
-                        tries=50,
-                        strict=False
+                        tries=30,
+                        strict=False,
+                        test_output=validate_response
                     )
                     if response and validate_response(response, user_input):
                         return response.capitalize()
-                except:
-                    pass
-            
-            response = model.make_sentence(
-                max_chars=max_length,
-                tries=50
-            )
-            if response and validate_response(response, user_input):
-                return response.capitalize()
+                except Exception as e:
+                    continue
+        
+        # Fallback to general generation with more attempts
+        for _ in range(15):
+            try:
+                response = model.make_sentence(
+                    max_chars=max_length,
+                    tries=30,
+                    test_output=lambda x: validate_response(x, user_input)
+                )
+                if response:
+                    return response.capitalize()
+            except Exception as e:
+                continue
                 
+        # Final fallback
         return get_contextual_fallback(user_input)
     except Exception as e:
-        print(f"[ERROR] Markov generation failed: {e}")
+        print(f"[ERROR] Markov generation failed: {str(e)}")
         return get_contextual_fallback(user_input)
+
+from difflib import SequenceMatcher
+import re
+
+def normalize_text(text):
+    """Lowercase, remove punctuation except emojis, collapse spaces."""
+    text = text.lower()
+    text = re.sub(r'[^\w\s\U0001F300-\U0001FAD6]', ' ', text)  # keep emojis
+    return re.sub(r'\s+', ' ', text).strip()
+
+def fuzzy_match(a, b, threshold=0.88):
+    """Check if two strings match above a given similarity."""
+    return SequenceMatcher(None, a, b).ratio() >= threshold
 
 def detect_category_with_keywords(text):
     """
-    Enhanced bot switching logic that:
-    1. First checks for direct bot name mentions
-    2. Then checks for category keywords
-    3. Uses weighted scoring for better accuracy
+    Classify message strictly using BOT_KEYWORDS:
+    - Exact matches (multi-word = 2 points)
+    - Fuzzy matches for typos
+    - Weighted scoring
     """
-    text_lower = text.lower()
-    
-    # 1. First check for direct bot name requests
-    for category, bot_name in BOT_MAP.items():
-        if f' {bot_name.lower()} ' in f' {text_lower} ':
-            return category, 1.0  # Highest confidence for direct requests
-    
-    # 2. Check for family terms (special case)
-    family_terms = ["mother", "father", "parent", "mom", "dad", "family", "sibling"]
-    if any(term in text_lower for term in family_terms):
-        return "family", 0.9  # High confidence for family
-    
-    # 3. Weighted keyword scoring for other categories
-    category_scores = {category: 0 for category in CATEGORIES}
-    
-    for category in CATEGORIES:
-        bot_name = BOT_MAP[category]
-        for keyword in BOT_KEYWORDS[bot_name]:
-            # Multi-word phrases get 2 points
-            if ' ' in keyword and keyword.lower() in text_lower:
-                category_scores[category] += 2
-            # Single keywords get 1 point
-            elif f' {keyword} ' in f' {text_lower} ':
-                category_scores[category] += 1
-    
+    text_norm = normalize_text(text)
+
+    category_scores = {category: 0 for category in BOT_KEYWORDS}
+    best_match_keyword = {category: None for category in BOT_KEYWORDS}
+
+    for bot_name, keywords in BOT_KEYWORDS.items():
+        for keyword in keywords:
+            keyword_norm = keyword.lower()
+
+            # Exact match (multi-word gets more weight)
+            if keyword_norm in text_norm:
+                score = 2 if ' ' in keyword_norm else 1
+                category_scores[bot_name] += score
+                best_match_keyword[bot_name] = keyword_norm
+                continue
+
+            # Fuzzy match for typos and variations
+            if fuzzy_match(keyword_norm, text_norm):
+                category_scores[bot_name] += 1
+                best_match_keyword[bot_name] = keyword_norm
+
+    # Pick the category with the highest score
     best_category = max(category_scores, key=category_scores.get)
     max_score = category_scores[best_category]
-    
-    # Only suggest if we found at least 2 strong indicators
+
     if max_score >= 2:
-        confidence = min(max_score / 3, 1.0)  # Normalize to 0-1 range
-        return best_category, confidence
-    
-    return None, 0.0
+        confidence = min(max_score / 3, 1.0)  # Normalize 0–1
+        return best_category, confidence, best_match_keyword[best_category]
+
+    return None, 0.0, None
+
 def is_gibberish(user_msg: str) -> bool:
     """Detect if the message is mostly gibberish"""
     words = user_msg.lower().strip().split()
@@ -2102,6 +2219,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
