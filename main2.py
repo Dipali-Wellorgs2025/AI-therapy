@@ -689,6 +689,25 @@ def check_keyword_responses(user_input):
     
     return None
 
+
+import re
+
+def is_gibberish(user_msg: str) -> bool:
+    """Detect if the message is mostly gibberish."""
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True  # Empty message considered gibberish
+
+    gibberish_count = 0
+    for word in words:
+        # Word is gibberish if no vowels OR 4+ consonants in a row
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+
+    # If more than 60% words are gibberish
+    return gibberish_count / len(words) > 0.6
+
+
 # ------------------ Updated Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
@@ -1743,6 +1762,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
