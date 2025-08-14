@@ -1154,8 +1154,7 @@ def newstream():
                     )
                     return
                 if any(term in lower_msg for term in ESCALATION_TERMS):
-                    yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you "
-                          "or you can reach out to our SOS services. You're not alone in this. 💙"
+                    yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
                     return
                 if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
                     yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
@@ -2173,6 +2172,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
