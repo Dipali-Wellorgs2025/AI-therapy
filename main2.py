@@ -818,13 +818,6 @@ from firebase_admin import firestore, initialize_app
 import markovify
 import traceback
 
-# Initialize Flask app
-app = Flask(__name__)
-
-# Initialize Firebase
-firebase_app = initialize_app()
-db = firestore.client()
-
 # ------------------ Global Configurations ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
 BOT_RESPONSES_CACHE = {}
@@ -2214,6 +2207,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
