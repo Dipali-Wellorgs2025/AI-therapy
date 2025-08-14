@@ -679,38 +679,31 @@ BOT_KEYWORDS = {
     ],
 
     "Raya": [  # Crisis
-        "crisis", "urgent", "help me", "emergency", "life or death", "immediately", "right now",
-        "can't take it", "critical", "hotline", "suicide", "danger", "self harm", "harm myself",
-        "overdose", "end it all", "can't go on", "need help now", "crisis line", "help right away",
-        "call for help", "rescue me", "save me", "at risk", "desperate", "cry for help",
-        "life threatening", "serious trouble", "unsafe", "need intervention", "mental crisis",
-        "physical crisis", "urgent care", "emergency help", "distress call", "panic emergency",
-        "crisis situation", "on the edge", "about to break", "final straw", "can't handle it",
-        "about to collapse", "breaking point", "imminent danger", "critical condition", "emergency support",
-        "seek help", "help urgently", "need immediate help", "call emergency", "immediate crisis",
-        "suicidal thoughts", "thinking of ending it", "thinking of dying", "no reason to live",
-        "self-destructive", "self injury", "severe distress", "emergency call", "need urgent advice",
-        "helpline", "call police", "call ambulance", "life in danger", "mental emergency", "severe emergency"
+        "crisis", "urgent", "need help", "need advice", "problem right now",
+        "serious issue", "big problem", "important", "critical", "high stress",
+        "overwhelmed", "meltdown", "can't handle this", "falling apart",
+        "breaking down", "about to break", "stressed out", "out of control",
+        "escalating", "can't think straight", "too much going on",
+        "spinning out", "under pressure", "time sensitive", "need guidance",
+        "need to talk", "need support", "trouble coping", "seriously stressed",
+        "need direction", "feeling trapped", "messy situation", "tough spot",
+        "hard time", "big trouble", "urgent matter", "falling behind",
+        "out of options", "backed into a corner", "can't decide", "torn",
+        "confused", "overloaded", "need clarity", "overthinking",
+        "high tension", "touchy situation", "complex problem", "problematic",
+        "feeling lost", "don't know what to do", "tricky situation",
+        "hard choice", "crossroads", "complicated", "feeling pressured",
+        "time running out", "quick decision", "conflict", "dispute",
+        "serious conversation", "sensitive matter", "strained relationship",
+        "communication breakdown", "tough call", "difficult choice",
+        "at a loss", "need urgent help", "fast moving situation",
+        "stressful moment", "need resolution", "pressing matter",
+        "heated moment", "stress overload", "need immediate advice"
     ]
 }
 
-# ------------------ Required Imports ------------------
-# ------------------ Required Imports ------------------
-import re
-import random
-import threading
-import requests
-from difflib import SequenceMatcher
-from datetime import datetime, timezone
-from flask import request, Response
-from firebase_admin import firestore, storage  # Added storage here
-import markovify
 
-# ------------------ Global Configurations ------------------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
-BOT_RESPONSES_CACHE = {}
-CACHE_LOCK = threading.Lock()
-MARKOV_MODELS = {}
+
 
 # ------------------ Bot Configuration ------------------
 CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
@@ -723,104 +716,9 @@ BOT_MAP = {
     "trauma": "Phoenix",
 }
 
-# ------------------ Response Templates ------------------
-TEMPLATES = [
-    "I hear you. Can you tell me more about that? 😊",
-    "That sounds challenging. How are you coping? 💙",
-    "It's okay to feel this way. What do you think is the hardest part?",
-    "Thanks for sharing. Let's explore that together. ✨",
-    "I understand. What emotions are coming up for you right now?",
-]
 
-def fake_response():
-    """Fallback response when no good match is found"""
-    return random.choice(TEMPLATES)
 
-# ------------------ Helper Functions ------------------
-def stream_response(reply):
-    """Split response into chunks for streaming"""
-    sentences = re.split(r"(?<=[.!?]) +", reply)
-    for sentence in sentences:
-        chunk = sentence.strip()
-        if chunk:
-            yield chunk + " "
 
-def get_bot_responses():
-    """Fetch bot responses from GitHub or cache"""
-    with CACHE_LOCK:
-        if not BOT_RESPONSES_CACHE:
-            try:
-                resp = requests.get(GITHUB_JSON_URL, timeout=10)
-                resp.raise_for_status()
-                data = resp.json()
-                BOT_RESPONSES_CACHE.update({
-                    bot["name"]: bot["conversations"] 
-                    for bot in data.get("bots", [])
-                })
-                
-                # Initialize Markov models
-                for bot_name, conversations in BOT_RESPONSES_CACHE.items():
-                    text = "\n".join([
-                        msg["content"] 
-                        for msg in conversations 
-                        if msg["role"] == "assistant"
-                    ])
-                    MARKOV_MODELS[bot_name] = markovify.Text(text)
-                    
-            except Exception as e:
-                print(f"[ERROR] Failed to load bot responses: {e}")
-        return BOT_RESPONSES_CACHE
-
-def find_best_response(bot_name, user_input, threshold=0.5):
-    """Find best matching response from bot's history"""
-    conversations = get_bot_responses().get(bot_name, [])
-    best_score, best_reply = 0, None
-    
-    for i in range(0, len(conversations) - 1, 2):
-        if (conversations[i]["role"] == "user" and 
-            conversations[i+1]["role"] == "assistant"):
-            
-            score = SequenceMatcher(
-                None,
-                user_input.lower(),
-                conversations[i]["content"].lower()
-            ).ratio()
-            
-            if score > best_score:
-                best_score, best_reply = score, conversations[i+1]["content"]
-    
-    return best_reply if best_score >= threshold else None
-
-def markov_generate_response(bot_name, user_input, max_length=120):
-    """Generate response using Markov chains"""
-    try:
-        model = MARKOV_MODELS.get(bot_name)
-        if not model:
-            return fake_response()
-            
-        for _ in range(5):  # Try 5 times
-            sentence = model.make_sentence(max_chars=max_length)
-            if sentence:
-                return sentence
-        return fake_response()
-    except Exception as e:
-        print(f"[ERROR] Markov generation failed: {e}")
-        return fake_response()
-
-def is_gibberish(user_msg: str) -> bool:
-    """Detect if the message is mostly gibberish"""
-    words = user_msg.lower().strip().split()
-    if not words:
-        return True  # Empty message considered gibberish
-
-    gibberish_count = 0
-    for word in words:
-        # Word is gibberish if no vowels OR 4+ consonants in a row
-        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
-            gibberish_count += 1
-
-    # If more than 60% words are gibberish
-    return gibberish_count / len(words) > 0.6
 
 # ------------------ Enhanced Keyword Responses ------------------
 KEYWORD_RESPONSES = {
@@ -893,6 +791,223 @@ KEYWORD_RESPONSES = {
     }
 }
 
+
+
+
+
+
+# ------------------ Required Imports ------------------
+import re
+import random
+import threading
+import requests
+from difflib import SequenceMatcher
+from datetime import datetime, timezone
+from flask import request, Response
+from firebase_admin import firestore, storage
+import markovify
+
+# ------------------ Global Configurations ------------------
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+BOT_RESPONSES_CACHE = {}
+CACHE_LOCK = threading.Lock()
+MARKOV_MODELS = {}
+
+# ------------------ Response Templates ------------------
+TEMPLATES = [
+    "I hear you. Can you tell me more about that? 😊",
+    "That sounds challenging. How are you coping? 💙",
+    "It's okay to feel this way. What do you think is the hardest part?",
+    "Thanks for sharing. Let's explore that together. ✨",
+    "I understand. What emotions are coming up for you right now?",
+]
+
+def fake_response():
+    """Fallback response when no good match is found"""
+    return random.choice(TEMPLATES)
+
+# ------------------ Helper Functions ------------------
+def stream_response(reply):
+    """Split response into chunks for streaming"""
+    sentences = re.split(r"(?<=[.!?]) +", reply)
+    for sentence in sentences:
+        chunk = sentence.strip()
+        if chunk:
+            yield chunk + " "
+
+def get_bot_responses():
+    """Fetch bot responses from GitHub or cache"""
+    with CACHE_LOCK:
+        if not BOT_RESPONSES_CACHE:
+            try:
+                resp = requests.get(GITHUB_JSON_URL, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                BOT_RESPONSES_CACHE.update({
+                    bot["name"]: bot["conversations"] 
+                    for bot in data.get("bots", [])
+                })
+                
+                # Enhanced Markov model initialization
+                for bot_name, conversations in BOT_RESPONSES_CACHE.items():
+                    training_text = "\n".join([
+                        msg["content"].strip()
+                        for msg in conversations 
+                        if (msg["role"] == "assistant" and 
+                            len(msg["content"].split()) > 3)
+                    ])
+                    MARKOV_MODELS[bot_name] = markovify.Text(
+                        training_text,
+                        state_size=2,
+                        well_formed=False,
+                        reject_reg=r'^(?:%s)' % '|'.join([
+                            r'\W+$',
+                            r'^[^A-Z]'
+                        ])
+                    )
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to load bot responses: {e}")
+        return BOT_RESPONSES_CACHE
+
+def find_best_response(bot_name, user_input, threshold=0.6):  # Increased threshold
+    """Find best matching response from bot's history"""
+    conversations = get_bot_responses().get(bot_name, [])
+    best_score, best_reply = 0, None
+    
+    for i in range(0, len(conversations) - 1, 2):
+        if (conversations[i]["role"] == "user" and 
+            conversations[i+1]["role"] == "assistant"):
+            
+            score = SequenceMatcher(
+                None,
+                user_input.lower(),
+                conversations[i]["content"].lower()
+            ).ratio()
+            
+            if score > best_score:
+                best_score, best_reply = score, conversations[i+1]["content"]
+    
+    return best_reply if best_score >= threshold else None
+
+def validate_response(response, user_input):
+    """Ensure response meets quality standards"""
+    if not response:
+        return False
+        
+    words = response.split()
+    if len(words) < 4 or len(words) > 25:
+        return False
+        
+    if not response[-1] in '.?!':
+        return False
+        
+    user_words = set(user_input.lower().split())
+    response_words = set(response.lower().split())
+    common_words = user_words & response_words
+    return len(common_words) >= 1
+
+def get_contextual_fallback(user_input):
+    """Intelligent fallback based on context"""
+    lower_input = user_input.lower()
+    
+    family_words = ["mother", "father", "parent", "family", "mom", "dad"]
+    if any(word in lower_input for word in family_words):
+        return random.choice([
+            "Family relationships can be complex. How does this make you feel?",
+            "It sounds like this family situation is affecting you. Would you like to talk more?",
+            "Family dynamics can be challenging. What would you like to see change?"
+        ])
+    
+    relationship_words = ["partner", "boyfriend", "girlfriend", "husband", "wife"]
+    if any(word in lower_input for word in relationship_words):
+        return random.choice([
+            "Relationships can bring both joy and pain. Tell me more about this.",
+            "It sounds like this relationship is important to you. What are you feeling?",
+            "How is this situation affecting you emotionally?"
+        ])
+    
+    return fake_response()
+
+def markov_generate_response(bot_name, user_input, max_length=120):
+    """Generate more context-aware responses"""
+    try:
+        model = MARKOV_MODELS.get(bot_name)
+        if not model:
+            return get_contextual_fallback(user_input)
+            
+        relevant_keywords = [
+            kw for kw in BOT_KEYWORDS.get(bot_name, []) 
+            if kw.lower() in user_input.lower()
+        ]
+        
+        for _ in range(10):
+            if relevant_keywords:
+                try:
+                    response = model.make_sentence_with_start(
+                        random.choice(relevant_keywords),
+                        max_chars=max_length,
+                        tries=50,
+                        strict=False
+                    )
+                    if response and validate_response(response, user_input):
+                        return response.capitalize()
+                except:
+                    pass
+            
+            response = model.make_sentence(
+                max_chars=max_length,
+                tries=50
+            )
+            if response and validate_response(response, user_input):
+                return response.capitalize()
+                
+        return get_contextual_fallback(user_input)
+    except Exception as e:
+        print(f"[ERROR] Markov generation failed: {e}")
+        return get_contextual_fallback(user_input)
+
+def detect_category_with_keywords(text):
+    """Enhanced category detection with context awareness"""
+    text_lower = text.lower()
+    category_scores = {category: 0 for category in CATEGORIES}
+    
+    for category in CATEGORIES:
+        bot_name = BOT_MAP[category]
+        for keyword in BOT_KEYWORDS[bot_name]:
+            if ' ' in keyword:
+                if keyword.lower() in text_lower:
+                    category_scores[category] += 2
+    
+    for category in CATEGORIES:
+        bot_name = BOT_MAP[category]
+        for keyword in BOT_KEYWORDS[bot_name]:
+            if ' ' not in keyword:
+                if f' {keyword} ' in f' {text_lower} ':
+                    category_scores[category] += 1
+    
+    best_category = max(category_scores, key=category_scores.get)
+    max_score = category_scores[best_category]
+    
+    if max_score >= 2:
+        confidence = min(max_score / 3, 1.0)
+        return best_category, confidence
+    
+    return None, 0.0
+
+def is_gibberish(user_msg: str) -> bool:
+    """Detect if the message is mostly gibberish"""
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True
+
+    gibberish_count = 0
+    for word in words:
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+
+    return gibberish_count / len(words) > 0.6
+
 def check_keyword_responses(user_input):
     """Check for keyword matches and return appropriate response"""
     lower_input = user_input.lower()
@@ -906,25 +1021,6 @@ def check_keyword_responses(user_input):
                 return random.choice(data["responses"])
     
     return None
-
-def detect_category_with_keywords(text):
-    """Detect relevant bot category based on keyword matching"""
-    text_lower = text.lower()
-    category_scores = {category: 0 for category in CATEGORIES}
-    
-    for category in CATEGORIES:
-        bot_name = BOT_MAP[category]
-        for keyword in BOT_KEYWORDS[bot_name]:
-            if keyword.lower() in text_lower:
-                category_scores[category] += 1
-    
-    if not any(category_scores.values()):
-        return None, 0.0
-    
-    best_category = max(category_scores, key=category_scores.get)
-    confidence = min(category_scores[best_category] / 3, 1.0)
-    
-    return (best_category, confidence) if confidence >= 0.5 else (None, confidence)
 
 # ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
@@ -953,7 +1049,18 @@ def newstream():
     ]
 
     ESCALATION_TERMS = ["harm myself", "suicide", "kill myself", "end my life", "take my life",
-                       "i want to die", "don't want to live", "self-harm", "cut myself", "overdose", "SOS", "sos"]
+                       "i want to die", "don't want to live", "self-harm", "cut myself", "overdose", "SOS", "sos" ,
+                        "crisis", "urgent", "help me", "emergency", "life or death", "immediately", "right now",
+                        "can't take it", "critical", "hotline","overdose", "end it all", "can't go on", "need help now",
+                        "crisis line", "help right away","call for help", "rescue me", "save me", "at risk", "desperate", "cry for help",
+                        "life threatening", "serious trouble", "unsafe", "need intervention", "mental crisis",
+                        "physical crisis", "urgent care", "emergency help", "distress call", "panic emergency",
+                        "crisis situation", "on the edge", "about to break", "final straw", "can't handle it",
+                        "about to collapse", "breaking point", "imminent danger", "critical condition", "emergency support",
+                        "seek help", "help urgently", "need immediate help", "call emergency", "immediate crisis",
+                        "suicidal thoughts", "thinking of ending it", "thinking of dying", "no reason to live",
+                        "self-destructive", "self injury", "severe distress", "emergency call", "need urgent advice",
+                        "helpline", "call police", "call ambulance", "life in danger", "mental emergency", "severe emergency"]
     OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "addiction", "overdose", "bipolar", "self-harm", "acidity"]
 
     def generate():
@@ -979,18 +1086,22 @@ def newstream():
             yield "Sorry, I didn't get that. Could you please rephrase? 😊"
             return
 
-        # 3) Try bot switching
+        # 3) Improved bot switching logic
         category, confidence = detect_category_with_keywords(user_msg)
-        if category:
+        if category and confidence >= 0.6:
             correct_bot = BOT_MAP.get(category, "Ava")
             if correct_bot != current_bot:
-                yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area. Would you like to switch? 🔄"
+                yield (
+                    f"I notice you're talking about {category}-related concerns. "
+                    f"**{correct_bot}** has more expertise in this area. "
+                    f"Would you like me to connect you with {correct_bot}? (Yes/No)"
+                )
                 return
 
-        # 4) Try JSON match
-        reply = find_best_response(current_bot, user_msg, threshold=0.5)
+        # 4) Try JSON match with higher threshold
+        reply = find_best_response(current_bot, user_msg, threshold=0.6)
 
-        # 5) Fallback to Markov generation
+        # 5) Enhanced Markov generation fallback
         if not reply:
             reply = markov_generate_response(current_bot, user_msg, max_length=120)
 
@@ -1978,6 +2089,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
