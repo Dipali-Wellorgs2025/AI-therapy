@@ -583,188 +583,57 @@ QUESTIONNAIRES = {
     ]
 }
 
-import re
-
-def is_gibberish(user_msg: str) -> bool:
-    """Detect if the message is mostly gibberish."""
-    words = user_msg.lower().strip().split()
-    if not words:
-        return True  # Empty message considered gibberish
-
-    gibberish_count = 0
-    for word in words:
-        # Word is gibberish if no vowels OR 4+ consonants in a row
-        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
-            gibberish_count += 1
-
-    # If more than 60% words are gibberish
-    return gibberish_count / len(words) > 0.6
-
-
-import json
-import re
-import time
-import requests
+from flask import request, jsonify
 from datetime import datetime, timezone
-from difflib import SequenceMatcher
-from flask import request, Response
 from firebase_admin import firestore
 
-# ---------- Load dataset from GitHub ----------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+from flask import request, jsonify
+from datetime import datetime, timezone
+from firebase_admin import firestore
 
-try:
-    resp = requests.get(GITHUB_JSON_URL)
-    resp.raise_for_status()
-    BOTS_DATA = resp.json()
-except Exception as e:
-    print(f"[ERROR] Could not load JSON from GitHub: {e}")
-    BOTS_DATA = {"bots": []}
-
-BOT_RESPONSES = {}
-for bot in BOTS_DATA.get("bots", []):
-    BOT_RESPONSES[bot["name"]] = bot["conversations"]
-
-# ---------- Helper: fuzzy match ----------
-def find_best_response(bot_name, user_input, threshold=0.5):
-    conversations = BOT_RESPONSES.get(bot_name, [])
-    best_score = 0
-    best_reply = None
-    for i in range(0, len(conversations) - 1, 2):
-        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
-            score = SequenceMatcher(None, user_input.lower(), conversations[i]["content"].lower()).ratio()
-            if score > best_score:
-                best_score = score
-                best_reply = conversations[i+1]["content"]
-    if best_score >= threshold:
-        return best_reply
-    return "I’m sorry, I don’t have an answer for that yet. 💙"
-
-
-# Find reply by keyword match
-def find_reply_by_keywords(bot_name, user_input):
-    conversations = BOT_RESPONSES.get(bot_name, [])
-    input_words = set(re.findall(r"\b\w+\b", user_input.lower()))
-    best_match = None
-    best_score = 0
-
-    for i in range(0, len(conversations) - 1, 2):
-        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
-            user_text = conversations[i]["content"].lower()
-            user_words = set(re.findall(r"\b\w+\b", user_text))
-            score = len(input_words & user_words)  # count of shared words
-
-            if score > best_score:
-                best_score = score
-                best_match = conversations[i+1]["content"]
-
-    if best_match:
-        return best_match
-    return "I’m not sure I have an exact answer for that, but I’m here to listen. 💙"
-# ---------- Helper: stream sentence-by-sentence ----------
-def stream_response(reply):
-    sentences = re.split(r'(?<=[.!?]) +', reply)
-    for sentence in sentences:
-        yield sentence.strip() + " "
-
-@app.route("/api/newstream", methods=["GET", "POST"])
+@app.route("/api/newstream", methods=["POST"])
 def newstream():
-    """Streaming endpoint for real-time conversation"""
-    data = {
-        "message": request.args.get("message", ""),
-        "botName": request.args.get("botName"),
-        "user_name": request.args.get("user_name", "User"),
-        "user_id": request.args.get("user_id", "unknown"),
-        "issue_description": request.args.get("issue_description", ""),
-        "preferred_style": request.args.get("preferred_style", "Balanced")
-    }
+    """
+    Unified API for saving both user messages and bot replies to Firestore.
+    Structure remains identical to the existing DB format.
+    """
+    data = request.get_json(force=True)
 
-    user_msg = data["message"]
-    user_name = data["user_name"]
-    user_id = data["user_id"]
-    issue_description = data["issue_description"]
-    preferred_style = data["preferred_style"]
-    current_bot = data["botName"]
+    message_text = data.get("message", "")
+    sender = data.get("sender", "User")  # 'User' or 'Bot'
+    user_name = data.get("user_name", "User")
+    user_id = data.get("user_id", "unknown")
+    issue_description = data.get("issue_description", "")
+    preferred_style = data.get("preferred_style", "Balanced")
+    current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "ai training", "dataset", "parameters", "weights", "backpropagation",
-        "gradient descent", "optimization", "loss function", "epochs", "batch size",
-        "learning rate", "overfitting", "underfitting", "regularization",
-        "transformer", "attention mechanism", "fine-tuning", "pre-training",
-        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-        "deployment", "inference", "api", "endpoint", "latency", "throughput",
-        "scaling", "load balancing", "database", "server", "cloud", "docker",
-        "kubernetes", "microservices", "devops", "ci/cd", "version control",
-        "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"
-    ]
+    # Get existing session context (same as before)
+    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
-    ESCALATION_TERMS = [
-        "suicide", "kill myself", "end my life", "overdose",
-        "cut myself", "self harm", "self-harm", "hurt myself",
-        "can't go on", "no reason to live", "take my life"
-    ]
+    now = datetime.now(timezone.utc).isoformat()
 
-    OUT_OF_SCOPE_TOPICS = [
-        "medical diagnosis", "prescription", "medication", "drug dosage",
-        "surgery", "legal advice", "lawsuit", "court case",
-        "investment advice", "financial planning"
-    ]
+    # Keep sender name as "User" for human messages, bot name for AI replies
+    final_sender = "User" if sender.lower() == "user" else current_bot
 
-    def generate():
-        # --- Checks ---
-        if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-            yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
-            return
-        if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-            yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"
-            return
-        if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-            yield "This topic needs care from a licensed mental health professional. 🤝"
-            return
-        if is_gibberish(user_msg):
-            yield "Sorry, I didn't get that. Could you please rephrase? 😊"
-            return
+    ctx["history"].append({
+        "sender": final_sender,
+        "message": message_text,
+        "timestamp": now
+    })
 
-        # --- Get session context (your existing function) ---
-        ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+    # Save exactly as before
+    ctx["session_ref"].set({
+        "user_id": user_id,
+        "bot_name": current_bot,
+        "messages": ctx["history"],
+        "last_updated": firestore.SERVER_TIMESTAMP,
+        "issue_description": issue_description,
+        "preferred_style": preferred_style,
+        "is_active": True
+    }, merge=True)
 
-        # --- Find best JSON match from GitHub data ---
-        # reply = find_best_response(current_bot, user_msg, threshold=0.5)
-        reply = find_reply_by_keywords(current_bot, user_msg)
-
-        # --- Stream reply ---
-        yield "\n\n"  # start new bot bubble
-        for chunk in stream_response(reply):
-            yield chunk
-
-        # --- Save to Firestore ---
-        now = datetime.now(timezone.utc).isoformat()
-        ctx["history"].append({
-            "sender": "User",
-            "message": user_msg,
-            "timestamp": now
-        })
-        ctx["history"].append({
-            "sender": current_bot,
-            "message": reply,
-            "timestamp": now
-        })
-
-        ctx["session_ref"].set({
-            "user_id": user_id,
-            "bot_name": current_bot,
-            "messages": ctx["history"],
-            "last_updated": firestore.SERVER_TIMESTAMP,
-            "issue_description": issue_description,
-            "preferred_style": preferred_style,
-            "is_active": True
-        }, merge=True)
-
-    return Response(generate(), mimetype="text/event-stream")
-
+    return jsonify({"status": f"{final_sender} message saved"}), 200
 
 
 def handle_message(data):
@@ -1726,6 +1595,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
