@@ -1069,32 +1069,31 @@ def markov_generate_response(bot_name, user_input, max_length=150):
         print(f"[ERROR] Markov generation failed: {str(e)}")
         return get_contextual_fallback(user_input)
 
-def detect_bot_with_keywords(message):
+def detect_category_with_keywords(message):
     """
-    Detect which bot should handle the message.
-    - 2 points for multi-word phrase
-    - 1 point for single word
-    - Trigger on >= 1 point
-    Returns: (bot_name, "high") or (None, None)
+    Category detection:
+    - 1 keyword match triggers detection
+    - Multi-word phrases still work
+    Returns: (category, confidence)
     """
     if not message or not isinstance(message, str):
         return None, None
-    
+
     lower_msg = f" {message.lower()} "
-    scores = {bot: 0 for bot in BOT_KEYWORDS}
+    category_scores = {category: 0 for category in CATEGORIES}
 
-    for bot, keywords in BOT_KEYWORDS.items():
-        for keyword in keywords:
+    for category in CATEGORIES:
+        bot_name = BOT_MAP[category]
+        for keyword in BOT_KEYWORDS[bot_name]:
             if f" {keyword} " in lower_msg:
-                scores[bot] += 2 if " " in keyword else 1
+                category_scores[category] += 1
 
-    best_bot = max(scores, key=scores.get)
-    best_score = scores[best_bot]
+    best_category = max(category_scores, key=lambda x: category_scores[x])
+    best_score = category_scores[best_category]
 
-    if best_score >= 1:  # now triggers on a single keyword
-        return best_bot, "high"
+    if best_score >= 1:  # allow one match
+        return best_category, "high"
     return None, None
-
 
 
 def is_gibberish(user_msg):
@@ -1157,25 +1156,21 @@ def newstream():
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
                 # --- Bot switching logic ---
-                category, confidence = detect_bot_with_keywords(user_msg)
+                # --- Bot switching logic ---
+                category, confidence = detect_category_with_keywords(user_msg)
 
                 if category:
-                  correct_bot = BOT_MAP.get(category)
-                  if correct_bot and correct_bot != current_bot:
-                    if confidence == "high":
-                        yield (
-                              f"I notice you're dealing with **{category}** concerns. "
-                              f"**{correct_bot}** specializes in this area and can provide more targeted support. "
-                              f"Would you like to switch? 🔄"
-                        )
-                        return
-                    elif confidence == "medium":
-                       yield (
-                          f"It sounds like you might be discussing **{category}**. "
-                          f"If you’d like, **{correct_bot}** could help with that. "
-                          f"Shall we switch? 🤔"
-                          )
-                       return
+                       correct_bot = BOT_MAP.get(category, category)  # Works if category is bot or label
+
+                # If detected category bot is different from current bot
+                if correct_bot and correct_bot != current_bot:
+                  yield (
+                    f"I notice you're dealing with **{category}** concerns. "
+                    f"**{correct_bot}** specializes in this area and can provide more targeted support. "
+                    "Would you like to switch? 🔄"
+                  )
+                  return
+
               
 
                 # --- Response generation ---
@@ -2178,6 +2173,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
