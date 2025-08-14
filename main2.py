@@ -968,33 +968,46 @@ def markov_generate_response(bot_name, user_input, max_length=120):
         return get_contextual_fallback(user_input)
 
 def detect_category_with_keywords(text):
-    """Enhanced category detection with context awareness"""
+    """
+    Enhanced bot switching logic that:
+    1. First checks for direct bot name mentions
+    2. Then checks for category keywords
+    3. Uses weighted scoring for better accuracy
+    """
     text_lower = text.lower()
+    
+    # 1. First check for direct bot name requests
+    for category, bot_name in BOT_MAP.items():
+        if f' {bot_name.lower()} ' in f' {text_lower} ':
+            return category, 1.0  # Highest confidence for direct requests
+    
+    # 2. Check for family terms (special case)
+    family_terms = ["mother", "father", "parent", "mom", "dad", "family", "sibling"]
+    if any(term in text_lower for term in family_terms):
+        return "family", 0.9  # High confidence for family
+    
+    # 3. Weighted keyword scoring for other categories
     category_scores = {category: 0 for category in CATEGORIES}
     
     for category in CATEGORIES:
         bot_name = BOT_MAP[category]
         for keyword in BOT_KEYWORDS[bot_name]:
-            if ' ' in keyword:
-                if keyword.lower() in text_lower:
-                    category_scores[category] += 2
-    
-    for category in CATEGORIES:
-        bot_name = BOT_MAP[category]
-        for keyword in BOT_KEYWORDS[bot_name]:
-            if ' ' not in keyword:
-                if f' {keyword} ' in f' {text_lower} ':
-                    category_scores[category] += 1
+            # Multi-word phrases get 2 points
+            if ' ' in keyword and keyword.lower() in text_lower:
+                category_scores[category] += 2
+            # Single keywords get 1 point
+            elif f' {keyword} ' in f' {text_lower} ':
+                category_scores[category] += 1
     
     best_category = max(category_scores, key=category_scores.get)
     max_score = category_scores[best_category]
     
+    # Only suggest if we found at least 2 strong indicators
     if max_score >= 2:
-        confidence = min(max_score / 3, 1.0)
+        confidence = min(max_score / 3, 1.0)  # Normalize to 0-1 range
         return best_category, confidence
     
     return None, 0.0
-
 def is_gibberish(user_msg: str) -> bool:
     """Detect if the message is mostly gibberish"""
     words = user_msg.lower().strip().split()
@@ -2089,6 +2102,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
