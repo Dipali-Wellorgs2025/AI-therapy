@@ -15,6 +15,7 @@ markdown
 #llama-cpp-python>=0.1.80
 gpt-2-simple-revived
 tensorflow==1.15
+https://raw.githubusercontent.com/<username>/<repo>/<branch>/requirements.txt
 
 
 
@@ -32,6 +33,7 @@ Flask-Bcrypt==1.0.1
 
 # ==== Optional: SQLAlchemy ORM ====
 Flask-SQLAlchemy==3.1.1
+
 
 
 
