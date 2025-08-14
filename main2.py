@@ -583,6 +583,43 @@ QUESTIONNAIRES = {
     ]
 }
 
+# Greetings
+GREETING_KEYWORDS = ["hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon", "good evening"]
+GREETING_RESPONSES = [
+    "Hello! How are you feeling today? 😊",
+    "Hey there! What’s on your mind? 💙",
+    "Hi! I’m here to listen. 🌟",
+    "Hello! Tell me more about how you’re feeling. ✨"
+]
+
+# Farewells
+FAREWELL_KEYWORDS = ["bye", "goodbye", "see you", "talk later", "later"]
+FAREWELL_RESPONSES = [
+    "Goodbye! Take care and talk soon. 💙",
+    "See you later! Remember, I’m always here if you want to chat. 🌟",
+    "Bye! Hope your day goes well. 😊",
+    "Take care! Reach out anytime you need. ✨"
+]
+
+# Thank you / appreciation
+THANKS_KEYWORDS = ["thanks", "thank you", "thx", "ty"]
+THANKS_RESPONSES = [
+    "You're welcome! Glad I could help. 😊",
+    "Anytime! I’m here for you. 💙",
+    "No problem! How else can I support you today? ✨",
+    "Happy to help! 🌟"
+]
+
+# Encouragement / positivity
+ENCOURAGE_KEYWORDS = ["I can't", "I failed", "hard", "struggle", "tough"]
+ENCOURAGE_RESPONSES = [
+    "It’s okay to struggle sometimes. You’re doing your best! 💪",
+    "Challenges are normal. Let’s figure this out together. 🌟",
+    "Remember, every step forward counts, no matter how small. ✨",
+    "I believe in you! You’ve got this. 😊"
+]
+
+
 import re
 import random
 import requests
@@ -592,13 +629,16 @@ from firebase_admin import firestore
 from difflib import SequenceMatcher
 import threading
 
-from llama_cpp import Llama  # lightweight GGUF runtime
+import gpt_2_simple as gpt2
+import tensorflow as tf
 
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
 
-# ------------------ Load model once ------------------
-GGUF_MODEL_PATH = "./distilgpt2-Q4_0.gguf"  # path to quantized model
-llm = Llama(model_path=GGUF_MODEL_PATH)
+# ------------------ GPT-2 simple setup ------------------
+GPT2_MODEL_NAME = "124M"  # small GPT-2
+sess = gpt2.start_tf_sess()
+gpt2.download_gpt2(model_name=GPT2_MODEL_NAME)  # download model if not present
+gpt2.load_gpt2(sess, model_name=GPT2_MODEL_NAME)
 
 # ------------------ Cache bot JSON ------------------
 BOT_RESPONSES_CACHE = {}
@@ -618,11 +658,11 @@ def get_bot_responses():
             print(f"[ERROR] Could not load JSON: {e}")
             return {}
 
-# ------------------ Lightweight NLP via GGUF ------------------
+# ------------------ Lightweight GPT-2 text generation ------------------
 def lightweight_nlp_response(user_msg):
     prompt = f"You are a supportive therapist. Respond to: {user_msg}"
-    output = llm(prompt, max_tokens=80, temperature=0.7)
-    return output["choices"][0]["text"].strip()
+    output = gpt2.generate(sess, prefix=prompt, length=50, temperature=0.7, return_as_list=True, include_prefix=False)
+    return output[0]
 
 # ------------------ Fake fallback ------------------
 KEYWORD_RESPONSES = {
@@ -630,7 +670,10 @@ KEYWORD_RESPONSES = {
     "family": "Family dynamics can be tough. How are things at home?",
     "sad": "I'm sorry you're feeling sad. Can you describe what's causing this feeling?",
     "happy": "That's great! What made you feel this way? 🌟",
-    "angry": "Anger is a valid emotion. Do you want to explore why you feel this way?"
+    "angry": "Anger is a valid emotion. Do you want to explore why you feel this way?",
+    "hello": "Hi there! How are you feeling today? 😊",
+    "hi": "Hello! Nice to see you. How's your day going?",
+    "hey": "Hey! How are you doing today?"
 }
 
 TEMPLATES = [
@@ -665,6 +708,17 @@ def find_best_response(bot_name, user_input, threshold=0.5):
                 best_score, best_reply = score, conversations[i+1]["content"]
     return best_reply if best_score >= threshold else None
 
+# ------------------ Gibberish detection ------------------
+def is_gibberish(user_msg: str) -> bool:
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True
+    gibberish_count = 0
+    for word in words:
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+    return gibberish_count / len(words) > 0.6
+
 # ------------------ Flask endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
@@ -693,23 +747,6 @@ def newstream():
     ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life"]
     OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis"]
 
-import re
-
-def is_gibberish(user_msg: str) -> bool:
-    """Detect if the message is mostly gibberish."""
-    words = user_msg.lower().strip().split()
-    if not words:
-        return True  # Empty message considered gibberish
-
-    gibberish_count = 0
-    for word in words:
-        # Word is gibberish if no vowels OR 4+ consonants in a row
-        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
-            gibberish_count += 1
-
-    # If more than 60% words are gibberish
-    return gibberish_count / len(words) > 0.6
-
     def generate():
         # Early returns
         if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
@@ -728,12 +765,12 @@ def is_gibberish(user_msg: str) -> bool:
         # JSON match
         reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
-        # Lightweight NLP fallback
+        # GPT-2 fallback
         if not reply:
             try:
                 reply = lightweight_nlp_response(user_msg)
             except Exception as e:
-                print(f"[ERROR] GGUF NLP failed: {e}")
+                print(f"[ERROR] GPT-2 generation failed: {e}")
                 reply = fake_response(user_msg)
 
         # Stream sentence by sentence
@@ -741,7 +778,7 @@ def is_gibberish(user_msg: str) -> bool:
         for chunk in stream_response(reply):
             yield chunk
 
-        # Firestore update (safe)
+        # Firestore update
         now = datetime.now(timezone.utc).isoformat()
         session_ref = firestore.client().collection("sessions").document(session_id)
         session_ref.update({
@@ -758,7 +795,6 @@ def is_gibberish(user_msg: str) -> bool:
         })
 
     return Response(generate(), mimetype="text/event-stream")
-
 
 
 
@@ -1729,6 +1765,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
