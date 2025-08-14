@@ -583,68 +583,138 @@ QUESTIONNAIRES = {
     ]
 }
 
-from flask import request, jsonify
+import json
+import re
+import requests
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
+from flask import request, Response
 from firebase_admin import firestore
+from transformers import pipeline
+
+# ---------- Load dataset from GitHub ----------
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+
+try:
+    resp = requests.get(GITHUB_JSON_URL)
+    resp.raise_for_status()
+    BOTS_DATA = resp.json()
+except Exception as e:
+    print(f"[ERROR] Could not load JSON from GitHub: {e}")
+    BOTS_DATA = {"bots": []}
+
+BOT_RESPONSES = {}
+for bot in BOTS_DATA.get("bots", []):
+    BOT_RESPONSES[bot["name"]] = bot["conversations"]
+
+# ---------- NLP Fallback Model ----------
+print("Loading NLP model...")
+text_gen = pipeline("text-generation", model="gpt2")  # replace with other model if needed
+
+# ---------- Helper: fuzzy match ----------
+def find_best_response(bot_name, user_input, threshold=0.5):
+    conversations = BOT_RESPONSES.get(bot_name, [])
+    best_score = 0
+    best_reply = None
+    for i in range(0, len(conversations) - 1, 2):
+        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
+            score = SequenceMatcher(None, user_input.lower(), conversations[i]["content"].lower()).ratio()
+            if score > best_score:
+                best_score = score
+                best_reply = conversations[i+1]["content"]
+    if best_score >= threshold:
+        return best_reply
+    return None
+
+
+
+# ---------- Helper: stream sentence-by-sentence ----------
+def stream_response(reply):
+    sentences = re.split(r'(?<=[.!?]) +', reply)
+    for sentence in sentences:
+        yield sentence.strip() + " "
 
 @app.route("/api/newstream", methods=["GET", "POST"])
-async def newstream():
-    """
-    Async API for saving both user and bot messages to Firestore.
-    No session history fetch — directly appends the new message.
-    """
-    try:
-        # Read params based on request type
-        if request.method == "POST":
-            data = request.get_json(silent=True) or {}
-        else:
-            data = request.args.to_dict()
+def newstream():
+    """Streaming endpoint for real-time conversation with JSON + NLP fallback"""
+    data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
 
-        message_text = data.get("message", "")
-        sender = data.get("sender", "User")  # 'User' or 'Bot'
-        user_name = data.get("user_name", "User")
-        user_id = data.get("user_id", "unknown")
-        issue_description = data.get("issue_description", "")
-        preferred_style = data.get("preferred_style", "Balanced")
-        current_bot = data.get("botName")
+    user_msg = data.get("message", "")
+    user_name = data.get("user_name", "User")
+    user_id = data.get("user_id", "unknown")
+    issue_description = data.get("issue_description", "")
+    preferred_style = data.get("preferred_style", "Balanced")
+    current_bot = data.get("botName")
+    session_id = f"{user_id}_{current_bot}"
 
-        if not current_bot:
-            return jsonify({"error": "botName is required"}), 400
+    TECHNICAL_TERMS = [
+        "training", "algorithm", "model", "neural network", "machine learning", "ml",
+        "dataset", "parameters", "weights", "backpropagation", "gradient descent",
+        "optimization", "loss function", "epochs", "batch size", "learning rate",
+        "overfitting", "underfitting", "transformer", "attention mechanism",
+        "fine-tuning", "tokenization", "embedding", "vector", "tensor", "gpu", "cpu"
+    ]
+    ESCALATION_TERMS = [
+        "suicide", "kill myself", "end my life", "overdose",
+        "cut myself", "self harm", "self-harm", "hurt myself"
+    ]
+    OUT_OF_SCOPE_TOPICS = [
+        "medical diagnosis", "prescription", "medication", "drug dosage",
+        "surgery", "legal advice", "lawsuit", "court case"
+    ]
 
-        session_id = f"{user_id}_{current_bot}"
+    def generate():
+        # --- Checks ---
+        if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
+            yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
+            return
+        if any(term in user_msg.lower() for term in ESCALATION_TERMS):
+            yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"
+            return
+        if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
+            yield "This topic needs care from a licensed mental health professional. 🤝"
+            return
+        if is_gibberish(user_msg):
+            yield "Sorry, I didn't get that. Could you please rephrase? 😊"
+            return
 
-        # Firestore session reference
-        db = firestore.client()
-        session_ref = db.collection("sessions").document(session_id)
+        # --- Try to find reply from JSON ---
+        reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
+        # --- If no JSON match, use NLP model ---
+        if not reply:
+            nlp_output = text_gen(
+                f"You are a supportive therapist. Respond to: {user_msg}",
+                max_length=80,
+                temperature=0.7,
+                pad_token_id=50256
+            )
+            reply = nlp_output[0]["generated_text"].strip()
+
+        # --- Stream reply ---
+        yield "\n\n"
+        for chunk in stream_response(reply):
+            yield chunk
+
+        # --- Save to Firestore ---
         now = datetime.now(timezone.utc).isoformat()
-        final_sender = "User" if sender.lower() == "user" else current_bot
+        session_ref = firestore.client().collection("sessions").document(session_id)
 
-        new_message = {
-            "sender": final_sender,
-            "message": message_text,
-            "timestamp": now
-        }
-
-        # Append new message without fetching history
-        session_ref.update({
-            "messages": firestore.ArrayUnion([new_message]),
+        # Append messages without overwriting history
+        session_ref.set({
             "user_id": user_id,
             "bot_name": current_bot,
+            "messages": firestore.ArrayUnion([
+                {"sender": "User", "message": user_msg, "timestamp": now},
+                {"sender": current_bot, "message": reply, "timestamp": now}
+            ]),
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
             "is_active": True
-        })
+        }, merge=True)
 
-        return jsonify({
-            "status": f"{final_sender} message saved"
-        }), 200
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+    return Response(generate(), mimetype="text/event-stream")
 
 
 
@@ -1609,6 +1679,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
