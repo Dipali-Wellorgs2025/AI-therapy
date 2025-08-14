@@ -15,10 +15,7 @@ markdown
 #llama-cpp-python>=0.1.80
 #gpt-2-simple-revived
 #git+https://github.com/minimaxir/gpt-2-simple.git@master#egg=gpt_2_simple
-onnxruntime
-transformers
-torch
-
+markovify
 
 
 
@@ -37,6 +34,7 @@ Flask-Bcrypt==1.0.1
 
 # ==== Optional: SQLAlchemy ORM ====
 Flask-SQLAlchemy==3.1.1
+
 
 
 
