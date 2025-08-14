@@ -694,6 +694,134 @@ BOT_KEYWORDS = {
     ]
 }
 
+# ------------------ Required Imports ------------------
+# ------------------ Required Imports ------------------
+import re
+import random
+import threading
+import requests
+from difflib import SequenceMatcher
+from datetime import datetime, timezone
+from flask import request, Response
+from firebase_admin import firestore, storage  # Added storage here
+import markovify
+
+# ------------------ Global Configurations ------------------
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+BOT_RESPONSES_CACHE = {}
+CACHE_LOCK = threading.Lock()
+MARKOV_MODELS = {}
+
+# ------------------ Bot Configuration ------------------
+CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
+BOT_MAP = {
+    "anxiety": "Sage",
+    "couples": "Jordan",
+    "crisis": "Raya",
+    "depression": "River",
+    "family": "Ava",
+    "trauma": "Phoenix",
+}
+
+# ------------------ Response Templates ------------------
+TEMPLATES = [
+    "I hear you. Can you tell me more about that? 😊",
+    "That sounds challenging. How are you coping? 💙",
+    "It's okay to feel this way. What do you think is the hardest part?",
+    "Thanks for sharing. Let's explore that together. ✨",
+    "I understand. What emotions are coming up for you right now?",
+]
+
+def fake_response():
+    """Fallback response when no good match is found"""
+    return random.choice(TEMPLATES)
+
+# ------------------ Helper Functions ------------------
+def stream_response(reply):
+    """Split response into chunks for streaming"""
+    sentences = re.split(r"(?<=[.!?]) +", reply)
+    for sentence in sentences:
+        chunk = sentence.strip()
+        if chunk:
+            yield chunk + " "
+
+def get_bot_responses():
+    """Fetch bot responses from GitHub or cache"""
+    with CACHE_LOCK:
+        if not BOT_RESPONSES_CACHE:
+            try:
+                resp = requests.get(GITHUB_JSON_URL, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                BOT_RESPONSES_CACHE.update({
+                    bot["name"]: bot["conversations"] 
+                    for bot in data.get("bots", [])
+                })
+                
+                # Initialize Markov models
+                for bot_name, conversations in BOT_RESPONSES_CACHE.items():
+                    text = "\n".join([
+                        msg["content"] 
+                        for msg in conversations 
+                        if msg["role"] == "assistant"
+                    ])
+                    MARKOV_MODELS[bot_name] = markovify.Text(text)
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to load bot responses: {e}")
+        return BOT_RESPONSES_CACHE
+
+def find_best_response(bot_name, user_input, threshold=0.5):
+    """Find best matching response from bot's history"""
+    conversations = get_bot_responses().get(bot_name, [])
+    best_score, best_reply = 0, None
+    
+    for i in range(0, len(conversations) - 1, 2):
+        if (conversations[i]["role"] == "user" and 
+            conversations[i+1]["role"] == "assistant"):
+            
+            score = SequenceMatcher(
+                None,
+                user_input.lower(),
+                conversations[i]["content"].lower()
+            ).ratio()
+            
+            if score > best_score:
+                best_score, best_reply = score, conversations[i+1]["content"]
+    
+    return best_reply if best_score >= threshold else None
+
+def markov_generate_response(bot_name, user_input, max_length=120):
+    """Generate response using Markov chains"""
+    try:
+        model = MARKOV_MODELS.get(bot_name)
+        if not model:
+            return fake_response()
+            
+        for _ in range(5):  # Try 5 times
+            sentence = model.make_sentence(max_chars=max_length)
+            if sentence:
+                return sentence
+        return fake_response()
+    except Exception as e:
+        print(f"[ERROR] Markov generation failed: {e}")
+        return fake_response()
+
+def is_gibberish(user_msg: str) -> bool:
+    """Detect if the message is mostly gibberish"""
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True  # Empty message considered gibberish
+
+    gibberish_count = 0
+    for word in words:
+        # Word is gibberish if no vowels OR 4+ consonants in a row
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+
+    # If more than 60% words are gibberish
+    return gibberish_count / len(words) > 0.6
+
 # ------------------ Enhanced Keyword Responses ------------------
 KEYWORD_RESPONSES = {
     # Greetings
@@ -764,153 +892,41 @@ KEYWORD_RESPONSES = {
         ]
     }
 }
-def detect_category_with_keywords(text):
-    """
-    Detect the most relevant bot category based on keyword matching.
-    Returns (category_name or None, confidence_score)
-    """
-    text_lower = text.lower()
-    category_scores = {category: 0 for category in CATEGORIES}  # Initialize scores
-    
-    # Count keyword matches for each category
-    for category in CATEGORIES:
-        bot_name = BOT_MAP[category]  # Get bot name for this category
-        for keyword in BOT_KEYWORDS[bot_name]:
-            if keyword.lower() in text_lower:
-                category_scores[category] += 1
-    
-    # Find the highest-scoring category
-    if not any(category_scores.values()):  # No matches found
-        return None, 0.0
-    
-    best_category = max(category_scores, key=category_scores.get)
-    confidence = min(category_scores[best_category] / 3, 1.0)  # Normalize to 0-1 range
-    
-    # Only return if confidence meets threshold (0.5 = at least 2 strong keyword matches)
-    return (best_category, confidence) if confidence >= 0.5 else (None, confidence)
-# ------------------ Updated Helper Functions ------------------
+
 def check_keyword_responses(user_input):
-    """
-    Check if the user input matches any keyword patterns and return an appropriate response.
-    Returns response string if match found, None otherwise.
-    """
+    """Check for keyword matches and return appropriate response"""
     lower_input = user_input.lower()
     
-    # Check for exact matches first
     for category, data in KEYWORD_RESPONSES.items():
         for keyword in data["keywords"]:
-            # Check for standalone word or phrase
-            if (f" {keyword} " in f" {lower_input} " or  # word surrounded by spaces
-                lower_input.startswith(keyword + " ") or  # starts with keyword
-                lower_input.endswith(" " + keyword) or    # ends with keyword
-                lower_input == keyword):                 # exact match
+            if (f" {keyword} " in f" {lower_input} " or
+                lower_input.startswith(keyword + " ") or
+                lower_input.endswith(" " + keyword) or
+                lower_input == keyword):
                 return random.choice(data["responses"])
     
     return None
 
-
-import re
-
-def is_gibberish(user_msg: str) -> bool:
-    """Detect if the message is mostly gibberish."""
-    words = user_msg.lower().strip().split()
-    if not words:
-        return True  # Empty message considered gibberish
-
-    gibberish_count = 0
-    for word in words:
-        # Word is gibberish if no vowels OR 4+ consonants in a row
-        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
-            gibberish_count += 1
-
-    # If more than 60% words are gibberish
-    return gibberish_count / len(words) > 0.6
-
-#-----------------------------------------------------------------
-
-# ------------------ Response Matching Functions ------------------
-
-def find_best_response(bot_name, user_msg, threshold=0.5):
-    """
-    Find the best matching response from the bot's conversation history.
-    Returns None if no good match is found.
-    """
-    BOT_RESPONSES = get_bot_responses()
-    conversations = BOT_RESPONSES.get(bot_name, [])
+def detect_category_with_keywords(text):
+    """Detect relevant bot category based on keyword matching"""
+    text_lower = text.lower()
+    category_scores = {category: 0 for category in CATEGORIES}
     
-    best_score = 0
-    best_reply = None
+    for category in CATEGORIES:
+        bot_name = BOT_MAP[category]
+        for keyword in BOT_KEYWORDS[bot_name]:
+            if keyword.lower() in text_lower:
+                category_scores[category] += 1
     
-    for i in range(0, len(conversations) - 1, 2):
-        if (conversations[i]["role"] == "user" and 
-            conversations[i+1]["role"] == "assistant"):
-            
-            # Calculate similarity between user input and conversation prompt
-            score = SequenceMatcher(
-                None,
-                user_msg.lower(),
-                conversations[i]["content"].lower()
-            ).ratio()
-            
-            if score > best_score:
-                best_score = score
-                best_reply = conversations[i+1]["content"]
+    if not any(category_scores.values()):
+        return None, 0.0
     
-    return best_reply if best_score >= threshold else None
+    best_category = max(category_scores, key=category_scores.get)
+    confidence = min(category_scores[best_category] / 3, 1.0)
+    
+    return (best_category, confidence) if confidence >= 0.5 else (None, confidence)
 
-
-def get_bot_responses():
-    """
-    Get bot responses from cache or fetch from GitHub if not cached.
-    Thread-safe implementation.
-    """
-    with CACHE_LOCK:
-        if not BOT_RESPONSES_CACHE:
-            try:
-                resp = requests.get(GITHUB_JSON_URL, timeout=10)
-                resp.raise_for_status()
-                data = resp.json()
-                BOT_RESPONSES_CACHE.update({
-                    bot["name"]: bot["conversations"] 
-                    for bot in data.get("bots", [])
-                })
-                
-                # Initialize Markov models
-                for bot_name, conversations in BOT_RESPONSES_CACHE.items():
-                    text = "\n".join([
-                        msg["content"] 
-                        for msg in conversations 
-                        if msg["role"] == "assistant"
-                    ])
-                    MARKOV_MODELS[bot_name] = markovify.Text(text)
-                    
-            except Exception as e:
-                print(f"[ERROR] Failed to load bot responses: {e}")
-                
-        return BOT_RESPONSES_CACHE
-
-
-def markov_generate_response(bot_name, user_msg, max_length=120):
-    """
-    Generate a response using Markov chains.
-    Falls back to template responses if generation fails.
-    """
-    try:
-        model = MARKOV_MODELS.get(bot_name)
-        if not model:
-            return fake_response()
-            
-        # Try to generate a relevant sentence
-        for _ in range(5):  # Make 5 attempts
-            sentence = model.make_sentence(max_chars=max_length)
-            if sentence:
-                return sentence
-                
-        return fake_response()
-    except Exception as e:
-        print(f"[ERROR] Markov generation failed: {e}")
-        return fake_response()
-# ------------------ Updated Flask Endpoint ------------------
+# ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
@@ -919,7 +935,7 @@ def newstream():
     user_id = data.get("user_id", "unknown")
     issue_description = data.get("issue_description", "")
     preferred_style = data.get("preferred_style", "Balanced")
-    current_bot = data.get("botName", "Ava")  # default bot if missing
+    current_bot = data.get("botName", "Ava")
     session_id = f"{user_id}_{current_bot}"
 
     TECHNICAL_TERMS = [
@@ -936,14 +952,14 @@ def newstream():
         "javascript", "html", "css", "framework", "library", "package",
     ]
 
-    ESCALATION_TERMS = [ "harm myself","suicide", "kill myself", "end my life", "take my life",
-    "i want to die", "don’t want to live", "self-harm", "cut myself", "overdose", "SOS", "sos", "SOs"]
-    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis","addiction", "overdose", "bipolar", "self-harm","acidity"]
+    ESCALATION_TERMS = ["harm myself", "suicide", "kill myself", "end my life", "take my life",
+                       "i want to die", "don't want to live", "self-harm", "cut myself", "overdose", "SOS", "sos"]
+    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "addiction", "overdose", "bipolar", "self-harm", "acidity"]
 
     def generate():
         lower_msg = user_msg.lower()
 
-        # 1) Check for keyword responses first (greetings, farewells, etc.)
+        # 1) Check for keyword responses first
         keyword_response = check_keyword_responses(user_msg)
         if keyword_response:
             yield keyword_response
@@ -963,28 +979,27 @@ def newstream():
             yield "Sorry, I didn't get that. Could you please rephrase? 😊"
             return
 
-        # 3) Try keyword-based category detection for bot switching
+        # 3) Try bot switching
         category, confidence = detect_category_with_keywords(user_msg)
         if category:
             correct_bot = BOT_MAP.get(category, "Ava")
-            # Only suggest switching if the detected bot is different from current
             if correct_bot != current_bot:
-                yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+                yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area. Would you like to switch? 🔄"
                 return
 
-        # 4) Try JSON match for the *current* bot
+        # 4) Try JSON match
         reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
-        # 5) Fallback to Markov text generation
+        # 5) Fallback to Markov generation
         if not reply:
             reply = markov_generate_response(current_bot, user_msg, max_length=120)
 
-        # Stream sentence by sentence
+        # Stream response
         yield "\n\n"
         for chunk in stream_response(reply):
             yield chunk
 
-        # Persist to Firestore (safe merge)
+        # Persist to Firestore
         now = datetime.now(timezone.utc).isoformat()
         try:
             session_ref = firestore.client().collection("sessions").document(session_id)
@@ -1004,7 +1019,6 @@ def newstream():
             print(f"[WARN] Firestore write failed: {e}")
 
     return Response(generate(), mimetype="text/event-stream")
-
 def handle_message(data):
     import re
     import time
@@ -1964,6 +1978,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
