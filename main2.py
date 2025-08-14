@@ -1211,8 +1211,8 @@ def newstream():
                     correct_bot = BOT_MAP.get(category, "Ava")
                     if correct_bot != current_bot:
                         yield f"I notice you're talking about {category}-related concerns. "
-                    f"**{correct_bot}** has more expertise in this area. "
-                    f"Would you like me to connect you with {correct_bot}? (Yes/No)"
+                        f"**{correct_bot}** has more expertise in this area. "
+                        f"Would you like me to connect you with {correct_bot}? (Yes/No)"
                         return
 
                 # Response generation
@@ -2214,6 +2214,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
