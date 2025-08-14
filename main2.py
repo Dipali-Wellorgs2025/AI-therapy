@@ -641,7 +641,26 @@ def find_best_response(bot_name, user_input, threshold=0.5):
     return "I’m sorry, I don’t have an answer for that yet. 💙"
 
 
+# Find reply by keyword match
+def find_reply_by_keywords(bot_name, user_input):
+    conversations = BOT_RESPONSES.get(bot_name, [])
+    input_words = set(re.findall(r"\b\w+\b", user_input.lower()))
+    best_match = None
+    best_score = 0
 
+    for i in range(0, len(conversations) - 1, 2):
+        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
+            user_text = conversations[i]["content"].lower()
+            user_words = set(re.findall(r"\b\w+\b", user_text))
+            score = len(input_words & user_words)  # count of shared words
+
+            if score > best_score:
+                best_score = score
+                best_match = conversations[i+1]["content"]
+
+    if best_match:
+        return best_match
+    return "I’m not sure I have an exact answer for that, but I’m here to listen. 💙"
 # ---------- Helper: stream sentence-by-sentence ----------
 def stream_response(reply):
     sentences = re.split(r'(?<=[.!?]) +', reply)
@@ -713,7 +732,8 @@ def newstream():
         ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
         # --- Find best JSON match from GitHub data ---
-        reply = find_best_response(current_bot, user_msg, threshold=0.5)
+        # reply = find_best_response(current_bot, user_msg, threshold=0.5)
+        reply = find_reply_by_keywords(current_bot, user_msg)
 
         # --- Stream reply ---
         yield "\n\n"  # start new bot bubble
@@ -1706,6 +1726,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
