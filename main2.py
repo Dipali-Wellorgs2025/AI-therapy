@@ -634,9 +634,38 @@ def stream_response(reply):
     for sentence in sentences:
         yield sentence.strip() + " "
 
+import requests
+from flask import request, Response
+from datetime import datetime, timezone
+from firebase_admin import firestore
+
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+
+def get_bot_responses():
+    """Fetch bot conversations on demand from GitHub"""
+    try:
+        resp = requests.get(GITHUB_JSON_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        return {bot["name"]: bot["conversations"] for bot in data.get("bots", [])}
+    except Exception as e:
+        print(f"[ERROR] Could not load JSON: {e}")
+        return {}
+
+def find_best_response(bot_name, user_input, threshold=0.5):
+    from difflib import SequenceMatcher
+    BOT_RESPONSES = get_bot_responses()
+    conversations = BOT_RESPONSES.get(bot_name, [])
+    best_score, best_reply = 0, None
+    for i in range(0, len(conversations) - 1, 2):
+        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
+            score = SequenceMatcher(None, user_input.lower(), conversations[i]["content"].lower()).ratio()
+            if score > best_score:
+                best_score, best_reply = score, conversations[i+1]["content"]
+    return best_reply if best_score >= threshold else None
+
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
-    """Streaming endpoint for real-time conversation with JSON + NLP fallback"""
     data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
 
     user_msg = data.get("message", "")
@@ -649,58 +678,45 @@ def newstream():
 
     TECHNICAL_TERMS = [
         "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "dataset", "parameters", "weights", "backpropagation", "gradient descent",
-        "optimization", "loss function", "epochs", "batch size", "learning rate",
-        "overfitting", "underfitting", "transformer", "attention mechanism",
-        "fine-tuning", "tokenization", "embedding", "vector", "tensor", "gpu", "cpu"
-    ]
-    ESCALATION_TERMS = [
-        "suicide", "kill myself", "end my life", "overdose",
-        "cut myself", "self harm", "self-harm", "hurt myself"
-    ]
-    OUT_OF_SCOPE_TOPICS = [
-        "medical diagnosis", "prescription", "medication", "drug dosage",
-        "surgery", "legal advice", "lawsuit", "court case"
+        "ai training", "dataset", "parameters", "weights", "backpropagation",
+        "gradient descent", "optimization", "loss function", "epochs", "batch size",
+        "learning rate", "overfitting", "underfitting", "regularization",
+        "transformer", "attention mechanism", "fine-tuning", "pre-training",
+        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+        "deployment", "inference", "api", "endpoint", "latency", "throughput",
+        "scaling", "load balancing", "database", "server", "cloud", "docker",
+        "kubernetes", "microservices", "devops", "ci/cd", "version control",
+        "git", "repository", "bug", "debug", "code", "programming", "python",
+        "javascript", "html", "css", "framework", "library", "package"
     ]
 
     def generate():
-        # --- Checks ---
         if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-            yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
-            return
+            yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"; return
         if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-            yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"
-            return
+            yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"; return
         if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-            yield "This topic needs care from a licensed mental health professional. 🤝"
-            return
+            yield "This topic needs care from a licensed mental health professional. 🤝"; return
         if is_gibberish(user_msg):
-            yield "Sorry, I didn't get that. Could you please rephrase? 😊"
-            return
+            yield "Sorry, I didn't get that. Could you please rephrase? 😊"; return
 
-        # --- Try to find reply from JSON ---
+        # First try JSON match
         reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
-        # --- If no JSON match, use NLP model ---
+        # NLP fallback if no JSON match
         if not reply:
             nlp_output = text_gen(
                 f"You are a supportive therapist. Respond to: {user_msg}",
-                max_length=80,
-                temperature=0.7,
-                pad_token_id=50256
+                max_length=80, temperature=0.7, pad_token_id=50256
             )
             reply = nlp_output[0]["generated_text"].strip()
 
-        # --- Stream reply ---
         yield "\n\n"
         for chunk in stream_response(reply):
             yield chunk
 
-        # --- Save to Firestore ---
         now = datetime.now(timezone.utc).isoformat()
         session_ref = firestore.client().collection("sessions").document(session_id)
-
-        # Append messages without overwriting history
         session_ref.set({
             "user_id": user_id,
             "bot_name": current_bot,
@@ -1679,6 +1695,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
