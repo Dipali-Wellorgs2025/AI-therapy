@@ -2168,10 +2168,109 @@ def therapy_response():
         "image": bot_data.get("image")
     })
 
+from flask import Flask, request, jsonify
+from datetime import datetime, timedelta
+from google.cloud import firestore
+
+
+BOTS = ["Ava", "Sage", "Phoenix", "Raya", "River", "Jordan"]
+SOS_MESSAGE = (
+    "I'm really sorry you're feeling this way. Please reach out to a crisis line "
+    "or emergency support near you or you can reach out to our SOS services. "
+    "You're not alone in this. 💙"
+)
+
+@app.route("/api/wellness-status", methods=["GET"])
+def wellness_status():
+    user_id = request.args.get("user_id")
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+
+    now = datetime.utcnow()
+    thirty_days_ago = now - timedelta(days=30)
+    seven_days_ago = now - timedelta(days=7)
+
+    low_mood_days = 0
+    mood_variety_set = set()
+    sos_usage = 0
+    avg_mood_sum = 0
+    avg_mood_count = 0
+    recovery_mentions = 0
+
+    # ---- 1. Process recent mood check-ins ----
+    checkins = db.collection("recent-checkin").where("user_id", "==", user_id).stream()
+    for doc in checkins:
+        data = doc.to_dict()
+        mood = data.get("mood", "").lower()
+        intensity = data.get("intensity", 0)
+        ts = data.get("timestamp")
+
+        if not ts:
+            continue
+        ts = ts.replace(tzinfo=None)
+
+        # Track mood variety (last 7 days)
+        if ts >= seven_days_ago and mood:
+            mood_variety_set.add(mood)
+
+        # Low-mood days (last 30 days, intensity ≥ 6/10)
+        if ts >= thirty_days_ago and mood in ["sad", "depressed", "anxious", "stressed", "lonely", "angry", "fear"] and intensity >= 6:
+            low_mood_days += 1
+
+        # Average mood score
+        if intensity:
+            avg_mood_sum += intensity
+            avg_mood_count += 1
+
+    # ---- 2. Count SOS Usage + Recovery Mentions from all bot sessions ----
+    for bot in BOTS:
+        session_id = f"{user_id}_{bot}"
+        session_doc = db.collection("sessions").document(session_id).get()
+        if session_doc.exists:
+            for msg_data in session_doc.to_dict().values():
+                if isinstance(msg_data, dict):
+                    msg_text = msg_data.get("message", "")
+                    if msg_text == SOS_MESSAGE:
+                        sos_usage += 1
+                    # Detect recovery mentions (feeling better)
+                    if any(keyword in msg_text.lower() for keyword in ["feeling better", "i'm okay now", "i feel good", "better now"]):
+                        recovery_mentions += 1
+
+    # ---- 3. Scoring ----
+    score = 0
+    if len(mood_variety_set) >= 8:
+        score += 10
+    if low_mood_days < 5:
+        score += 20
+    if sos_usage == 0:
+        score += 20
+    if avg_mood_count > 0 and (avg_mood_sum / avg_mood_count) >= 6:
+        score += 20
+    if recovery_mentions >= 2:
+        score += 30
+
+    # ---- 4. Determine Mental Health Status ----
+    if score >= 90:
+        status = "Thriving"
+    elif score >= 61:
+        status = "Stable"
+    else:
+        status = "Struggling"
+
+    return jsonify({
+        "user_id": user_id,
+        "low_mood_days": low_mood_days,
+        "sos_usage": sos_usage,
+        "mood_variety": len(mood_variety_set),
+        "score": score,
+        "mental_health_status": status
+    })
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
