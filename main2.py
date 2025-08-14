@@ -591,7 +591,7 @@ from flask import request, jsonify
 from datetime import datetime, timezone
 from firebase_admin import firestore
 
-@app.route("/api/newstream", methods=["POST"])
+@app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     """
     Unified API for saving both user messages and bot replies to Firestore.
@@ -1595,6 +1595,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
