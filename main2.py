@@ -1069,35 +1069,32 @@ def markov_generate_response(bot_name, user_input, max_length=150):
         print(f"[ERROR] Markov generation failed: {str(e)}")
         return get_contextual_fallback(user_input)
 
-def detect_category_with_keywords(message):
+def detect_bot_with_keywords(message):
     """
-    Strict category detection requiring:
-    - Minimum 2 keyword matches OR
-    - 1 multi-word phrase match
-    Returns: (category, confidence) where confidence is "high" or None
+    Detect which bot should handle the message.
+    - 2 points for multi-word phrase
+    - 1 point for single word
+    - Trigger on >= 1 point
+    Returns: (bot_name, "high") or (None, None)
     """
     if not message or not isinstance(message, str):
         return None, None
     
-    lower_msg = f" {message.lower()} "  # For exact word matching
-    category_scores = {category: 0 for category in CATEGORIES}
-    
-    # Score categories
-    for category in CATEGORIES:
-        bot_name = BOT_MAP[category]
-        for keyword in BOT_KEYWORDS[bot_name]:
-            # Only count exact matches
+    lower_msg = f" {message.lower()} "
+    scores = {bot: 0 for bot in BOT_KEYWORDS}
+
+    for bot, keywords in BOT_KEYWORDS.items():
+        for keyword in keywords:
             if f" {keyword} " in lower_msg:
-                category_scores[category] += 2 if ' ' in keyword else 1
-    
-    # Get best category if meets threshold
-    best_category = max(category_scores, key=lambda x: category_scores[x])
-    best_score = category_scores[best_category]
-    
-    if best_score >= 2:  # Requires either:
-        return best_category, "high"  # - 2 single-word matches OR
-                                      # - 1 multi-word phrase match
+                scores[bot] += 2 if " " in keyword else 1
+
+    best_bot = max(scores, key=scores.get)
+    best_score = scores[best_bot]
+
+    if best_score >= 1:  # now triggers on a single keyword
+        return best_bot, "high"
     return None, None
+
 
 
 def is_gibberish(user_msg):
@@ -1159,19 +1156,27 @@ def newstream():
                 if is_gibberish(user_msg):
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
-
                 # --- Bot switching logic ---
                 category, confidence = detect_category_with_keywords(user_msg)
 
                 if category:
-                    correct_bot = BOT_MAP.get(category)
-                    # If detected category bot is different from current bot
-                    if correct_bot and correct_bot != current_bot:
+                  correct_bot = BOT_MAP.get(category)
+                  if correct_bot and correct_bot != current_bot:
+                    if confidence == "high":
                         yield (
-                            f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area "
-                            f"and can provide more targeted support. Would you like to switch? 🔄"
+                              f"I notice you're dealing with **{category}** concerns. "
+                              f"**{correct_bot}** specializes in this area and can provide more targeted support. "
+                              f"Would you like to switch? 🔄"
                         )
                         return
+                    elif confidence == "medium":
+                       yield (
+                          f"It sounds like you might be discussing **{category}**. "
+                          f"If you’d like, **{correct_bot}** could help with that. "
+                          f"Shall we switch? 🤔"
+                          )
+                       return
+              
 
                 # --- Response generation ---
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
@@ -2173,6 +2178,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
