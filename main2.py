@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, Response, render_template, stream_with_context
 from google.cloud.firestore import FieldFilter
 import firebase_admin
-import uuid
+import uui
 import traceback
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta, timezone 
@@ -1157,7 +1157,7 @@ def newstream():
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
                 # --- Bot switching logic ---
-                category, confidence = detect_category_with_keywords(user_msg)
+                category, confidence = detect_bot_with_keywords(user_msg)
 
                 if category:
                   correct_bot = BOT_MAP.get(category)
@@ -2178,6 +2178,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
