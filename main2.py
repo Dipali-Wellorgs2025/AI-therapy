@@ -598,7 +598,7 @@ BOT_MAP = {
     "trauma": "Phoenix",
 }
 #--------------------------BOT --------------------------
-BOT_ = {
+BOT_KEYWORDS = {
     "Sage": [  # Anxiety
         "anxiety", "panic", "panic attack", "nervous", "worry", "overthinking", "stress", "uneasy",
         "fear", "restless", "tension", "pressure", "apprehensive", "can't relax", "overwhelmed",
@@ -1069,33 +1069,35 @@ def markov_generate_response(bot_name, user_input, max_length=150):
         print(f"[ERROR] Markov generation failed: {str(e)}")
         return get_contextual_fallback(user_input)
 
-def detect_category_with_keywords(text):
+def detect_category_with_keywords(message):
     """
-    Strict single-keyword category detection
-    Returns: (category, confidence_score) where confidence is 1.0 for matches or 0.0 for no match
+    Strict category detection requiring:
+    - Minimum 2 keyword matches OR
+    - 1 multi-word phrase match
+    Returns: (category, confidence) where confidence is "high" or None
     """
-    if not text or not isinstance(text, str):
-        return None, 0.0
-        
-    text_lower = f" {text.lower()} "  # Add spaces for exact matching
+    if not message or not isinstance(message, str):
+        return None, None
     
-    # 1. Crisis detection (absolute priority)
-    for keyword in BOT_KEYWORDS["Raya"]:
-        if f" {keyword} " in text_lower:
-            return "crisis", 1.0  # Immediate high confidence
+    lower_msg = f" {message.lower()} "  # For exact word matching
+    category_scores = {category: 0 for category in CATEGORIES}
     
-    # 2. Check other categories
+    # Score categories
     for category in CATEGORIES:
-        if category == "crisis":
-            continue
-            
         bot_name = BOT_MAP[category]
         for keyword in BOT_KEYWORDS[bot_name]:
-            if f" {keyword} " in text_lower:
-                return category, 1.0  # Return first match with high confidence
+            # Only count exact matches
+            if f" {keyword} " in lower_msg:
+                category_scores[category] += 2 if ' ' in keyword else 1
     
-    return None, 0.0
-
+    # Get best category if meets threshold
+    best_category = max(category_scores, key=lambda x: category_scores[x])
+    best_score = category_scores[best_category]
+    
+    if best_score >= 2:  # Requires either:
+        return best_category, "high"  # - 2 single-word matches OR
+                                      # - 1 multi-word phrase match
+    return None, None
 
 
 def is_gibberish(user_msg):
@@ -2164,6 +2166,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
