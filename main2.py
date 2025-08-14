@@ -587,19 +587,11 @@ from flask import request, jsonify
 from datetime import datetime, timezone
 from firebase_admin import firestore
 
-from flask import request, jsonify
-from datetime import datetime, timezone
-from firebase_admin import firestore
-
-from flask import request, jsonify
-from datetime import datetime, timezone
-from firebase_admin import firestore
-
 @app.route("/api/newstream", methods=["GET", "POST"])
 async def newstream():
     """
     Async API for saving both user and bot messages to Firestore.
-    No external get_session_context() dependency.
+    No session history fetch — directly appends the new message.
     """
     try:
         # Read params based on request type
@@ -621,47 +613,39 @@ async def newstream():
 
         session_id = f"{user_id}_{current_bot}"
 
-        # Get Firestore session reference
+        # Firestore session reference
         db = firestore.client()
         session_ref = db.collection("sessions").document(session_id)
-
-        # Get existing history or start new
-        session_doc = session_ref.get()
-        if session_doc.exists:
-            ctx_history = session_doc.to_dict().get("messages", [])
-        else:
-            ctx_history = []
 
         now = datetime.now(timezone.utc).isoformat()
         final_sender = "User" if sender.lower() == "user" else current_bot
 
-        # Append message
-        ctx_history.append({
+        new_message = {
             "sender": final_sender,
             "message": message_text,
             "timestamp": now
-        })
+        }
 
-        # Save updated session
-        session_ref.set({
+        # Append new message without fetching history
+        session_ref.update({
+            "messages": firestore.ArrayUnion([new_message]),
             "user_id": user_id,
             "bot_name": current_bot,
-            "messages": ctx_history,
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
             "is_active": True
-        }, merge=True)
+        })
 
         return jsonify({
-            "status": f"{final_sender} message saved",
-            "total_messages": len(ctx_history)
+            "status": f"{final_sender} message saved"
         }), 200
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 
 
@@ -1625,6 +1609,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
