@@ -598,51 +598,71 @@ from firebase_admin import firestore
 @app.route("/api/newstream", methods=["GET", "POST"])
 async def newstream():
     """
-    Async unified API for saving both user and bot messages to Firestore.
-    Accepts GET (query params) and POST (JSON body).
+    Async API for saving both user and bot messages to Firestore.
+    No external get_session_context() dependency.
     """
-    if request.method == "POST":
-        data = request.get_json(silent=True) or {}
-    else:  # GET request
-        data = request.args.to_dict()
+    try:
+        # Read params based on request type
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+        else:
+            data = request.args.to_dict()
 
-    message_text = data.get("message", "")
-    sender = data.get("sender", "User")  # 'User' or 'Bot'
-    user_name = data.get("user_name", "User")
-    user_id = data.get("user_id", "unknown")
-    issue_description = data.get("issue_description", "")
-    preferred_style = data.get("preferred_style", "Balanced")
-    current_bot = data.get("botName")
-    session_id = f"{user_id}_{current_bot}"
+        message_text = data.get("message", "")
+        sender = data.get("sender", "User")  # 'User' or 'Bot'
+        user_name = data.get("user_name", "User")
+        user_id = data.get("user_id", "unknown")
+        issue_description = data.get("issue_description", "")
+        preferred_style = data.get("preferred_style", "Balanced")
+        current_bot = data.get("botName")
 
-    # Get existing session context
-    ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
+        if not current_bot:
+            return jsonify({"error": "botName is required"}), 400
 
-    now = datetime.now(timezone.utc).isoformat()
-    final_sender = "User" if sender.lower() == "user" else current_bot
+        session_id = f"{user_id}_{current_bot}"
 
-    # Append to history
-    ctx["history"].append({
-        "sender": final_sender,
-        "message": message_text,
-        "timestamp": now
-    })
+        # Get Firestore session reference
+        db = firestore.client()
+        session_ref = db.collection("sessions").document(session_id)
 
-    # Save to Firestore
-    ctx["session_ref"].set({
-        "user_id": user_id,
-        "bot_name": current_bot,
-        "messages": ctx["history"],
-        "last_updated": firestore.SERVER_TIMESTAMP,
-        "issue_description": issue_description,
-        "preferred_style": preferred_style,
-        "is_active": True
-    }, merge=True)
+        # Get existing history or start new
+        session_doc = session_ref.get()
+        if session_doc.exists:
+            ctx_history = session_doc.to_dict().get("messages", [])
+        else:
+            ctx_history = []
 
-    return jsonify({
-        "status": f"{final_sender} message saved",
-        "total_messages": len(ctx["history"])
-    }), 200
+        now = datetime.now(timezone.utc).isoformat()
+        final_sender = "User" if sender.lower() == "user" else current_bot
+
+        # Append message
+        ctx_history.append({
+            "sender": final_sender,
+            "message": message_text,
+            "timestamp": now
+        })
+
+        # Save updated session
+        session_ref.set({
+            "user_id": user_id,
+            "bot_name": current_bot,
+            "messages": ctx_history,
+            "last_updated": firestore.SERVER_TIMESTAMP,
+            "issue_description": issue_description,
+            "preferred_style": preferred_style,
+            "is_active": True
+        }, merge=True)
+
+        return jsonify({
+            "status": f"{final_sender} message saved",
+            "total_messages": len(ctx_history)
+        }), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 
 
 
@@ -1605,6 +1625,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
