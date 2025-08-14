@@ -1159,10 +1159,11 @@ def newstream():
                 category, confidence = detect_category_with_keywords(user_msg)
                 if confidence == 1.0 and BOT_MAP.get(category) != current_bot:
                     correct_bot = BOT_MAP[category]
-                    yield f"I notice you're talking about {category}-related concerns. "
-                        f"**{correct_bot}** has more expertise in this area. "
-                        f"Would you like me to connect you with {correct_bot}? (Yes/No)"
-                        return
+                    yield  (
+                           f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area "
+                           f"and can provide more targeted support. Would you like to switch? 🔄"
+                    )
+                    return
 
                 # Response generation
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
@@ -2163,6 +2164,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
