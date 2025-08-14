@@ -591,13 +591,20 @@ from flask import request, jsonify
 from datetime import datetime, timezone
 from firebase_admin import firestore
 
+from flask import request, jsonify
+from datetime import datetime, timezone
+from firebase_admin import firestore
+
 @app.route("/api/newstream", methods=["GET", "POST"])
-def newstream():
+async def newstream():
     """
-    Unified API for saving both user messages and bot replies to Firestore.
-    Structure remains identical to the existing DB format.
+    Async unified API for saving both user and bot messages to Firestore.
+    Accepts GET (query params) and POST (JSON body).
     """
-    data = request.get_json(force=True)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:  # GET request
+        data = request.args.to_dict()
 
     message_text = data.get("message", "")
     sender = data.get("sender", "User")  # 'User' or 'Bot'
@@ -608,21 +615,20 @@ def newstream():
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    # Get existing session context (same as before)
+    # Get existing session context
     ctx = get_session_context(session_id, user_name, issue_description, preferred_style)
 
     now = datetime.now(timezone.utc).isoformat()
-
-    # Keep sender name as "User" for human messages, bot name for AI replies
     final_sender = "User" if sender.lower() == "user" else current_bot
 
+    # Append to history
     ctx["history"].append({
         "sender": final_sender,
         "message": message_text,
         "timestamp": now
     })
 
-    # Save exactly as before
+    # Save to Firestore
     ctx["session_ref"].set({
         "user_id": user_id,
         "bot_name": current_bot,
@@ -633,7 +639,11 @@ def newstream():
         "is_active": True
     }, merge=True)
 
-    return jsonify({"status": f"{final_sender} message saved"}), 200
+    return jsonify({
+        "status": f"{final_sender} message saved",
+        "total_messages": len(ctx["history"])
+    }), 200
+
 
 
 def handle_message(data):
@@ -1595,6 +1605,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
