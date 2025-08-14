@@ -617,7 +617,7 @@ BOT_KEYWORDS = {
 
     "Jordan": [  # Couples / Relationships
         "relationship", "couple", "partner", "girlfriend", "boyfriend", "breakup", "love", "dating",
-        "trust issues", "marriage", "fight", "argue", "infidelity", "commitment", "long distance",
+        "trust issues", "marriage", "infidelity", "commitment", "long distance",
         "romance", "flirting", "chemistry", "connection", "togetherness", "compatibility",
         "emotional intimacy", "physical intimacy", "cheating", "ex", "ex-boyfriend", "ex-girlfriend",
         "toxic relationship", "romantic", "honeymoon phase", "falling in love", "break", "split up",
@@ -633,7 +633,7 @@ BOT_KEYWORDS = {
 
     "River": [  # Depression
         "depression", "sad", "hopeless", "empty", "lonely", "down", "low mood", "worthless", "crying",
-        "fatigue", "loss of interest", "suicidal", "gloomy", "lack of motivation", "helpless",
+        "fatigue", "loss of interest", "gloomy", "lack of motivation", "helpless",
         "blue", "can't get out of bed", "no energy", "despair", "pointless", "meaningless",
         "tearful", "isolated", "withdrawn", "dark thoughts", "negative thinking", "self-hate",
         "self-loathing", "nothing matters", "failure", "can't go on", "lack of pleasure",
@@ -663,7 +663,7 @@ BOT_KEYWORDS = {
     ],
 
     "Ava": [  # Family
-        "family", "parents", "siblings", "home", "children", "relatives", "family issues",
+        "family", "parents", "siblings", "home", "children", "relatives", "family issues", "sister",
         "argument with family", "parenting", "support system", "inheritance", "family conflict",
         "closeness", "family bonding", "mom", "dad", "brother", "sister", "cousin", "grandparents",
         "uncle", "aunt", "niece", "nephew", "stepfamily", "blended family", "in-laws",
@@ -791,7 +791,7 @@ TECHNICAL_TERMS = [
         "git", "repository", "bug", "debug", "code", "programming", "python",
         "javascript", "html", "css", "framework", "library", "package"]
 
-ESCALATION_TERMS = ["harm myself", "suicide", "kill myself", "end my life", "take my life",
+ESCALATION_TERMS = ["harm myself", "suicidal", "suicide", "kill myself", "end my life", "take my life", "kill", "destroy",
                        "i want to die", "don't want to live", "self-harm", "cut myself", "overdose", "SOS", "sos" ,
                         "crisis", "urgent", "help me", "emergency", "life or death", "immediately", "right now",
                         "can't take it", "critical", "hotline","overdose", "end it all", "can't go on", "need help now",
@@ -2180,96 +2180,123 @@ SOS_MESSAGE = (
     "You're not alone in this. 💙"
 )
 
-@app.route("/api/wellness-status", methods=["GET"])
-def wellness_status():
+
+
+
+# In-memory SOS counts
+sos_counts = {}
+
+@app.route("/sos", methods=["GET"])
+def increment_sos():
+    """Increment SOS count for a specific user."""
     user_id = request.args.get("user_id")
     if not user_id:
-        return jsonify({"error": "user_id is required"}), 400
+        return jsonify({"error": "Missing 'user_id' parameter"}), 400
 
-    now = datetime.utcnow()
-    thirty_days_ago = now - timedelta(days=30)
-    seven_days_ago = now - timedelta(days=7)
-
-    low_mood_days = 0
-    mood_variety_set = set()
-    sos_usage = 0
-    avg_mood_sum = 0
-    avg_mood_count = 0
-    recovery_mentions = 0
-
-    # ---- 1. Process recent mood check-ins ----
-    checkins = db.collection("recent-checkin").where("user_id", "==", user_id).stream()
-    for doc in checkins:
-        data = doc.to_dict()
-        mood = data.get("mood", "").lower()
-        intensity = data.get("intensity", 0)
-        ts = data.get("timestamp")
-
-        if not ts:
-            continue
-        ts = ts.replace(tzinfo=None)
-
-        # Track mood variety (last 7 days)
-        if ts >= seven_days_ago and mood:
-            mood_variety_set.add(mood)
-
-        # Low-mood days (last 30 days, intensity ≥ 6/10)
-        if ts >= thirty_days_ago and mood in ["sad", "depressed", "anxious", "stressed", "lonely", "angry", "fear"] and intensity >= 6:
-            low_mood_days += 1
-
-        # Average mood score
-        if intensity:
-            avg_mood_sum += intensity
-            avg_mood_count += 1
-
-    # ---- 2. Count SOS Usage + Recovery Mentions from all bot sessions ----
-    for bot in BOTS:
-        session_id = f"{user_id}_{bot}"
-        session_doc = db.collection("sessions").document(session_id).get()
-        if session_doc.exists:
-            for msg_data in session_doc.to_dict().values():
-                if isinstance(msg_data, dict):
-                    msg_text = msg_data.get("message", "")
-                    if msg_text == SOS_MESSAGE:
-                        sos_usage += 1
-                    # Detect recovery mentions (feeling better)
-                    if any(keyword in msg_text.lower() for keyword in ["feeling better", "i'm okay now", "i feel good", "better now"]):
-                        recovery_mentions += 1
-
-    # ---- 3. Scoring ----
-    score = 0
-    if len(mood_variety_set) >= 8:
-        score += 10
-    if low_mood_days < 5:
-        score += 20
-    if sos_usage == 0:
-        score += 20
-    if avg_mood_count > 0 and (avg_mood_sum / avg_mood_count) >= 6:
-        score += 20
-    if recovery_mentions >= 2:
-        score += 30
-
-    # ---- 4. Determine Mental Health Status ----
-    if score >= 90:
-        status = "Thriving"
-    elif score >= 61:
-        status = "Stable"
-    else:
-        status = "Struggling"
-
+    # Increment SOS count for this user
+    sos_counts[user_id] = sos_counts.get(user_id, 0) + 1
     return jsonify({
         "user_id": user_id,
-        "low_mood_days": low_mood_days,
-        "sos_usage": sos_usage,
-        "mood_variety": len(mood_variety_set),
-        "score": score,
-        "mental_health_status": status
+        "sos_count": sos_counts[user_id]
     })
+
+
+@app.route("/api/wellness", methods=["GET"])
+def wellness_status():
+    """Calculate Wellness Status based on recent check-ins and SOS usage."""
+    try:
+        user_id = request.args.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Missing 'user_id' parameter"}), 400
+
+        # Get SOS count for the user (default 0 if not found)
+        sos_usage = sos_counts.get(user_id, 0)
+
+        # Get check-ins from Firestore for this user
+        checkins_ref = db.collection("recent-checkin").where("user_id", "==", user_id)
+        docs = checkins_ref.stream()
+
+        checkins = []
+        for doc in docs:
+            data = doc.to_dict()
+            checkins.append({
+                "date": datetime.strptime(data.get("date"), "%d-%m-%Y").strftime("%Y-%m-%d"),
+                "mood": data.get("mood", ""),
+                "intensity": convert_intensity(data.get("intensity", "")),
+            })
+
+        low_mood_labels = {"sadness", "anxiety", "anger", "fear"}
+        min_low_intensity = 6
+
+        # Metrics
+        low_mood_days = sum(
+            1 for c in checkins
+            if c["mood"].lower() in low_mood_labels and c["intensity"] >= min_low_intensity
+        )
+        mood_variety = len(set(c["mood"].lower() for c in checkins))
+        avg_mood = round(sum(c["intensity"] for c in checkins) / len(checkins), 1) if checkins else 0
+
+        # Recovery rate
+        recovery_count = 0
+        for i, c in enumerate(checkins):
+            if c["mood"].lower() in low_mood_labels and c["intensity"] >= min_low_intensity:
+                current_date = datetime.strptime(c["date"], "%Y-%m-%d")
+                for next_c in checkins[i+1:]:
+                    next_date = datetime.strptime(next_c["date"], "%Y-%m-%d")
+                    if 0 < (next_date - current_date).days <= 2 and next_c["intensity"] >= 6:
+                        recovery_count += 1
+                        break
+        recovery_rate = round((recovery_count / low_mood_days) * 100, 1) if low_mood_days > 0 else 100
+
+        # Scoring
+        score = 0
+        if mood_variety >= 8: score += 10
+        if low_mood_days < 5: score += 20
+        if sos_usage == 0: score += 20
+        if avg_mood >= 6: score += 20
+        if recovery_rate >= 66: score += 30
+
+        # Status
+        if score >= 90:
+            status = "THRIVING"
+            message = "✅ Excellent mental health indicators! You're maintaining emotional variety, zero crisis episodes, and consistent positive trends."
+        elif score >= 70:
+            status = "STABLE"
+            message = "🙂 You're doing well overall, but there’s room for improvement. Keep tracking and maintaining positive habits."
+        else:
+            status = "NEEDS ATTENTION"
+            message = "⚠ Your metrics show some concerning trends. Consider using available support tools and tracking progress."
+
+        return jsonify({
+            "user_id": user_id,
+            "mental_health_status": status,
+            "low_mood_days": low_mood_days,
+            "sos_usage": sos_usage,
+            "mood_variety": mood_variety,
+            "average_mood": avg_mood,
+            "recovery_rate": recovery_rate,
+            "score": score,
+            "message": message
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def convert_intensity(intensity):
+    """Convert intensity from string like 'High'/'Medium'/'Low' to numeric scale 1-10."""
+    mapping = {"low": 3, "medium": 6, "high": 9}
+    if isinstance(intensity, int):
+        return intensity
+    return mapping.get(intensity.lower(), 5)
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
