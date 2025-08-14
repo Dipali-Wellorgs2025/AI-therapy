@@ -629,16 +629,57 @@ from firebase_admin import firestore
 from difflib import SequenceMatcher
 import threading
 
-import gpt_2_simple as gpt2
-import tensorflow as tf
+from transformers import pipeline
 
+# ------------------ Config ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
 
-# ------------------ GPT-2 simple setup ------------------
-GPT2_MODEL_NAME = "124M"  # small GPT-2
-sess = gpt2.start_tf_sess()
-gpt2.download_gpt2(model_name=GPT2_MODEL_NAME)  # download model if not present
-gpt2.load_gpt2(sess, model_name=GPT2_MODEL_NAME)
+# Categories and bot mapping (adjust names as you like)
+CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
+BOT_MAP = {
+    "anxiety": "Sage",
+    "couples": "Jordan",
+    "crisis": "Raya",
+    "depression": "River",
+    "family": "Ava",
+    "trauma": "Phoenix",
+}
+
+# ------------------ ONNX models (loaded once) ------------------
+# Small, fast text generation
+GENERATOR = pipeline("text-generation", model="distilgpt2", framework="onnx")
+
+# Zero-shot category detection (runs on ONNX)
+# Notes:
+# - The zero-shot pipeline works as text-classification under the hood.
+# - If ONNX export isn’t available in your environment for this model,
+#   switch to another small classification model + custom label logic.
+CLASSIFIER = pipeline(
+    "zero-shot-classification",
+    model="facebook/bart-large-mnli",  # widely used ZS model
+    framework="onnx"
+)
+
+# ------------------ Greetings & lightweight fallbacks ------------------
+GREETINGS_INPUT = ("hi", "hello", "hey", "hiya", "yo", "good morning", "good evening", "good afternoon")
+GREETINGS_RESPONSES = [
+    "Hello there! 👋 How’s your day going?",
+    "Hey! 😊 How are you feeling today?",
+    "Hi! 🌟 What’s on your mind?",
+    "Good to see you! 🌼 How can I help?",
+    "Hi! I’m here with you. What feels most important to talk about right now?",
+]
+
+TEMPLATES = [
+    "I hear you. Can you tell me more about that? 😊",
+    "That sounds challenging. How are you coping? 💙",
+    "It's okay to feel this way. What do you think is the hardest part?",
+    "Thanks for sharing. Let's explore that together. ✨",
+    "I understand. What emotions are coming up for you right now?",
+]
+
+def fake_response():
+    return random.choice(TEMPLATES)
 
 # ------------------ Cache bot JSON ------------------
 BOT_RESPONSES_CACHE = {}
@@ -652,49 +693,13 @@ def get_bot_responses():
             resp = requests.get(GITHUB_JSON_URL, timeout=10)
             resp.raise_for_status()
             data = resp.json()
-            BOT_RESPONSES_CACHE.update({bot["name"]: bot["conversations"] for bot in data.get("bots", [])})
+            BOT_RESPONSES_CACHE.update(
+                {bot["name"]: bot["conversations"] for bot in data.get("bots", [])}
+            )
             return BOT_RESPONSES_CACHE
         except Exception as e:
             print(f"[ERROR] Could not load JSON: {e}")
             return {}
-
-# ------------------ Lightweight GPT-2 text generation ------------------
-def lightweight_nlp_response(user_msg):
-    prompt = f"You are a supportive therapist. Respond to: {user_msg}"
-    output = gpt2.generate(sess, prefix=prompt, length=50, temperature=0.7, return_as_list=True, include_prefix=False)
-    return output[0]
-
-# ------------------ Fake fallback ------------------
-KEYWORD_RESPONSES = {
-    "stress": "It sounds like stress is weighing on you. Want to talk more about it? 😌",
-    "family": "Family dynamics can be tough. How are things at home?",
-    "sad": "I'm sorry you're feeling sad. Can you describe what's causing this feeling?",
-    "happy": "That's great! What made you feel this way? 🌟",
-    "angry": "Anger is a valid emotion. Do you want to explore why you feel this way?",
-    "hello": "Hi there! How are you feeling today? 😊",
-    "hi": "Hello! Nice to see you. How's your day going?",
-    "hey": "Hey! How are you doing today?"
-}
-
-TEMPLATES = [
-    "I hear you. Can you tell me more about that? 😊",
-    "That sounds challenging. How are you coping? 💙",
-    "It's okay to feel this way. What do you think is the hardest part?",
-    "Thanks for sharing. Let's explore that together. ✨",
-    "I understand. What emotions are coming up for you right now?"
-]
-
-def fake_response(user_msg):
-    for key, response in KEYWORD_RESPONSES.items():
-        if key in user_msg.lower():
-            return response
-    return random.choice(TEMPLATES)
-
-# ------------------ Stream sentences ------------------
-def stream_response(reply):
-    sentences = re.split(r'(?<=[.!?]) +', reply)
-    for sentence in sentences:
-        yield sentence.strip() + " "
 
 # ------------------ JSON matching ------------------
 def find_best_response(bot_name, user_input, threshold=0.5):
@@ -702,11 +707,57 @@ def find_best_response(bot_name, user_input, threshold=0.5):
     conversations = BOT_RESPONSES.get(bot_name, [])
     best_score, best_reply = 0, None
     for i in range(0, len(conversations) - 1, 2):
-        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
-            score = SequenceMatcher(None, user_input.lower(), conversations[i]["content"].lower()).ratio()
+        if conversations[i]["role"] == "user" and conversations[i + 1]["role"] == "assistant":
+            score = SequenceMatcher(
+                None,
+                user_input.lower(),
+                conversations[i]["content"].lower(),
+            ).ratio()
             if score > best_score:
-                best_score, best_reply = score, conversations[i+1]["content"]
+                best_score, best_reply = score, conversations[i + 1]["content"]
     return best_reply if best_score >= threshold else None
+
+# ------------------ ONNX helpers ------------------
+def onnx_generate_response(prompt, max_length=60):
+    try:
+        outputs = GENERATOR(
+            prompt if prompt.endswith((" ", "\n")) else prompt + " ",
+            max_length=max_length,
+            num_return_sequences=1,
+            do_sample=True,
+            temperature=0.8,
+            top_p=0.95,
+            pad_token_id=50256,  # gpt2's EOS token as pad
+        )
+        return outputs[0]["generated_text"].strip()
+    except Exception as e:
+        print(f"[ERROR] ONNX generation failed: {e}")
+        return fake_response()
+
+def detect_category_with_onnx(text, labels=CATEGORIES, threshold=0.60):
+    """
+    Zero-shot category detection using ONNX.
+    Returns (category or None, confidence float).
+    """
+    try:
+        result = CLASSIFIER(text, candidate_labels=labels, multi_label=False)
+        label = result["labels"][0]
+        score = float(result["scores"][0])
+        if score >= threshold:
+            return label, score
+        return None, score
+    except Exception as e:
+        print(f"[ERROR] ONNX category detection failed: {e}")
+        return None, 0.0
+
+# ------------------ Stream sentences ------------------
+def stream_response(reply):
+    # Split on sentence boundaries and stream
+    sentences = re.split(r"(?<=[.!?]) +", reply)
+    for sentence in sentences:
+        chunk = sentence.strip()
+        if chunk:
+            yield chunk + " "
 
 # ------------------ Gibberish detection ------------------
 def is_gibberish(user_msg: str) -> bool:
@@ -717,90 +768,103 @@ def is_gibberish(user_msg: str) -> bool:
     for word in words:
         if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
             gibberish_count += 1
-    return gibberish_count / len(words) > 0.6
+    return (gibberish_count / len(words)) > 0.6
 
 # ------------------ Flask endpoint ------------------
+# (Assumes `app = Flask(__name__)` is declared in your app file)
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
 
-    user_msg = data.get("message", "")
-    user_name = data.get("user_name", "User")
+    user_msg = data.get("message", "") or ""
     user_id = data.get("user_id", "unknown")
     issue_description = data.get("issue_description", "")
     preferred_style = data.get("preferred_style", "Balanced")
-    current_bot = data.get("botName")
+    current_bot = data.get("botName", "Ava")  # default bot if missing
     session_id = f"{user_id}_{current_bot}"
 
-    TECHNICAL_TERMS = ["training", "algorithm", "model", "neural network", "machine learning", "ml",
-                       "ai training", "dataset", "parameters", "weights", "backpropagation",
-                       "gradient descent", "optimization", "loss function", "epochs", "batch size",
-                       "learning rate", "overfitting", "underfitting", "regularization",
-                       "transformer", "attention mechanism", "fine-tuning", "pre-training",
-                       "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-                       "deployment", "inference", "api", "endpoint", "latency", "throughput",
-                       "scaling", "load balancing", "database", "server", "cloud", "docker",
-                       "kubernetes", "microservices", "devops", "ci/cd", "version control",
-                       "git", "repository", "bug", "debug", "code", "programming", "python",
-                       "javascript", "html", "css", "framework", "library", "package"]
+    TECHNICAL_TERMS = [
+        "training", "algorithm", "model", "neural network", "machine learning", "ml",
+        "ai training", "dataset", "parameters", "weights", "backpropagation",
+        "gradient descent", "optimization", "loss function", "epochs", "batch size",
+        "learning rate", "overfitting", "underfitting", "regularization",
+        "transformer", "attention mechanism", "fine-tuning", "pre-training",
+        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+        "deployment", "inference", "api", "endpoint", "latency", "throughput",
+        "scaling", "load balancing", "database", "server", "cloud", "docker",
+        "kubernetes", "microservices", "devops", "ci/cd", "version control",
+        "git", "repository", "bug", "debug", "code", "programming", "python",
+        "javascript", "html", "css", "framework", "library", "package",
+    ]
 
-    ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life"]
+    ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life", "harm myself"]
     OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis"]
 
     def generate():
-        # Early returns
-        if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
+        lower_msg = user_msg.lower()
+
+        # Friendly greeting first
+        if any(g in lower_msg for g in GREETINGS_INPUT):
+            yield random.choice(GREETINGS_RESPONSES)
+            return
+
+        # Safety / scope guards
+        if any(term in lower_msg for term in TECHNICAL_TERMS):
             yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
             return
-        if any(term in user_msg.lower() for term in ESCALATION_TERMS):
+        if any(term in lower_msg for term in ESCALATION_TERMS):
             yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"
             return
-        if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
+        if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
             yield "This topic needs care from a licensed mental health professional. 🤝"
             return
         if is_gibberish(user_msg):
             yield "Sorry, I didn't get that. Could you please rephrase? 😊"
             return
 
-        # JSON match
+        # 1) Try category detection (ONNX zero-shot)
+        category, confidence = detect_category_with_onnx(user_msg, labels=CATEGORIES, threshold=0.60)
+        if category:
+            correct_bot = BOT_MAP.get(category, "Ava")
+            # Offer a switch prompt (your requested format)
+            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+            # NOTE: If you want to continue generating a response *after* this prompt,
+            #       remove the return below.
+            return
+
+        # 2) Try JSON match for the *current* bot
         reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
-        # GPT-2 fallback
+        # 3) Fallback to ONNX text generation
         if not reply:
-            try:
-                reply = lightweight_nlp_response(user_msg)
-            except Exception as e:
-                print(f"[ERROR] GPT-2 generation failed: {e}")
-                reply = fake_response(user_msg)
+            prompt = f"You are a supportive therapist. Respond to: {user_msg}\n"
+            reply = onnx_generate_response(prompt, max_length=120)
 
         # Stream sentence by sentence
         yield "\n\n"
         for chunk in stream_response(reply):
             yield chunk
 
-        # Firestore update
+        # Persist to Firestore (safe merge)
         now = datetime.now(timezone.utc).isoformat()
-        session_ref = firestore.client().collection("sessions").document(session_id)
-        session_ref.update({
-            "messages": firestore.ArrayUnion([{"sender": "User", "message": user_msg, "timestamp": now}])
-        })
-        session_ref.update({
-            "messages": firestore.ArrayUnion([{"sender": current_bot, "message": reply, "timestamp": now}])
-        })
-        session_ref.update({
-            "last_updated": firestore.SERVER_TIMESTAMP,
-            "issue_description": issue_description,
-            "preferred_style": preferred_style,
-            "is_active": True
-        })
+        try:
+            session_ref = firestore.client().collection("sessions").document(session_id)
+            session_ref.set({
+                "user_id": user_id,
+                "bot_name": current_bot,
+                "messages": firestore.ArrayUnion([
+                    {"sender": "User", "message": user_msg, "timestamp": now},
+                    {"sender": current_bot, "message": reply, "timestamp": now},
+                ]),
+                "last_updated": firestore.SERVER_TIMESTAMP,
+                "issue_description": issue_description,
+                "preferred_style": preferred_style,
+                "is_active": True,
+            }, merge=True)
+        except Exception as e:
+            print(f"[WARN] Firestore write failed: {e}")
 
     return Response(generate(), mimetype="text/event-stream")
-
-
-
-
-
-
 
 
 
@@ -1765,6 +1829,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
