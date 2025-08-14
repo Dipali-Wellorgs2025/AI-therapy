@@ -826,7 +826,90 @@ def is_gibberish(user_msg: str) -> bool:
     # If more than 60% words are gibberish
     return gibberish_count / len(words) > 0.6
 
+#-----------------------------------------------------------------
 
+# ------------------ Response Matching Functions ------------------
+
+def find_best_response(bot_name, user_msg, threshold=0.5):
+    """
+    Find the best matching response from the bot's conversation history.
+    Returns None if no good match is found.
+    """
+    BOT_RESPONSES = get_bot_responses()
+    conversations = BOT_RESPONSES.get(bot_name, [])
+    
+    best_score = 0
+    best_reply = None
+    
+    for i in range(0, len(conversations) - 1, 2):
+        if (conversations[i]["role"] == "user" and 
+            conversations[i+1]["role"] == "assistant"):
+            
+            # Calculate similarity between user input and conversation prompt
+            score = SequenceMatcher(
+                None,
+                user_msg.lower(),
+                conversations[i]["content"].lower()
+            ).ratio()
+            
+            if score > best_score:
+                best_score = score
+                best_reply = conversations[i+1]["content"]
+    
+    return best_reply if best_score >= threshold else None
+
+
+def get_bot_responses():
+    """
+    Get bot responses from cache or fetch from GitHub if not cached.
+    Thread-safe implementation.
+    """
+    with CACHE_LOCK:
+        if not BOT_RESPONSES_CACHE:
+            try:
+                resp = requests.get(GITHUB_JSON_URL, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                BOT_RESPONSES_CACHE.update({
+                    bot["name"]: bot["conversations"] 
+                    for bot in data.get("bots", [])
+                })
+                
+                # Initialize Markov models
+                for bot_name, conversations in BOT_RESPONSES_CACHE.items():
+                    text = "\n".join([
+                        msg["content"] 
+                        for msg in conversations 
+                        if msg["role"] == "assistant"
+                    ])
+                    MARKOV_MODELS[bot_name] = markovify.Text(text)
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to load bot responses: {e}")
+                
+        return BOT_RESPONSES_CACHE
+
+
+def markov_generate_response(bot_name, user_msg, max_length=120):
+    """
+    Generate a response using Markov chains.
+    Falls back to template responses if generation fails.
+    """
+    try:
+        model = MARKOV_MODELS.get(bot_name)
+        if not model:
+            return fake_response()
+            
+        # Try to generate a relevant sentence
+        for _ in range(5):  # Make 5 attempts
+            sentence = model.make_sentence(max_chars=max_length)
+            if sentence:
+                return sentence
+                
+        return fake_response()
+    except Exception as e:
+        print(f"[ERROR] Markov generation failed: {e}")
+        return fake_response()
 # ------------------ Updated Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
@@ -1881,6 +1964,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
