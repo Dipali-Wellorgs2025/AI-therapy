@@ -591,16 +591,20 @@ from datetime import datetime, timezone
 from firebase_admin import firestore
 from difflib import SequenceMatcher
 import threading
-from transformers import pipeline
+
+from llama_cpp import Llama  # lightweight GGUF runtime
 
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+
+# ------------------ Load model once ------------------
+GGUF_MODEL_PATH = "./distilgpt2-Q4_0.gguf"  # path to quantized model
+llm = Llama(model_path=GGUF_MODEL_PATH)
 
 # ------------------ Cache bot JSON ------------------
 BOT_RESPONSES_CACHE = {}
 CACHE_LOCK = threading.Lock()
 
 def get_bot_responses():
-    """Fetch bot conversations once and cache"""
     with CACHE_LOCK:
         if BOT_RESPONSES_CACHE:
             return BOT_RESPONSES_CACHE
@@ -614,17 +618,11 @@ def get_bot_responses():
             print(f"[ERROR] Could not load JSON: {e}")
             return {}
 
-# ------------------ Lightweight NLP ------------------
-text_gen = pipeline("text-generation", model="distilgpt2")
-
+# ------------------ Lightweight NLP via GGUF ------------------
 def lightweight_nlp_response(user_msg):
-    output = text_gen(
-        f"You are a supportive therapist. Respond to: {user_msg}",
-        max_length=80,
-        do_sample=True,
-        temperature=0.7
-    )
-    return output[0]["generated_text"].strip()
+    prompt = f"You are a supportive therapist. Respond to: {user_msg}"
+    output = llm(prompt, max_tokens=80, temperature=0.7)
+    return output["choices"][0]["text"].strip()
 
 # ------------------ Fake fallback ------------------
 KEYWORD_RESPONSES = {
@@ -642,22 +640,6 @@ TEMPLATES = [
     "Thanks for sharing. Let's explore that together. ✨",
     "I understand. What emotions are coming up for you right now?"
 ]
-import re
-
-def is_gibberish(user_msg: str) -> bool:
-    """Detect if the message is mostly gibberish."""
-    words = user_msg.lower().strip().split()
-    if not words:
-        return True  # Empty message considered gibberish
-
-    gibberish_count = 0
-    for word in words:
-        # Word is gibberish if no vowels OR 4+ consonants in a row
-        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
-            gibberish_count += 1
-
-    # If more than 60% words are gibberish
-    return gibberish_count / len(words) > 0.6
 
 def fake_response(user_msg):
     for key, response in KEYWORD_RESPONSES.items():
@@ -683,7 +665,7 @@ def find_best_response(bot_name, user_input, threshold=0.5):
                 best_score, best_reply = score, conversations[i+1]["content"]
     return best_reply if best_score >= threshold else None
 
-# ------------------ Endpoint ------------------
+# ------------------ Flask endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
@@ -711,7 +693,22 @@ def newstream():
     ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life"]
     OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis"]
 
+import re
 
+def is_gibberish(user_msg: str) -> bool:
+    """Detect if the message is mostly gibberish."""
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True  # Empty message considered gibberish
+
+    gibberish_count = 0
+    for word in words:
+        # Word is gibberish if no vowels OR 4+ consonants in a row
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+
+    # If more than 60% words are gibberish
+    return gibberish_count / len(words) > 0.6
 
     def generate():
         # Early returns
@@ -736,7 +733,7 @@ def newstream():
             try:
                 reply = lightweight_nlp_response(user_msg)
             except Exception as e:
-                print(f"[ERROR] NLP failed: {e}")
+                print(f"[ERROR] GGUF NLP failed: {e}")
                 reply = fake_response(user_msg)
 
         # Stream sentence by sentence
@@ -761,6 +758,7 @@ def newstream():
         })
 
     return Response(generate(), mimetype="text/event-stream")
+
 
 
 
@@ -1731,6 +1729,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
