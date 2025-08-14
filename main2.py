@@ -1155,25 +1155,24 @@ def newstream():
                 if is_gibberish(user_msg):
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
+
                 # --- Bot switching logic ---
-                # --- Bot switching logic ---
+                correct_bot = None
                 category, confidence = detect_category_with_keywords(user_msg)
 
                 if category:
-                       correct_bot = BOT_MAP.get(category, category)  # Works if category is bot or label
+                    correct_bot = BOT_MAP.get(category, category)
 
-                # If detected category bot is different from current bot
+                # If another bot is more suitable → ask to switch
                 if correct_bot and correct_bot != current_bot:
-                  yield (
-                    f"I notice you're dealing with **{category}** concerns. "
-                    f"**{correct_bot}** specializes in this area and can provide more targeted support. "
-                    "Would you like to switch? 🔄"
-                  )
-                  return
+                    yield (
+                        f"I notice you're dealing with **{category}** concerns. "
+                        f"**{correct_bot}** specializes in this area and can provide more targeted support. "
+                        "Would you like to switch? 🔄"
+                    )
+                    return
 
-              
-
-                # --- Response generation ---
+                # If Ava or unknown → Ava responds
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
@@ -1210,7 +1209,6 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
-
 
 
              
@@ -2173,6 +2171,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
