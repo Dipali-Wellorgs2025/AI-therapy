@@ -835,33 +835,7 @@ BOT_MAP = {
     "trauma": "Phoenix"
 }
 
-# ------------------ Bot Keywords ------------------
-BOT_KEYWORDS = {
-    "Sage": [  # Anxiety
-        "anxiety", "panic", "panic attack", "nervous", "worry", "overthinking", 
-        "stress", "uneasy", "fear", "restless", "tension", "pressure"
-    ],
-    "Jordan": [  # Relationships
-        "relationship", "partner", "girlfriend", "boyfriend", "breakup", 
-        "love", "dating", "marriage", "fight", "argue"
-    ],
-    "River": [  # Depression
-        "depression", "sad", "hopeless", "empty", "lonely", "down", 
-        "low mood", "worthless", "crying", "fatigue"
-    ],
-    "Phoenix": [  # Trauma
-        "trauma", "abuse", "PTSD", "flashback", "assault", "violence", 
-        "neglect", "grief", "loss", "shock"
-    ],
-    "Ava": [  # Family
-        "family", "parents", "siblings", "home", "children", "relatives", 
-        "mom", "dad", "brother", "sister"
-    ],
-    "Raya": [  # Crisis
-        "crisis", "urgent", "need help", "emergency", "suicidal", 
-        "self-harm", "can't cope", "breaking down"
-    ]
-}
+
 
 # ------------------ Response Templates ------------------
 TEMPLATES = [
@@ -872,20 +846,6 @@ TEMPLATES = [
     "I understand. What emotions are coming up for you right now?",
 ]
 
-# ------------------ Safety Term Lists ------------------
-TECHNICAL_TERMS = [
-    "training", "algorithm", "model", "neural network", "machine learning",
-    "ai training", "dataset", "parameters", "weights", "backpropagation"
-]
-
-ESCALATION_TERMS = [
-    "harm myself", "suicide", "kill myself", "end my life", "take my life",
-    "i want to die", "don't want to live", "self-harm", "cut myself"
-]
-
-OUT_OF_SCOPE_TOPICS = [
-    "legal advice", "medical diagnosis", "addiction", "overdose", "bipolar"
-]
 
 # ------------------ Helper Functions ------------------
 def fake_response():
@@ -1186,16 +1146,22 @@ def newstream():
 
                 # Safety checks
                 if any(term in lower_msg for term in TECHNICAL_TERMS):
-                    yield "I focus on mental health support, not technical questions."
+                    yield (
+                       "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+                       "For technical questions about training algorithms, system architecture, or development-related topics, "
+                       "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
+                       "Is there anything about your mental health or wellbeing I can help you with instead?"
+                    )
                     return
                 if any(term in lower_msg for term in ESCALATION_TERMS):
-                    yield "Please contact emergency support immediately. 💙"
+                    yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you "
+                          "or you can reach out to our SOS services. You're not alone in this. 💙"
                     return
                 if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
-                    yield "This requires professional help. 🤝"
+                    yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
                     return
                 if is_gibberish(user_msg):
-                    yield "Could you please rephrase? 😊"
+                    yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
 
                 # Bot switching logic
@@ -2207,6 +2173,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
