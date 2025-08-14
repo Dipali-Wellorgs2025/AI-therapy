@@ -583,53 +583,6 @@ QUESTIONNAIRES = {
     ]
 }
 
-# Greetings
-GREETING_KEYWORDS = ["hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon", "good evening"]
-GREETING_RESPONSES = [
-    "Hello! How are you feeling today? 😊",
-    "Hey there! What’s on your mind? 💙",
-    "Hi! I’m here to listen. 🌟",
-    "Hello! Tell me more about how you’re feeling. ✨"
-]
-
-# Farewells
-FAREWELL_KEYWORDS = ["bye", "goodbye", "see you", "talk later", "later"]
-FAREWELL_RESPONSES = [
-    "Goodbye! Take care and talk soon. 💙",
-    "See you later! Remember, I’m always here if you want to chat. 🌟",
-    "Bye! Hope your day goes well. 😊",
-    "Take care! Reach out anytime you need. ✨"
-]
-
-# Thank you / appreciation
-THANKS_KEYWORDS = ["thanks", "thank you", "thx", "ty"]
-THANKS_RESPONSES = [
-    "You're welcome! Glad I could help. 😊",
-    "Anytime! I’m here for you. 💙",
-    "No problem! How else can I support you today? ✨",
-    "Happy to help! 🌟"
-]
-
-# Encouragement / positivity
-ENCOURAGE_KEYWORDS = ["I can't", "I failed", "hard", "struggle", "tough"]
-ENCOURAGE_RESPONSES = [
-    "It’s okay to struggle sometimes. You’re doing your best! 💪",
-    "Challenges are normal. Let’s figure this out together. 🌟",
-    "Remember, every step forward counts, no matter how small. ✨",
-    "I believe in you! You’ve got this. 😊"
-]
-
-
-import re
-import random
-import requests
-from flask import request, Response
-from datetime import datetime, timezone
-from firebase_admin import firestore
-from difflib import SequenceMatcher
-import threading
-
-from transformers import pipeline
 
 # ------------------ Config ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
@@ -645,133 +598,98 @@ BOT_MAP = {
     "trauma": "Phoenix",
 }
 
-# ------------------ ONNX models (loaded once) ------------------
-# Small, fast text generation
-GENERATOR = pipeline("text-generation", model="distilgpt2", framework="onnx")
+# ------------------ Enhanced Keyword Responses ------------------
+KEYWORD_RESPONSES = {
+    # Greetings
+    "greeting": {
+        "keywords": ["hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon", "good evening"],
+        "responses": [
+            "Hello! How are you feeling today? 😊",
+            "Hey there! What's on your mind? 💙",
+            "Hi! I'm here to listen. 🌟",
+            "Hello! Tell me more about how you're feeling. ✨"
+        ]
+    },
+    # Farewells
+    "farewell": {
+        "keywords": ["bye", "goodbye", "see you", "talk later", "later"],
+        "responses": [
+            "Goodbye! Take care and talk soon. 💙",
+            "See you later! Remember, I'm always here if you want to chat. 🌟",
+            "Bye! Hope your day goes well. 😊",
+            "Take care! Reach out anytime you need. ✨"
+        ]
+    },
+    # Thank you / appreciation
+    "thanks": {
+        "keywords": ["thanks", "thank you", "thx", "ty"],
+        "responses": [
+            "You're welcome! Glad I could help. 😊",
+            "Anytime! I'm here for you. 💙",
+            "No problem! How else can I support you today? ✨",
+            "Happy to help! 🌟"
+        ]
+    },
+    # Encouragement / positivity
+    "encourage": {
+        "keywords": ["i can't", "i failed", "hard", "struggle", "tough"],
+        "responses": [
+            "It's okay to struggle sometimes. You're doing your best! 💪",
+            "Challenges are normal. Let's figure this out together. 🌟",
+            "Remember, every step forward counts, no matter how small. ✨",
+            "I believe in you! You've got this. 😊"
+        ]
+    },
+    # Check-in
+    "checkin": {
+        "keywords": ["how are you", "how's it going", "how do you feel"],
+        "responses": [
+            "I'm here to focus on you. How are you really feeling today? 💙",
+            "I appreciate you asking! Right now, I want to hear about you. 🌟",
+            "I'm doing well, but more importantly, how are you? ✨"
+        ]
+    },
+    # Self-care
+    "selfcare": {
+        "keywords": ["tired", "exhausted", "burned out", "overwhelmed", "stressed"],
+        "responses": [
+            "It sounds like you might need some self-care. Have you taken time for yourself today? 💙",
+            "When we feel this way, even small breaks can help. What helps you recharge? 🌟",
+            "Remember to be kind to yourself. You deserve rest. ✨"
+        ]
+    },
+    # Help requests
+    "help": {
+        "keywords": ["help me", "what should i do", "i need help", "advice"],
+        "responses": [
+            "I'm here to help. Can you tell me more about what's troubling you? 💙",
+            "Let's work through this together. What's the main challenge you're facing? 🌟",
+            "I want to understand better so I can help. What's been most difficult? ✨"
+        ]
+    }
+}
 
-# Zero-shot category detection (runs on ONNX)
-# Notes:
-# - The zero-shot pipeline works as text-classification under the hood.
-# - If ONNX export isn’t available in your environment for this model,
-#   switch to another small classification model + custom label logic.
-CLASSIFIER = pipeline(
-    "zero-shot-classification",
-    model="facebook/bart-large-mnli",  # widely used ZS model
-    framework="onnx"
-)
-
-# ------------------ Greetings & lightweight fallbacks ------------------
-GREETINGS_INPUT = ("hi", "hello", "hey", "hiya", "yo", "good morning", "good evening", "good afternoon")
-GREETINGS_RESPONSES = [
-    "Hello there! 👋 How’s your day going?",
-    "Hey! 😊 How are you feeling today?",
-    "Hi! 🌟 What’s on your mind?",
-    "Good to see you! 🌼 How can I help?",
-    "Hi! I’m here with you. What feels most important to talk about right now?",
-]
-
-TEMPLATES = [
-    "I hear you. Can you tell me more about that? 😊",
-    "That sounds challenging. How are you coping? 💙",
-    "It's okay to feel this way. What do you think is the hardest part?",
-    "Thanks for sharing. Let's explore that together. ✨",
-    "I understand. What emotions are coming up for you right now?",
-]
-
-def fake_response():
-    return random.choice(TEMPLATES)
-
-# ------------------ Cache bot JSON ------------------
-BOT_RESPONSES_CACHE = {}
-CACHE_LOCK = threading.Lock()
-
-def get_bot_responses():
-    with CACHE_LOCK:
-        if BOT_RESPONSES_CACHE:
-            return BOT_RESPONSES_CACHE
-        try:
-            resp = requests.get(GITHUB_JSON_URL, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            BOT_RESPONSES_CACHE.update(
-                {bot["name"]: bot["conversations"] for bot in data.get("bots", [])}
-            )
-            return BOT_RESPONSES_CACHE
-        except Exception as e:
-            print(f"[ERROR] Could not load JSON: {e}")
-            return {}
-
-# ------------------ JSON matching ------------------
-def find_best_response(bot_name, user_input, threshold=0.5):
-    BOT_RESPONSES = get_bot_responses()
-    conversations = BOT_RESPONSES.get(bot_name, [])
-    best_score, best_reply = 0, None
-    for i in range(0, len(conversations) - 1, 2):
-        if conversations[i]["role"] == "user" and conversations[i + 1]["role"] == "assistant":
-            score = SequenceMatcher(
-                None,
-                user_input.lower(),
-                conversations[i]["content"].lower(),
-            ).ratio()
-            if score > best_score:
-                best_score, best_reply = score, conversations[i + 1]["content"]
-    return best_reply if best_score >= threshold else None
-
-# ------------------ ONNX helpers ------------------
-def onnx_generate_response(prompt, max_length=60):
-    try:
-        outputs = GENERATOR(
-            prompt if prompt.endswith((" ", "\n")) else prompt + " ",
-            max_length=max_length,
-            num_return_sequences=1,
-            do_sample=True,
-            temperature=0.8,
-            top_p=0.95,
-            pad_token_id=50256,  # gpt2's EOS token as pad
-        )
-        return outputs[0]["generated_text"].strip()
-    except Exception as e:
-        print(f"[ERROR] ONNX generation failed: {e}")
-        return fake_response()
-
-def detect_category_with_onnx(text, labels=CATEGORIES, threshold=0.60):
+# ------------------ Updated Helper Functions ------------------
+def check_keyword_responses(user_input):
     """
-    Zero-shot category detection using ONNX.
-    Returns (category or None, confidence float).
+    Check if the user input matches any keyword patterns and return an appropriate response.
+    Returns response string if match found, None otherwise.
     """
-    try:
-        result = CLASSIFIER(text, candidate_labels=labels, multi_label=False)
-        label = result["labels"][0]
-        score = float(result["scores"][0])
-        if score >= threshold:
-            return label, score
-        return None, score
-    except Exception as e:
-        print(f"[ERROR] ONNX category detection failed: {e}")
-        return None, 0.0
+    lower_input = user_input.lower()
+    
+    # Check for exact matches first
+    for category, data in KEYWORD_RESPONSES.items():
+        for keyword in data["keywords"]:
+            # Check for standalone word or phrase
+            if (f" {keyword} " in f" {lower_input} " or  # word surrounded by spaces
+                lower_input.startswith(keyword + " ") or  # starts with keyword
+                lower_input.endswith(" " + keyword) or    # ends with keyword
+                lower_input == keyword):                 # exact match
+                return random.choice(data["responses"])
+    
+    return None
 
-# ------------------ Stream sentences ------------------
-def stream_response(reply):
-    # Split on sentence boundaries and stream
-    sentences = re.split(r"(?<=[.!?]) +", reply)
-    for sentence in sentences:
-        chunk = sentence.strip()
-        if chunk:
-            yield chunk + " "
-
-# ------------------ Gibberish detection ------------------
-def is_gibberish(user_msg: str) -> bool:
-    words = user_msg.lower().strip().split()
-    if not words:
-        return True
-    gibberish_count = 0
-    for word in words:
-        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
-            gibberish_count += 1
-    return (gibberish_count / len(words)) > 0.6
-
-# ------------------ Flask endpoint ------------------
-# (Assumes `app = Flask(__name__)` is declared in your app file)
+# ------------------ Updated Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
@@ -797,18 +715,20 @@ def newstream():
         "javascript", "html", "css", "framework", "library", "package",
     ]
 
-    ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life", "harm myself"]
-    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis"]
+    ESCALATION_TERMS = [ "harm myself","suicide", "kill myself", "end my life", "take my life",
+    "i want to die", "don’t want to live", "self-harm", "cut myself", "overdose", "SOS", "sos", "SOs"]
+    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis","addiction", "overdose", "bipolar", "self-harm","acidity"]
 
     def generate():
         lower_msg = user_msg.lower()
 
-        # Friendly greeting first
-        if any(g in lower_msg for g in GREETINGS_INPUT):
-            yield random.choice(GREETINGS_RESPONSES)
+        # 1) Check for keyword responses first (greetings, farewells, etc.)
+        keyword_response = check_keyword_responses(user_msg)
+        if keyword_response:
+            yield keyword_response
             return
 
-        # Safety / scope guards
+        # 2) Safety / scope guards
         if any(term in lower_msg for term in TECHNICAL_TERMS):
             yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
             return
@@ -822,23 +742,21 @@ def newstream():
             yield "Sorry, I didn't get that. Could you please rephrase? 😊"
             return
 
-        # 1) Try category detection (ONNX zero-shot)
-        category, confidence = detect_category_with_onnx(user_msg, labels=CATEGORIES, threshold=0.60)
+        # 3) Try keyword-based category detection for bot switching
+        category, confidence = detect_category_with_keywords(user_msg)
         if category:
             correct_bot = BOT_MAP.get(category, "Ava")
-            # Offer a switch prompt (your requested format)
-            yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
-            # NOTE: If you want to continue generating a response *after* this prompt,
-            #       remove the return below.
-            return
+            # Only suggest switching if the detected bot is different from current
+            if correct_bot != current_bot:
+                yield f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area and can provide more targeted support. Would you like to switch? 🔄"
+                return
 
-        # 2) Try JSON match for the *current* bot
+        # 4) Try JSON match for the *current* bot
         reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
-        # 3) Fallback to ONNX text generation
+        # 5) Fallback to Markov text generation
         if not reply:
-            prompt = f"You are a supportive therapist. Respond to: {user_msg}\n"
-            reply = onnx_generate_response(prompt, max_length=120)
+            reply = markov_generate_response(current_bot, user_msg, max_length=120)
 
         # Stream sentence by sentence
         yield "\n\n"
@@ -865,10 +783,6 @@ def newstream():
             print(f"[WARN] Firestore write failed: {e}")
 
     return Response(generate(), mimetype="text/event-stream")
-
-
-
-
 
 def handle_message(data):
     import re
@@ -1829,6 +1743,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
