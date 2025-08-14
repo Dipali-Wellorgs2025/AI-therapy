@@ -674,7 +674,8 @@ BOT_KEYWORDS = {
         "family rules", "house rules", "family traditions", "family holidays", "family problems",
         "parents fighting", "sibling rivalry", "caring for parents", "caregiving", "elderly parents",
         "family responsibilities", "family ties", "family loyalty", "family home", "kinship",
-        "family support system", "close family", "tight-knit family", "family advice",
+        "family support system", "close family", "tight-knit family", "family advice", "mother", "father",
+        "grandmother", "granny", "mumma", "pops", "father", "father-in-law", "mother-in-law",
         "family concerns", "raising children", "co-parenting", "family happiness", "family together"
     ],
 
@@ -2171,6 +2172,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
