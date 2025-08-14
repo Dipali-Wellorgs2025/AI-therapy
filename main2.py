@@ -1138,48 +1138,54 @@ def newstream():
             try:
                 lower_msg = user_msg.lower()
 
-                # Safety checks
+                # --- Safety checks ---
                 if any(term in lower_msg for term in TECHNICAL_TERMS):
                     yield (
-                       "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
-                       "For technical questions about training algorithms, system architecture, or development-related topics, "
-                       "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
-                       "Is there anything about your mental health or wellbeing I can help you with instead?"
+                        "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+                        "For technical questions about training algorithms, system architecture, or development-related topics, "
+                        "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
+                        "Is there anything about your mental health or wellbeing I can help you with instead?"
                     )
                     return
+
                 if any(term in lower_msg for term in ESCALATION_TERMS):
                     yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
                     return
+
                 if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
                     yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
                     return
+
                 if is_gibberish(user_msg):
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
 
-                # Bot switching logic
+                # --- Bot switching logic ---
                 category, confidence = detect_category_with_keywords(user_msg)
-                if confidence == 1.0 and BOT_MAP.get(category) != current_bot:
-                    correct_bot = BOT_MAP[category]
-                    yield  (
-                           f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area "
-                           f"and can provide more targeted support. Would you like to switch? 🔄"
-                    )
-                    return
 
-                # Response generation
+                if category:
+                    correct_bot = BOT_MAP.get(category)
+                    # If detected category bot is different from current bot
+                    if correct_bot and correct_bot != current_bot:
+                        yield (
+                            f"I notice you're dealing with **{category}** concerns. **{correct_bot}** specializes in this area "
+                            f"and can provide more targeted support. Would you like to switch? 🔄"
+                        )
+                        return
+
+                # --- Response generation ---
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
                 if not reply:
                     reply = fake_response()
 
-                # Stream response
+                # Stream the reply
                 yield "\n\n"
                 for chunk in stream_response(reply):
                     yield chunk
 
-                # Save to Firestore
+                # --- Save to Firestore ---
                 try:
                     now = datetime.now(timezone.utc).isoformat()
                     db.collection("sessions").document(session_id).set({
@@ -1204,6 +1210,7 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
              
@@ -2166,6 +2173,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
