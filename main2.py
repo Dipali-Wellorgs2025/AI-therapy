@@ -583,77 +583,96 @@ QUESTIONNAIRES = {
     ]
 }
 
-import json
 import re
+import random
 import requests
-from datetime import datetime, timezone
-from difflib import SequenceMatcher
 from flask import request, Response
+from datetime import datetime, timezone
 from firebase_admin import firestore
+from difflib import SequenceMatcher
+import threading
 from transformers import pipeline
 
-# ---------- Load dataset from GitHub ----------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
 
-try:
-    resp = requests.get(GITHUB_JSON_URL)
-    resp.raise_for_status()
-    BOTS_DATA = resp.json()
-except Exception as e:
-    print(f"[ERROR] Could not load JSON from GitHub: {e}")
-    BOTS_DATA = {"bots": []}
+# ------------------ Cache bot JSON ------------------
+BOT_RESPONSES_CACHE = {}
+CACHE_LOCK = threading.Lock()
 
-BOT_RESPONSES = {}
-for bot in BOTS_DATA.get("bots", []):
-    BOT_RESPONSES[bot["name"]] = bot["conversations"]
+def get_bot_responses():
+    """Fetch bot conversations once and cache"""
+    with CACHE_LOCK:
+        if BOT_RESPONSES_CACHE:
+            return BOT_RESPONSES_CACHE
+        try:
+            resp = requests.get(GITHUB_JSON_URL, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            BOT_RESPONSES_CACHE.update({bot["name"]: bot["conversations"] for bot in data.get("bots", [])})
+            return BOT_RESPONSES_CACHE
+        except Exception as e:
+            print(f"[ERROR] Could not load JSON: {e}")
+            return {}
 
-# ---------- NLP Fallback Model ----------
-print("Loading NLP model...")
-text_gen = pipeline("text-generation", model="gpt2")  # replace with other model if needed
+# ------------------ Lightweight NLP ------------------
+text_gen = pipeline("text-generation", model="distilgpt2")
 
-# ---------- Helper: fuzzy match ----------
-def find_best_response(bot_name, user_input, threshold=0.5):
-    conversations = BOT_RESPONSES.get(bot_name, [])
-    best_score = 0
-    best_reply = None
-    for i in range(0, len(conversations) - 1, 2):
-        if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
-            score = SequenceMatcher(None, user_input.lower(), conversations[i]["content"].lower()).ratio()
-            if score > best_score:
-                best_score = score
-                best_reply = conversations[i+1]["content"]
-    if best_score >= threshold:
-        return best_reply
-    return None
+def lightweight_nlp_response(user_msg):
+    output = text_gen(
+        f"You are a supportive therapist. Respond to: {user_msg}",
+        max_length=80,
+        do_sample=True,
+        temperature=0.7
+    )
+    return output[0]["generated_text"].strip()
 
+# ------------------ Fake fallback ------------------
+KEYWORD_RESPONSES = {
+    "stress": "It sounds like stress is weighing on you. Want to talk more about it? 😌",
+    "family": "Family dynamics can be tough. How are things at home?",
+    "sad": "I'm sorry you're feeling sad. Can you describe what's causing this feeling?",
+    "happy": "That's great! What made you feel this way? 🌟",
+    "angry": "Anger is a valid emotion. Do you want to explore why you feel this way?"
+}
 
+TEMPLATES = [
+    "I hear you. Can you tell me more about that? 😊",
+    "That sounds challenging. How are you coping? 💙",
+    "It's okay to feel this way. What do you think is the hardest part?",
+    "Thanks for sharing. Let's explore that together. ✨",
+    "I understand. What emotions are coming up for you right now?"
+]
+import re
 
-# ---------- Helper: stream sentence-by-sentence ----------
+def is_gibberish(user_msg: str) -> bool:
+    """Detect if the message is mostly gibberish."""
+    words = user_msg.lower().strip().split()
+    if not words:
+        return True  # Empty message considered gibberish
+
+    gibberish_count = 0
+    for word in words:
+        # Word is gibberish if no vowels OR 4+ consonants in a row
+        if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
+            gibberish_count += 1
+
+    # If more than 60% words are gibberish
+    return gibberish_count / len(words) > 0.6
+
+def fake_response(user_msg):
+    for key, response in KEYWORD_RESPONSES.items():
+        if key in user_msg.lower():
+            return response
+    return random.choice(TEMPLATES)
+
+# ------------------ Stream sentences ------------------
 def stream_response(reply):
     sentences = re.split(r'(?<=[.!?]) +', reply)
     for sentence in sentences:
         yield sentence.strip() + " "
 
-import requests
-from flask import request, Response
-from datetime import datetime, timezone
-from firebase_admin import firestore
-
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
-
-def get_bot_responses():
-    """Fetch bot conversations on demand from GitHub"""
-    try:
-        resp = requests.get(GITHUB_JSON_URL)
-        resp.raise_for_status()
-        data = resp.json()
-        return {bot["name"]: bot["conversations"] for bot in data.get("bots", [])}
-    except Exception as e:
-        print(f"[ERROR] Could not load JSON: {e}")
-        return {}
-
+# ------------------ JSON matching ------------------
 def find_best_response(bot_name, user_input, threshold=0.5):
-    from difflib import SequenceMatcher
     BOT_RESPONSES = get_bot_responses()
     conversations = BOT_RESPONSES.get(bot_name, [])
     best_score, best_reply = 0, None
@@ -664,6 +683,7 @@ def find_best_response(bot_name, user_input, threshold=0.5):
                 best_score, best_reply = score, conversations[i+1]["content"]
     return best_reply if best_score >= threshold else None
 
+# ------------------ Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
@@ -676,61 +696,77 @@ def newstream():
     current_bot = data.get("botName")
     session_id = f"{user_id}_{current_bot}"
 
-    TECHNICAL_TERMS = [
-        "training", "algorithm", "model", "neural network", "machine learning", "ml",
-        "ai training", "dataset", "parameters", "weights", "backpropagation",
-        "gradient descent", "optimization", "loss function", "epochs", "batch size",
-        "learning rate", "overfitting", "underfitting", "regularization",
-        "transformer", "attention mechanism", "fine-tuning", "pre-training",
-        "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
-        "deployment", "inference", "api", "endpoint", "latency", "throughput",
-        "scaling", "load balancing", "database", "server", "cloud", "docker",
-        "kubernetes", "microservices", "devops", "ci/cd", "version control",
-        "git", "repository", "bug", "debug", "code", "programming", "python",
-        "javascript", "html", "css", "framework", "library", "package"
-    ]
+    TECHNICAL_TERMS = ["training", "algorithm", "model", "neural network", "machine learning", "ml",
+                       "ai training", "dataset", "parameters", "weights", "backpropagation",
+                       "gradient descent", "optimization", "loss function", "epochs", "batch size",
+                       "learning rate", "overfitting", "underfitting", "regularization",
+                       "transformer", "attention mechanism", "fine-tuning", "pre-training",
+                       "tokenization", "embedding", "vector", "tensor", "gpu", "cpu",
+                       "deployment", "inference", "api", "endpoint", "latency", "throughput",
+                       "scaling", "load balancing", "database", "server", "cloud", "docker",
+                       "kubernetes", "microservices", "devops", "ci/cd", "version control",
+                       "git", "repository", "bug", "debug", "code", "programming", "python",
+                       "javascript", "html", "css", "framework", "library", "package"]
+
+    ESCALATION_TERMS = ["suicide", "self-harm", "kill myself", "end my life"]
+    OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis"]
+
+
 
     def generate():
+        # Early returns
         if any(term in user_msg.lower() for term in TECHNICAL_TERMS):
-            yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"; return
+            yield "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. 🔧"
+            return
         if any(term in user_msg.lower() for term in ESCALATION_TERMS):
-            yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"; return
+            yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you. 💙"
+            return
         if any(term in user_msg.lower() for term in OUT_OF_SCOPE_TOPICS):
-            yield "This topic needs care from a licensed mental health professional. 🤝"; return
+            yield "This topic needs care from a licensed mental health professional. 🤝"
+            return
         if is_gibberish(user_msg):
-            yield "Sorry, I didn't get that. Could you please rephrase? 😊"; return
+            yield "Sorry, I didn't get that. Could you please rephrase? 😊"
+            return
 
-        # First try JSON match
+        # JSON match
         reply = find_best_response(current_bot, user_msg, threshold=0.5)
 
-        # NLP fallback if no JSON match
+        # Lightweight NLP fallback
         if not reply:
-            nlp_output = text_gen(
-                f"You are a supportive therapist. Respond to: {user_msg}",
-                max_length=80, temperature=0.7, pad_token_id=50256
-            )
-            reply = nlp_output[0]["generated_text"].strip()
+            try:
+                reply = lightweight_nlp_response(user_msg)
+            except Exception as e:
+                print(f"[ERROR] NLP failed: {e}")
+                reply = fake_response(user_msg)
 
+        # Stream sentence by sentence
         yield "\n\n"
         for chunk in stream_response(reply):
             yield chunk
 
+        # Firestore update (safe)
         now = datetime.now(timezone.utc).isoformat()
         session_ref = firestore.client().collection("sessions").document(session_id)
-        session_ref.set({
-            "user_id": user_id,
-            "bot_name": current_bot,
-            "messages": firestore.ArrayUnion([
-                {"sender": "User", "message": user_msg, "timestamp": now},
-                {"sender": current_bot, "message": reply, "timestamp": now}
-            ]),
+        session_ref.update({
+            "messages": firestore.ArrayUnion([{"sender": "User", "message": user_msg, "timestamp": now}])
+        })
+        session_ref.update({
+            "messages": firestore.ArrayUnion([{"sender": current_bot, "message": reply, "timestamp": now}])
+        })
+        session_ref.update({
             "last_updated": firestore.SERVER_TIMESTAMP,
             "issue_description": issue_description,
             "preferred_style": preferred_style,
             "is_active": True
-        }, merge=True)
+        })
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+
+
+
+
 
 
 
@@ -1695,6 +1731,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
