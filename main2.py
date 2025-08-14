@@ -611,7 +611,7 @@ from flask import request, Response
 from firebase_admin import firestore
 
 # ---------- Load dataset from GitHub ----------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/<USERNAME>/<REPO>/main/merged_bots_updated.json"
+GITHUB_JSON_URL = "https://github.com/Dipali-Wellorgs2025/AI-therapy/blob/main/merged_bots_updated.json"
 
 try:
     resp = requests.get(GITHUB_JSON_URL)
@@ -1706,6 +1706,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
