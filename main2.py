@@ -597,6 +597,102 @@ BOT_MAP = {
     "family": "Ava",
     "trauma": "Phoenix",
 }
+#--------------------------BOT KEYWORDS--------------------------
+BOT_KEYWORDS = {
+    "Sage": [  # Anxiety
+        "anxiety", "panic", "panic attack", "nervous", "worry", "overthinking", "stress", "uneasy",
+        "fear", "restless", "tension", "pressure", "apprehensive", "can't relax", "overwhelmed",
+        "butterflies in stomach", "on edge", "jitters", "heart racing", "palpitations", "hyperventilating",
+        "tight chest", "sweaty palms", "catastrophizing", "racing thoughts", "social anxiety",
+        "performance anxiety", "health anxiety", "generalized anxiety", "worried sick",
+        "fight or flight", "anticipatory anxiety", "rumination", "mind won't stop",
+        "fear of failure", "fear of rejection", "fear of judgment", "stressful", "high-strung",
+        "agitated", "trouble breathing", "can't focus", "fearful", "uneasiness", "restlessness",
+        "dread", "self-conscious", "stage fright", "wound up", "panic disorder", "claustrophobic",
+        "avoidance", "sleep problems", "insomnia", "nervous breakdown", "feeling jumpy", "edge of seat",
+        "worst-case scenario", "anticipation", "mental pressure", "overload", "can't cope",
+        "tight throat", "fast heartbeat", "fearful thoughts", "stress attack", "worried thoughts",
+        "always worried", "shaky", "mind racing", "stressed out"
+    ],
+
+    "Jordan": [  # Couples / Relationships
+        "relationship", "couple", "partner", "girlfriend", "boyfriend", "breakup", "love", "dating",
+        "trust issues", "marriage", "fight", "argue", "infidelity", "commitment", "long distance",
+        "romance", "flirting", "chemistry", "connection", "togetherness", "compatibility",
+        "emotional intimacy", "physical intimacy", "cheating", "ex", "ex-boyfriend", "ex-girlfriend",
+        "toxic relationship", "romantic", "honeymoon phase", "falling in love", "break", "split up",
+        "getting back together", "open relationship", "jealousy", "envy", "communication problems",
+        "misunderstanding", "unconditional love", "mutual respect", "affection", "caring partner",
+        "supportive partner", "shared goals", "cohabitation", "living together", "dating apps",
+        "courtship", "proposal", "engagement", "wedding", "divorce", "separation", "arguments",
+        "resentment", "makeup sex", "couples therapy", "love language", "passion", "spark",
+        "intimacy issues", "boundaries", "respect", "partner support", "loving words",
+        "emotional support", "marriage counseling", "shared life", "relationship goals",
+        "shared dreams", "trust building", "couple goals"
+    ],
+
+    "River": [  # Depression
+        "depression", "sad", "hopeless", "empty", "lonely", "down", "low mood", "worthless", "crying",
+        "fatigue", "loss of interest", "suicidal", "gloomy", "lack of motivation", "helpless",
+        "blue", "can't get out of bed", "no energy", "despair", "pointless", "meaningless",
+        "tearful", "isolated", "withdrawn", "dark thoughts", "negative thinking", "self-hate",
+        "self-loathing", "nothing matters", "failure", "can't go on", "lack of pleasure",
+        "numb", "emotional pain", "empty inside", "overwhelmed with sadness", "lifeless",
+        "dark place", "hopelessness", "slow thinking", "slow movement", "brain fog",
+        "mental exhaustion", "social withdrawal", "sadness", "worthlessness", "self harm",
+        "feeling dead inside", "downhearted", "in despair", "low self-esteem", "overwhelming sadness",
+        "constant sadness", "emptiness", "guilt", "emotional numbness", "lost purpose",
+        "mental heaviness", "dull mood", "overcome with sadness", "depressive episode",
+        "seasonal depression", "persistent sadness", "emotional void", "deep sadness",
+        "broken inside", "dark mood", "tragic thoughts", "hopeless feeling"
+    ],
+
+    "Phoenix": [  # Trauma
+        "trauma", "abuse", "PTSD", "flashback", "assault", "violence", "neglect", "grief",
+        "loss", "shock", "accident", "survivor", "childhood trauma", "healing past wounds",
+        "tragedy", "emotional abuse", "physical abuse", "sexual abuse", "verbal abuse",
+        "bullying", "war", "combat", "natural disaster", "rape", "molestation", "crime victim",
+        "kidnapping", "near death", "critical incident", "domestic violence", "toxic environment",
+        "post traumatic", "traumatic memory", "nightmares", "hypervigilance", "dissociation",
+        "triggered", "flashbacks", "trauma recovery", "healing process", "complex PTSD",
+        "traumatic event", "emotional scars", "trauma survivor", "fear response", "fight flight freeze",
+        "panic from trauma", "past abuse", "past violence", "unresolved trauma", "suppressed memories",
+        "mental scars", "psychological harm", "emotional wounds", "trauma bond", "loss of safety",
+        "shaken", "violated", "distress", "grieving", "trauma therapy", "abandonment", "survival mode",
+        "fear triggers", "trauma symptoms", "traumatic stress", "post-trauma healing", "deep wounds"
+    ],
+
+    "Ava": [  # Family
+        "family", "parents", "siblings", "home", "children", "relatives", "family issues",
+        "argument with family", "parenting", "support system", "inheritance", "family conflict",
+        "closeness", "family bonding", "mom", "dad", "brother", "sister", "cousin", "grandparents",
+        "uncle", "aunt", "niece", "nephew", "stepfamily", "blended family", "in-laws",
+        "family gathering", "family reunion", "domestic life", "family time", "raising kids",
+        "family support", "family love", "generational gap", "parental expectations", "family values",
+        "childhood memories", "household", "nuclear family", "extended family", "family drama",
+        "family dispute", "family care", "family protection", "home life", "family dinner",
+        "family rules", "house rules", "family traditions", "family holidays", "family problems",
+        "parents fighting", "sibling rivalry", "caring for parents", "caregiving", "elderly parents",
+        "family responsibilities", "family ties", "family loyalty", "family home", "kinship",
+        "family support system", "close family", "tight-knit family", "family advice",
+        "family concerns", "raising children", "co-parenting", "family happiness", "family together"
+    ],
+
+    "Raya": [  # Crisis
+        "crisis", "urgent", "help me", "emergency", "life or death", "immediately", "right now",
+        "can't take it", "critical", "hotline", "suicide", "danger", "self harm", "harm myself",
+        "overdose", "end it all", "can't go on", "need help now", "crisis line", "help right away",
+        "call for help", "rescue me", "save me", "at risk", "desperate", "cry for help",
+        "life threatening", "serious trouble", "unsafe", "need intervention", "mental crisis",
+        "physical crisis", "urgent care", "emergency help", "distress call", "panic emergency",
+        "crisis situation", "on the edge", "about to break", "final straw", "can't handle it",
+        "about to collapse", "breaking point", "imminent danger", "critical condition", "emergency support",
+        "seek help", "help urgently", "need immediate help", "call emergency", "immediate crisis",
+        "suicidal thoughts", "thinking of ending it", "thinking of dying", "no reason to live",
+        "self-destructive", "self injury", "severe distress", "emergency call", "need urgent advice",
+        "helpline", "call police", "call ambulance", "life in danger", "mental emergency", "severe emergency"
+    ]
+}
 
 # ------------------ Enhanced Keyword Responses ------------------
 KEYWORD_RESPONSES = {
@@ -668,7 +764,30 @@ KEYWORD_RESPONSES = {
         ]
     }
 }
-
+def detect_category_with_keywords(text):
+    """
+    Detect the most relevant bot category based on keyword matching.
+    Returns (category_name or None, confidence_score)
+    """
+    text_lower = text.lower()
+    category_scores = {category: 0 for category in CATEGORIES}  # Initialize scores
+    
+    # Count keyword matches for each category
+    for category in CATEGORIES:
+        bot_name = BOT_MAP[category]  # Get bot name for this category
+        for keyword in BOT_KEYWORDS[bot_name]:
+            if keyword.lower() in text_lower:
+                category_scores[category] += 1
+    
+    # Find the highest-scoring category
+    if not any(category_scores.values()):  # No matches found
+        return None, 0.0
+    
+    best_category = max(category_scores, key=category_scores.get)
+    confidence = min(category_scores[best_category] / 3, 1.0)  # Normalize to 0-1 range
+    
+    # Only return if confidence meets threshold (0.5 = at least 2 strong keyword matches)
+    return (best_category, confidence) if confidence >= 0.5 else (None, confidence)
 # ------------------ Updated Helper Functions ------------------
 def check_keyword_responses(user_input):
     """
@@ -1762,6 +1881,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
