@@ -11,8 +11,10 @@ openai>=1.0.0
 python-dateutil>=2.8.0
 markdown
 #flask[async]
-transformers
-llama-cpp-python>=0.1.80
+#transformers
+#llama-cpp-python>=0.1.80
+gpt-2-simple-revived
+tensorflow==1.15
 
 
 
@@ -30,6 +32,7 @@ Flask-Bcrypt==1.0.1
 
 # ==== Optional: SQLAlchemy ORM ====
 Flask-SQLAlchemy==3.1.1
+
 
 
 
