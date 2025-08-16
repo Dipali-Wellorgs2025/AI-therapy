@@ -14,7 +14,7 @@ def get_combined_progress():
         return jsonify({'error': 'user_id is required'}), 400
 
     # Static data for prototype users
-    if user_id == DxchnGkk5hf52qP0fOjHmTAp1oX2 :
+    if user_id == "DxchnGkk5hf52qP0fOjHmTAp1oX2" :
         # Engaged user with consistent usage
         return jsonify({
             "progress": {
@@ -79,7 +79,7 @@ def get_combined_progress():
             ]
         })
     
-    elif user_id == eVpZUJWiQAUx97RizTgTnJqwD6O2:
+    elif user_id == "eVpZUJWiQAUx97RizTgTnJqwD6O2":
         # Moderate user with weekday-focused usage
         return jsonify({
             "progress": {
