@@ -102,15 +102,24 @@ async def combined_analytics():
     # gating_result = get_week_window_and_validate(user_id, start_date)
     # if not gating_result['valid']:
     # Return empty response for all analytics
+        # Default empty response (fallback)
     empty_response = {
-            'clinical_overview': get_empty_response('clinical_overview'),
-            'mood_trend_analysis': get_empty_response('mood_trend_analysis'),
-            'session_bar_chart': get_empty_response('session_bar_chart'),
-            'session_heatmap': get_empty_response('session_heatmap'),
-            'model_effectiveness': get_empty_response('model_effectiveness'),
-            'clinical_insights_and_recommendations': get_empty_response('insights')
-        }
-    return jsonify(empty_response)
+        'clinical_overview': get_empty_response('clinical_overview', user_id),
+        'mood_trend_analysis': get_empty_response('mood_trend_analysis', user_id),
+        'session_bar_chart': get_empty_response('session_bar_chart', user_id),
+        'session_heatmap': get_empty_response('session_heatmap', user_id),
+        'model_effectiveness': get_empty_response('model_effectiveness', user_id),
+        'clinical_insights_and_recommendations': get_empty_response('clinical_insights_and_recommendations', user_id)
+    }
+
+    # 🔹 Check Firestore first
+    db = get_firestore_client()
+    analytics_doc = db.collection('analytics').document(user_id).get()
+
+    if not analytics_doc.exists:
+        # If no data, return empty fallback
+        return jsonify(empty_response)
+
 
     # Check cache first (unless refresh is requested)
     cache_key = f"analytics_{user_id}_{bot_id or 'all'}_{start_date or 'auto'}"
