@@ -12,7 +12,7 @@ progress_bp = Blueprint('progress', __name__)
 def get_empty_response(endpoint_name, user_id=None):
     """Returns realistic static prototype response structure for different endpoints"""
     # Static prototype data for DxchnGkk5hf52qP0fOjHmTAp1oX2 and eVpZUJWiQAUx97RizTgTnJqwD6O2
-    if user_id == DxchnGkk5hf52qP0fOjHmTAp1oX2:
+    if user_id == "user1":
         # Engaged user with consistent usage
         if endpoint_name == 'clinical_overview':
             return {
@@ -69,7 +69,7 @@ def get_empty_response(endpoint_name, user_id=None):
                 ]
             }
     
-    elif user_id == eVpZUJWiQAUx97RizTgTnJqwD6O2:
+    elif user_id == "user2":
         # Moderate user with weekday-focused usage
         if endpoint_name == 'clinical_overview':
             return {
@@ -137,7 +137,7 @@ def clinical_overview():
         return jsonify({'error': 'user_id is required'}), 400
 
     # Return static data for prototype users
-    if user_id in (DxchnGkk5hf52qP0fOjHmTAp1oX2, eVpZUJWiQAUx97RizTgTnJqwD6O2):
+    if user_id in ("user1", "user2"):
         data = get_empty_response('clinical_overview', user_id)
         # Adjust key to match original response
         data['total_time'] = f"{data['total_time_hours']}h"
@@ -161,7 +161,7 @@ def mood_trend_analysis():
         return jsonify({'error': 'user_id is required'}), 400
 
     # Return static data for prototype users
-    if user_id in (DxchnGkk5hf52qP0fOjHmTAp1oX2, eVpZUJWiQAUx97RizTgTnJqwD6O2):
+    if user_id in ("user1", "user2"):
         return jsonify(get_empty_response('mood_trend_analysis', user_id))
     
     # Original logic for other users
@@ -177,7 +177,7 @@ def session_bar_chart():
         return jsonify({'error': 'user_id is required'}), 400
 
     # Return static data for prototype users
-    if user_id in (DxchnGkk5hf52qP0fOjHmTAp1oX2, eVpZUJWiQAUx97RizTgTnJqwD6O2):
+    if user_id in ("user1", "user2"):
         return jsonify(get_empty_response('session_bar_chart', user_id))
     
     # Original logic for other users
@@ -193,7 +193,7 @@ def session_heatmap():
         return jsonify({'error': 'user_id is required'}), 400
 
     # Return static data for prototype users
-    if user_id in (DxchnGkk5hf52qP0fOjHmTAp1oX2, eVpZUJWiQAUx97RizTgTnJqwD6O2):
+    if user_id in ("user1", "user2"):
         return jsonify(get_empty_response('session_heatmap', user_id))
     
     # Original logic for other users
