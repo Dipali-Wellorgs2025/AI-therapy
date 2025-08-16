@@ -137,7 +137,7 @@ def clinical_overview():
         return jsonify({'error': 'user_id is required'}), 400
 
     # Return static data for prototype users
-    if user_id in (DxchnGkk5hf52qP0fOjHmTAp1oX2', eVpZUJWiQAUx97RizTgTnJqwD6O2):
+    if user_id in (DxchnGkk5hf52qP0fOjHmTAp1oX2, eVpZUJWiQAUx97RizTgTnJqwD6O2):
         data = get_empty_response('clinical_overview', user_id)
         # Adjust key to match original response
         data['total_time'] = f"{data['total_time_hours']}h"
