@@ -2225,13 +2225,13 @@ def wellness_status():
                 "intensity": convert_intensity(data.get("intensity", "")),
             })
 
-        low_mood_labels = {"sadness", "anxiety", "anger", "fear"}
-        min_low_intensity = 6
+        low_mood_labels = {"Sad", "Tired", "Angry", "Anxious","Okay"}
+        min_low_intensity = 3
 
         # Metrics
         low_mood_days = sum(
             1 for c in checkins
-            if c["mood"].lower() in low_mood_labels and c["intensity"] >= min_low_intensity
+            if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity
         )
         mood_variety = len(set(c["mood"].lower() for c in checkins))
         avg_mood = round(sum(c["intensity"] for c in checkins) / len(checkins), 1) if checkins else 0
@@ -2296,6 +2296,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
