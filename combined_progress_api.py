@@ -3,7 +3,10 @@ from openai import OpenAI
 from datetime import date, datetime, timedelta
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
+# Import helpers from progress_api if needed
+from progress_api import get_user_sessions, get_total_time, get_daily_motivational_quote
 
+combined_progress_bp = Blueprint('combined_progress', __name__)
 @combined_progress_bp.route('/progress/combined', methods=['GET'])
 def get_combined_progress():
     user_id = request.args.get('user_id')
