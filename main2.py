@@ -21,7 +21,7 @@ from deepseek_insights import insights_bp
 from progress_report import progress_bp
 from gratitude import gratitude_bp
 # from subscription import subscription_bp
-from model_effectiveness import model_effectiveness_bp
+# from model_effectiveness import model_effectiveness_bp
 from combined_analytics import combined_bp
 from coping_techniques_api import coping_techniques_bp
 # Load environment variables
@@ -35,7 +35,7 @@ app.register_blueprint(profile_bp) #, url_prefix='/api'
 app.register_blueprint(insights_bp)
 app.register_blueprint(gratitude_bp)
 # app.register_blueprint(subscription_bp)
-app.register_blueprint(model_effectiveness_bp)
+# app.register_blueprint(model_effectiveness_bp)
 app.register_blueprint(combined_bp)
 
 app.register_blueprint(coping_techniques_bp)
@@ -2296,6 +2296,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
