@@ -99,7 +99,7 @@ async def combined_analytics():
     # get_week_window_and_validate,
     # Check weekly gating logic first (centralized check)
     from progress_report import get_empty_response
-    gating_result = get_week_window_and_validate(user_id, start_date)
+    # gating_result = get_week_window_and_validate(user_id, start_date)
     if not gating_result['valid']:
         # Return empty response for all analytics
         empty_response = {
