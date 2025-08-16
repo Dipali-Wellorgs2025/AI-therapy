@@ -172,6 +172,6 @@ def combined_analytics():
         return jsonify(USER_ANALYTICS[user_id])
     return jsonify({"error": "User not found"}), 404
 
-app.register_blueprint(combined_bp)
+
 
 
