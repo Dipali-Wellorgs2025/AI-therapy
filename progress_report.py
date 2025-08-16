@@ -1,19 +1,19 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
-from datetime import datetime, timedelta
-import calendar
-import io
-import base64
-import asyncio
-from functools import wraps
-import re
 
 progress_bp = Blueprint('progress', __name__)
+
+# --- Mapping of real Firestore user IDs to prototype placeholders ---
+PROTOTYPE_USERS = {
+    "DxchnGkk5hf52qP0fOjHmTAp1oX2": "user1",   # Engaged user
+    "eVpZUJWiQAUx97RizTgTnJqwD6O2": "user2"    # Moderate user
+}
+
 def get_empty_response(endpoint_name, user_id=None):
     """Returns realistic static prototype response structure for different endpoints"""
-    # Static prototype data for DxchnGkk5hf52qP0fOjHmTAp1oX2 and eVpZUJWiQAUx97RizTgTnJqwD6O2
+    
+    # --- Engaged user (user1) ---
     if user_id == "user1":
-        # Engaged user with consistent usage
         if endpoint_name == 'clinical_overview':
             return {
                 'therapy_sessions': 22,
@@ -68,9 +68,9 @@ def get_empty_response(endpoint_name, user_id=None):
                     "Breathing exercises during high stress (3PM): 12 sessions this month"
                 ]
             }
-    
+
+    # --- Moderate user (user2) ---
     elif user_id == "user2":
-        # Moderate user with weekday-focused usage
         if endpoint_name == 'clinical_overview':
             return {
                 'therapy_sessions': 15,
@@ -125,9 +125,8 @@ def get_empty_response(endpoint_name, user_id=None):
                     "Stress management sessions peak at 3PM on weekdays"
                 ]
             }
-    
 
-    return empty_responses.get(endpoint_name, {})
+    return {}
 
 # --- Clinical Overview Endpoint (STATIC DATA) ---
 @progress_bp.route('/clinical_overview', methods=['GET'])
@@ -136,10 +135,9 @@ def clinical_overview():
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
 
-    # Return static data for prototype users
-    if user_id in ("user1", "user2"):
-        data = get_empty_response('clinical_overview', user_id)
-        # Adjust key to match original response
+    if user_id in PROTOTYPE_USERS:
+        mapped_user = PROTOTYPE_USERS[user_id]
+        data = get_empty_response('clinical_overview', mapped_user)
         data['total_time'] = f"{data['total_time_hours']}h"
         return jsonify({
             "therapy_sessions": data['therapy_sessions'],
@@ -148,56 +146,43 @@ def clinical_overview():
             "total_time": data['total_time']
         })
     
-    # Original logic for other users
-    # ... [keep the original implementation for non-prototype users] ...
-    # But for simplicity in prototype, we'll return empty for others
-    return jsonify(get_empty_response('clinical_overview')), 200
+    return jsonify({}), 200
 
-# --- Mood Trend Analysis Endpoint (STATIC DATA) ---
+# --- Mood Trend Analysis Endpoint ---
 @progress_bp.route('/mood_trend_analysis', methods=['GET'])
 def mood_trend_analysis():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
 
-    # Return static data for prototype users
-    if user_id in ("user1", "user2"):
-        return jsonify(get_empty_response('mood_trend_analysis', user_id))
+    if user_id in PROTOTYPE_USERS:
+        mapped_user = PROTOTYPE_USERS[user_id]
+        return jsonify(get_empty_response('mood_trend_analysis', mapped_user))
     
-    # Original logic for other users
-    # ... [keep the original implementation for non-prototype users] ...
-    # But for simplicity in prototype, we'll return empty for others
-    return jsonify(get_empty_response('mood_trend_analysis')), 200
+    return jsonify({}), 200
 
-# --- Session Bar Chart Endpoint (STATIC DATA) ---
+# --- Session Bar Chart Endpoint ---
 @progress_bp.route('/session_bar_chart', methods=['GET'])
 def session_bar_chart():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
 
-    # Return static data for prototype users
-    if user_id in ("user1", "user2"):
-        return jsonify(get_empty_response('session_bar_chart', user_id))
+    if user_id in PROTOTYPE_USERS:
+        mapped_user = PROTOTYPE_USERS[user_id]
+        return jsonify(get_empty_response('session_bar_chart', mapped_user))
     
-    # Original logic for other users
-    # ... [keep the original implementation for non-prototype users] ...
-    # But for simplicity in prototype, we'll return empty for others
-    return jsonify(get_empty_response('session_bar_chart')), 200
+    return jsonify({}), 200
 
-# --- Session Heatmap Endpoint (STATIC DATA) ---
+# --- Session Heatmap Endpoint ---
 @progress_bp.route('/session_heatmap', methods=['GET'])
 def session_heatmap():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
 
-    # Return static data for prototype users
-    if user_id in ("user1", "user2"):
-        return jsonify(get_empty_response('session_heatmap', user_id))
+    if user_id in PROTOTYPE_USERS:
+        mapped_user = PROTOTYPE_USERS[user_id]
+        return jsonify(get_empty_response('session_heatmap', mapped_user))
     
-    # Original logic for other users
-    # ... [keep the original implementation for non-prototype users] ...
-    # But for simplicity in prototype, we'll return empty for others
-    return jsonify(get_empty_response('session_heatmap')), 200
-
+    return jsonify({}), 200
