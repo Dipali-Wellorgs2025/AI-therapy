@@ -110,7 +110,7 @@ async def combined_analytics():
             'model_effectiveness': get_empty_response('model_effectiveness'),
             'clinical_insights_and_recommendations': get_empty_response('insights')
         }
-        return jsonify(empty_response)
+    return jsonify(empty_response)
 
     # Check cache first (unless refresh is requested)
     cache_key = f"analytics_{user_id}_{bot_id or 'all'}_{start_date or 'auto'}"
