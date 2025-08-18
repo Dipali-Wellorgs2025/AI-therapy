@@ -600,7 +600,7 @@ BOT_MAP = {
 #--------------------------BOT --------------------------
 BOT_KEYWORDS = {
     "Sage": [  # Anxiety
-        "anxiety", "panic", "panic attack", "nervous", "worry", "overthinking", "stress", "uneasy",
+        "anxiety", "panic", "panic attack", "overthinking", "stress", "uneasy",
         "fear", "restless", "tension", "pressure", "apprehensive", "can't relax", "overwhelmed",
         "butterflies in stomach", "on edge", "jitters", "heart racing", "palpitations", "hyperventilating",
         "tight chest", "sweaty palms", "catastrophizing", "racing thoughts", "social anxiety",
@@ -2296,6 +2296,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
