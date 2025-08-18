@@ -632,7 +632,7 @@ BOT_KEYWORDS = {
     ],
 
     "River": [  # Depression
-        "depression", "sad", "hopeless", "empty", "lonely", "down", "low mood", "worthless", "crying",
+        "depression", "hopeless", "empty", "lonely", "down", "low mood", "worthless", "crying",
         "fatigue", "loss of interest", "gloomy", "lack of motivation", "helpless",
         "blue", "can't get out of bed", "no energy", "despair", "pointless", "meaningless",
         "tearful", "isolated", "withdrawn", "dark thoughts", "negative thinking", "self-hate",
@@ -2296,6 +2296,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
