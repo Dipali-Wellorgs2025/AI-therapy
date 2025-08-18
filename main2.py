@@ -585,7 +585,7 @@ QUESTIONNAIRES = {
 
 
 # ------------------ Config ------------------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_clean.json"
 
 # Categories and bot mapping (adjust names as you like)
 CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
@@ -820,7 +820,7 @@ import markovify
 import traceback
 
 # ------------------ Global Configurations ------------------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_clean.json"
 BOT_RESPONSES_CACHE = {}
 CACHE_LOCK = threading.Lock()
 MARKOV_MODELS = {}
@@ -2310,6 +2310,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
