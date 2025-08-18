@@ -1743,13 +1743,13 @@ def get_recent_sessions():
         sessions = []
 
         for bot_id, bot_name in bots.items():
-            # ✅ Query using endedAt to always reflect latest updates
+            # ✅ Get latest session for this bot
             session_ref = (
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
-                .where("status", "in", ["End", "Exit"])  # Ignore active
+                .where("status", "in", ["End", "Exit"])
                 .order_by("endedAt", direction=firestore.Query.DESCENDING)
-                .limit(1)  # Only the latest session per bot
+                .limit(1)
             )
 
             docs = list(session_ref.stream())
@@ -1760,22 +1760,30 @@ def get_recent_sessions():
             data = doc.to_dict()
             ended_at = data.get("endedAt")
             if not ended_at:
-                continue  # Skip if no endedAt
+                continue
 
             status = "completed" if data.get("status", "").lower() == "end" else "in_progress"
 
-            sessions.append({
+            session_data = {
                 "session_id": doc.id,
                 "bot_id": bot_id,
                 "bot_name": bot_name,
                 "problem": data.get("title", "Therapy Session"),
                 "status": status,
-                "date": str(ended_at),  # ✅ Only endedAt
+                "date": str(ended_at),
                 "user_id": data.get("userId", ""),
                 "preferred_style": data.get("therapyStyle", "")
-            })
+            }
 
-        # ✅ Sort all sessions by endedAt descending and take top 4
+            # ✅ Only fetch messages if completed
+            if status == "completed":
+                session_id = f"{user_id}_{bot_name}"
+                session_doc = db.collection("sessions").document(session_id).get()
+                session_data["messages"] = session_doc.to_dict().get("messages", []) if session_doc.exists else []
+
+            sessions.append(session_data)
+
+        # ✅ Sort all by endedAt
         sessions = sorted(sessions, key=lambda x: x["date"], reverse=True)[:4]
 
         return jsonify(sessions)
@@ -2296,6 +2304,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
