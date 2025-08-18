@@ -1741,11 +1741,11 @@ def get_recent_sessions():
         sessions = []
 
         for bot_id, bot_name in bots.items():
-            # ✅ Query latest session for each bot
+            # ✅ Query latest session per bot
             session_ref = (
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
-                .where("status", "in", ["End", "Exit"])  # Ignore active
+                .where("status", "in", ["End", "Exit"])  # Completed or exited
                 .order_by("endedAt", direction=firestore.Query.DESCENDING)
                 .limit(1)
             )
@@ -1758,7 +1758,7 @@ def get_recent_sessions():
             data = doc.to_dict()
             ended_at = data.get("endedAt")
             if not ended_at:
-                continue  # Skip if no endedAt
+                continue
 
             status = "completed" if data.get("status", "").lower() == "end" else "in_progress"
 
@@ -1773,15 +1773,15 @@ def get_recent_sessions():
                 "preferred_style": data.get("therapyStyle", "")
             }
 
-            # ✅ If session ended, fetch full messages
+            # ✅ If completed → fetch full history using your /api/history logic
             if status == "completed":
                 session_id = f"{user_id}_{bot_name}"
-                session_doc = db.collection("sessions").document(session_id).get()
-                session_data["messages"] = session_doc.to_dict().get("messages", []) if session_doc.exists else []
+                history_doc = db.collection("sessions").document(session_id).get()
+                session_data["messages"] = history_doc.to_dict().get("messages", []) if history_doc.exists else []
 
             sessions.append(session_data)
 
-        # ✅ Sort all sessions by endedAt descending and take top 4
+        # ✅ Sort by endedAt and return top 4
         sessions = sorted(sessions, key=lambda x: x["date"], reverse=True)[:4]
 
         return jsonify(sessions)
@@ -1791,6 +1791,7 @@ def get_recent_sessions():
         print("[❌] Error in /api/recent_sessions:", e)
         traceback.print_exc()
         return jsonify({"error": "Server error retrieving sessions"}), 500
+
 
 
 @app.route("/")
@@ -2302,6 +2303,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
