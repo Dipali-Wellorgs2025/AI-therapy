@@ -1722,8 +1722,6 @@ def get_history():
 
 
 
-
-
 @app.route("/api/recent_sessions", methods=["GET"])
 def get_recent_sessions():
     try:
@@ -1743,11 +1741,11 @@ def get_recent_sessions():
         sessions = []
 
         for bot_id, bot_name in bots.items():
-            # ✅ Get latest session for this bot
+            # ✅ Query latest session for each bot
             session_ref = (
                 db.collection("ai_therapists").document(bot_id).collection("sessions")
                 .where("userId", "==", user_id)
-                .where("status", "in", ["End", "Exit"])
+                .where("status", "in", ["End", "Exit"])  # Ignore active
                 .order_by("endedAt", direction=firestore.Query.DESCENDING)
                 .limit(1)
             )
@@ -1760,7 +1758,7 @@ def get_recent_sessions():
             data = doc.to_dict()
             ended_at = data.get("endedAt")
             if not ended_at:
-                continue
+                continue  # Skip if no endedAt
 
             status = "completed" if data.get("status", "").lower() == "end" else "in_progress"
 
@@ -1775,7 +1773,7 @@ def get_recent_sessions():
                 "preferred_style": data.get("therapyStyle", "")
             }
 
-            # ✅ Only fetch messages if completed
+            # ✅ If session ended, fetch full messages
             if status == "completed":
                 session_id = f"{user_id}_{bot_name}"
                 session_doc = db.collection("sessions").document(session_id).get()
@@ -1783,7 +1781,7 @@ def get_recent_sessions():
 
             sessions.append(session_data)
 
-        # ✅ Sort all by endedAt
+        # ✅ Sort all sessions by endedAt descending and take top 4
         sessions = sorted(sessions, key=lambda x: x["date"], reverse=True)[:4]
 
         return jsonify(sessions)
@@ -2304,6 +2302,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
