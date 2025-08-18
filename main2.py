@@ -584,20 +584,23 @@ QUESTIONNAIRES = {
 }
 
 
-# ------------------ Config ------------------
+# ------------------ Required Imports ------------------
+import re
+import random
+import threading
 import requests
+from difflib import SequenceMatcher
+from datetime import datetime, timezone
+from flask import Flask, request, Response, jsonify
+from firebase_admin import firestore, initialize_app
+import markovify
+import traceback
 
-# ------------------ Load JSON from GitHub ------------------
+# ------------------ Global Configurations ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
 BOT_RESPONSES = {}
-
-try:
-    resp = requests.get(GITHUB_JSON_URL, timeout=10)
-    resp.raise_for_status()
-    BOT_RESPONSES = resp.json()
-    print("[INFO] Bot responses JSON loaded successfully from GitHub")
-except Exception as e:
-    print(f"[ERROR] Failed to load bot responses JSON: {str(e)}")
+CACHE_LOCK = threading.Lock()
+MARKOV_MODELS = {}
 
 
 # Categories and bot mapping (adjust names as you like)
@@ -2308,6 +2311,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
