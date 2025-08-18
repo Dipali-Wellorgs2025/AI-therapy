@@ -585,7 +585,20 @@ QUESTIONNAIRES = {
 
 
 # ------------------ Config ------------------
+import requests
+
+# ------------------ Load JSON from GitHub ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+BOT_RESPONSES = {}
+
+try:
+    resp = requests.get(GITHUB_JSON_URL, timeout=10)
+    resp.raise_for_status()
+    BOT_RESPONSES = resp.json()
+    print("[INFO] Bot responses JSON loaded successfully from GitHub")
+except Exception as e:
+    print(f"[ERROR] Failed to load bot responses JSON: {str(e)}")
+
 
 # Categories and bot mapping (adjust names as you like)
 CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
@@ -807,24 +820,6 @@ ESCALATION_TERMS = ["harm myself", "suicidal", "suicide", "kill myself", "end my
 OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "addiction", "overdose", "bipolar", "self-harm", "acidity"]
 
 
-# ------------------ Required Imports ------------------
-import re
-import random
-import threading
-import requests
-from difflib import SequenceMatcher
-from datetime import datetime, timezone
-from flask import Flask, request, Response, jsonify
-from firebase_admin import firestore, initialize_app
-import markovify
-import traceback
-
-# ------------------ Global Configurations ------------------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
-BOT_RESPONSES_CACHE = {}
-CACHE_LOCK = threading.Lock()
-MARKOV_MODELS = {}
-
 # ------------------ Categories and Bot Mapping ------------------
 CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
 BOT_MAP = {
@@ -917,38 +912,41 @@ def get_bot_responses():
 
 def find_best_response(bot_name, user_msg, threshold=0.0):
     """
-    Always returns a JSON response (best match), never None.
-    Falls back to the closest response even if score < threshold.
+    Match user input to stored JSON conversations.
+    Always returns the assistant's paired reply from JSON.
     """
     try:
-        bot_data = BOT_RESPONSES.get(bot_name, {})
+        bot_data = BOT_RESPONSES.get(bot_name.lower(), {})
         conversations = bot_data.get("conversations", [])
 
         if not conversations:
-            return None  # No JSON at all for this bot
-
-        # Collect all assistant messages
-        responses = [conv["content"] for conv in conversations if conv["role"] == "assistant"]
-
-        if not responses:
+            print(f"[DEBUG] No conversations found for {bot_name}")
             return None
 
-        # Find similarity with each possible response
         best_score = -1.0
         best_response = None
 
-        for r in responses:
-            score = text_similarity(user_msg, r)  # Your similarity function (cosine / fuzzy match)
-            if score > best_score:
-                best_score = score
-                best_response = r
+        for i in range(len(conversations) - 1):
+            if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
+                stored_user_msg = conversations[i]["content"]
+                stored_assistant_msg = conversations[i+1]["content"]
 
-        # If above threshold → return, else still return best match anyway
-        return best_response
+                score = text_similarity(user_msg, stored_user_msg)
+                if score > best_score:
+                    best_score = score
+                    best_response = stored_assistant_msg
+
+        if best_response:
+            print(f"[DEBUG] JSON match found for {bot_name} → score={best_score:.2f}")
+            return best_response
+
+        print(f"[DEBUG] No match found in JSON for {bot_name}")
+        return None
 
     except Exception as e:
         print(f"[ERROR] find_best_response failed: {str(e)}")
         return None
+
 
 
 def validate_response(response, user_input):
@@ -2310,6 +2308,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
