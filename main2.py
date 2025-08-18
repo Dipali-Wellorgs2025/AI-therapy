@@ -852,14 +852,21 @@ TEMPLATES = [
 def fake_response():
     """Fallback response when no good match is found"""
     return random.choice(TEMPLATES)
-
+"""
 def stream_response(reply):
-    """Split response into chunks for streaming"""
+    Split response into chunks for streaming
     sentences = re.split(r"(?<=[.!?]) +", reply)
     for sentence in sentences:
         chunk = sentence.strip()
         if chunk:
             yield chunk + " "
+"""
+def stream_response(reply: str, chunk_size: int = 4):
+    """Stream response in 3–4 word chunks"""
+    words = reply.split()
+    for i in range(0, len(words), chunk_size):
+        yield " ".join(words[i:i+chunk_size]) + " "
+
 
 def get_bot_responses():
     """Fetch bot responses from GitHub or cache with enhanced error handling"""
@@ -2303,6 +2310,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
