@@ -584,24 +584,8 @@ QUESTIONNAIRES = {
 }
 
 
-# ------------------ Required Imports ------------------
-import re
-import random
-import threading
-import requests
-from difflib import SequenceMatcher
-from datetime import datetime, timezone
-from flask import Flask, request, Response, jsonify
-from firebase_admin import firestore, initialize_app
-import markovify
-import traceback
-
-# ------------------ Global Configurations ------------------
+# ------------------ Config ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
-BOT_RESPONSES = {}
-CACHE_LOCK = threading.Lock()
-MARKOV_MODELS = {}
-
 
 # Categories and bot mapping (adjust names as you like)
 CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
@@ -823,6 +807,24 @@ ESCALATION_TERMS = ["harm myself", "suicidal", "suicide", "kill myself", "end my
 OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "addiction", "overdose", "bipolar", "self-harm", "acidity"]
 
 
+# ------------------ Required Imports ------------------
+import re
+import random
+import threading
+import requests
+from difflib import SequenceMatcher
+from datetime import datetime, timezone
+from flask import Flask, request, Response, jsonify
+from firebase_admin import firestore, initialize_app
+import markovify
+import traceback
+
+# ------------------ Global Configurations ------------------
+GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_updated.json"
+BOT_RESPONSES_CACHE = {}
+CACHE_LOCK = threading.Lock()
+MARKOV_MODELS = {}
+
 # ------------------ Categories and Bot Mapping ------------------
 CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
 BOT_MAP = {
@@ -913,44 +915,34 @@ def get_bot_responses():
                 
         return BOT_RESPONSES_CACHE
 
-def find_best_response(bot_name, user_msg, threshold=0.0):
-    """
-    Match user input to stored JSON conversations.
-    Always returns the assistant's paired reply from JSON.
-    """
-    try:
-        bot_data = BOT_RESPONSES.get(bot_name.lower(), {})
-        conversations = bot_data.get("conversations", [])
-
-        if not conversations:
-            print(f"[DEBUG] No conversations found for {bot_name}")
-            return None
-
-        best_score = -1.0
-        best_response = None
-
-        for i in range(len(conversations) - 1):
-            if conversations[i]["role"] == "user" and conversations[i+1]["role"] == "assistant":
-                stored_user_msg = conversations[i]["content"]
-                stored_assistant_msg = conversations[i+1]["content"]
-
-                score = text_similarity(user_msg, stored_user_msg)
-                if score > best_score:
-                    best_score = score
-                    best_response = stored_assistant_msg
-
-        if best_response:
-            print(f"[DEBUG] JSON match found for {bot_name} → score={best_score:.2f}")
-            return best_response
-
-        print(f"[DEBUG] No match found in JSON for {bot_name}")
+def find_best_response(bot_name, user_input, threshold=0.65):
+    """Find best matching response from bot's history"""
+    conversations = get_bot_responses().get(bot_name, [])
+    if not conversations:
         return None
-
-    except Exception as e:
-        print(f"[ERROR] find_best_response failed: {str(e)}")
-        return None
-
-
+        
+    best_score, best_reply = threshold, None
+    user_input_clean = re.sub(r'[^\w\s]', '', user_input.lower())
+    
+    for i in range(0, len(conversations) - 1, 2):
+        if not (conversations[i]["role"] == "user" and 
+                conversations[i+1]["role"] == "assistant"):
+            continue
+            
+        conv_content = conversations[i].get("content", "")
+        conv_content_clean = re.sub(r'[^\w\s]', '', conv_content.lower())
+        
+        sequence_score = SequenceMatcher(None, user_input_clean, conv_content_clean).ratio()
+        user_words = set(user_input_clean.split())
+        conv_words = set(conv_content_clean.split())
+        overlap_score = len(user_words & conv_words) / max(len(user_words), 1)
+        combined_score = (sequence_score * 0.7) + (overlap_score * 0.3)
+        
+        if combined_score > best_score:
+            best_score = combined_score
+            best_reply = conversations[i+1].get("content")
+    
+    return best_reply if best_score >= threshold else None
 
 def validate_response(response, user_input):
     """Ensure response meets quality standards"""
@@ -1119,7 +1111,6 @@ def is_gibberish(user_msg):
     return gibberish_count / len(words) > 0.6
 
 # ------------------ Flask Endpoint ------------------
-# ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     try:
@@ -1182,15 +1173,10 @@ def newstream():
                     )
                     return
 
-                # --- PRIORITY RESPONSE ORDER ---
-                # 1) Always try JSON match (no threshold, always returns something if available)
-                reply = find_best_response(current_bot, user_msg, threshold=0.0)
-
-                # 2) If no JSON responses exist at all, fall back to Markov
+                # If Ava or unknown → Ava responds
+                reply = find_best_response(current_bot, user_msg, threshold=0.6)
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
-
-                # 3) Final fallback → template
                 if not reply:
                     reply = fake_response()
 
@@ -1224,7 +1210,6 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
-
 
 
              
@@ -2311,9 +2296,6 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
-
-
-
 
 
 
