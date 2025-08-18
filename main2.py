@@ -915,34 +915,41 @@ def get_bot_responses():
                 
         return BOT_RESPONSES_CACHE
 
-def find_best_response(bot_name, user_input, threshold=0.65):
-    """Find best matching response from bot's history"""
-    conversations = get_bot_responses().get(bot_name, [])
-    if not conversations:
+def find_best_response(bot_name, user_msg, threshold=0.0):
+    """
+    Always returns a JSON response (best match), never None.
+    Falls back to the closest response even if score < threshold.
+    """
+    try:
+        bot_data = BOT_RESPONSES.get(bot_name, {})
+        conversations = bot_data.get("conversations", [])
+
+        if not conversations:
+            return None  # No JSON at all for this bot
+
+        # Collect all assistant messages
+        responses = [conv["content"] for conv in conversations if conv["role"] == "assistant"]
+
+        if not responses:
+            return None
+
+        # Find similarity with each possible response
+        best_score = -1.0
+        best_response = None
+
+        for r in responses:
+            score = text_similarity(user_msg, r)  # Your similarity function (cosine / fuzzy match)
+            if score > best_score:
+                best_score = score
+                best_response = r
+
+        # If above threshold → return, else still return best match anyway
+        return best_response
+
+    except Exception as e:
+        print(f"[ERROR] find_best_response failed: {str(e)}")
         return None
-        
-    best_score, best_reply = threshold, None
-    user_input_clean = re.sub(r'[^\w\s]', '', user_input.lower())
-    
-    for i in range(0, len(conversations) - 1, 2):
-        if not (conversations[i]["role"] == "user" and 
-                conversations[i+1]["role"] == "assistant"):
-            continue
-            
-        conv_content = conversations[i].get("content", "")
-        conv_content_clean = re.sub(r'[^\w\s]', '', conv_content.lower())
-        
-        sequence_score = SequenceMatcher(None, user_input_clean, conv_content_clean).ratio()
-        user_words = set(user_input_clean.split())
-        conv_words = set(conv_content_clean.split())
-        overlap_score = len(user_words & conv_words) / max(len(user_words), 1)
-        combined_score = (sequence_score * 0.7) + (overlap_score * 0.3)
-        
-        if combined_score > best_score:
-            best_score = combined_score
-            best_reply = conversations[i+1].get("content")
-    
-    return best_reply if best_score >= threshold else None
+
 
 def validate_response(response, user_input):
     """Ensure response meets quality standards"""
@@ -1111,6 +1118,7 @@ def is_gibberish(user_msg):
     return gibberish_count / len(words) > 0.6
 
 # ------------------ Flask Endpoint ------------------
+# ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     try:
@@ -1173,10 +1181,15 @@ def newstream():
                     )
                     return
 
-                # If Ava or unknown → Ava responds
-                reply = find_best_response(current_bot, user_msg, threshold=0.6)
+                # --- PRIORITY RESPONSE ORDER ---
+                # 1) Always try JSON match (no threshold, always returns something if available)
+                reply = find_best_response(current_bot, user_msg, threshold=0.0)
+
+                # 2) If no JSON responses exist at all, fall back to Markov
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
+
+                # 3) Final fallback → template
                 if not reply:
                     reply = fake_response()
 
@@ -1210,6 +1223,7 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
              
@@ -2296,6 +2310,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
