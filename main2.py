@@ -612,7 +612,7 @@ BOT_KEYWORDS = {
         "avoidance", "sleep problems", "insomnia", "nervous breakdown", "feeling jumpy", "edge of seat",
         "worst-case scenario", "anticipation", "mental pressure", "overload", "can't cope",
         "tight throat", "fast heartbeat", "fearful thoughts", "stress attack", "worried thoughts",
-        "always worried", "shaky", "mind racing", "stressed out"
+        "always worried", "mind racing", "stressed out"
     ],
 
     "Jordan": [  # Couples / Relationships
@@ -2296,6 +2296,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
