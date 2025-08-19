@@ -584,19 +584,7 @@ QUESTIONNAIRES = {
 }
 
 
-# ------------------ Config ------------------
-GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_clean.json"
 
-# Categories and bot mapping (adjust names as you like)
-CATEGORIES = ["anxiety", "couples", "crisis", "depression", "family", "trauma"]
-BOT_MAP = {
-    "anxiety": "Sage",
-    "couples": "Jordan",
-    "crisis": "Raya",
-    "depression": "River",
-    "family": "Ava",
-    "trauma": "Phoenix",
-}
 #--------------------------BOT --------------------------
 BOT_KEYWORDS = {
     "Sage": [  # Anxiety
@@ -807,6 +795,7 @@ ESCALATION_TERMS = ["harm myself", "suicidal", "suicide", "kill myself", "end my
 OUT_OF_SCOPE_TOPICS = ["legal advice", "medical diagnosis", "addiction", "overdose", "bipolar", "self-harm", "acidity"]
 
 
+
 # ------------------ Required Imports ------------------
 import re
 import random
@@ -818,6 +807,9 @@ from flask import Flask, request, Response, jsonify
 from firebase_admin import firestore, initialize_app
 import markovify
 import traceback
+
+# ------------------ Flask Init ------------------
+
 
 # ------------------ Global Configurations ------------------
 GITHUB_JSON_URL = "https://raw.githubusercontent.com/Dipali-Wellorgs2025/AI-therapy/main/merged_bots_clean.json"
@@ -836,57 +828,18 @@ BOT_MAP = {
     "trauma": "Phoenix"
 }
 
-
-
-# ------------------ Response Templates ------------------
+# ------------------ Templates (last fallback) ------------------
 TEMPLATES = [
-    # General empathy
     "I hear you 💙. Do you want to share what’s on your mind?",
     "That sounds really tough 😔. How are you holding up?",
     "It's okay to feel this way 🌱. What do you think hurts the most?",
     "Thanks for opening up 🤝. I'm here with you, no rush.",
     "I understand 💭. What emotions are strongest right now?",
-
-    # Specific to sadness/upset
-    "I can sense how upset you are 😞. Want to tell me what triggered it?",
-    "It must feel heavy 💔. Do you want to cry it out or talk it through?",
-    "I’m really sorry you’re going through this 🌧️. I’m here to listen.",
-    "You don’t have to go through this alone 🤍. I’m right here.",
-    "Take a deep breath with me 🌬️. One step at a time, okay?",
-
-    # Fight/relationship trouble
-    "Arguments can feel overwhelming 😣. What happened between you two?",
-    "Fights can drain a lot of energy 💢. Do you want to vent safely here?",
-    "Sometimes letting it out helps 📝. Want to walk me through the fight?",
-    "It’s okay to need space 🌌. How are you feeling after the fight?",
-    "Leaving someone is hard 💔. What makes you think it might be best?",
-
-    # Seeking help
-    "I’m here 🤗. Tell me how I can support you right now?",
-    "You don’t need to go through this alone 🤍. What kind of help feels right?",
-    "It’s brave of you to reach out 🙌. What’s the first thing on your mind?",
-    "I’ve got you 🫂. Can you share what’s troubling you most?",
-    "We’ll work through this together 🌟. Where do you want to start?",
-
-    # Casual/opening responses
-    "Hey 👋, I’m here. How are you feeling right now?",
-    "Hello 😊. Want to share what’s been going on?",
-    "I’m right here 👂. What’s up?",
-    "Yes, I’m listening 👀. Tell me more.",
-    "I’m here for you 💌. What’s weighing on your heart?",
 ]
 
-
-# ------------------ Helper Functions ------------------
-# ------------------ Helper Functions ------------------
-import difflib
-# ------------------ Bot Responses Cache ------------------
-BOT_RESPONSES_CACHE = {}
-MARKOV_MODELS = {}
-CACHE_LOCK = threading.Lock()
-
+# ------------------ Load Bot Responses ------------------
 def get_bot_responses():
-    """Fetch bot responses from GitHub (JSON) or cache with enhanced error handling"""
+    """Fetch bot responses from GitHub (JSON) or cache"""
     global BOT_RESPONSES_CACHE, MARKOV_MODELS
 
     with CACHE_LOCK:
@@ -895,143 +848,65 @@ def get_bot_responses():
                 headers = {'User-Agent': 'MentalHealthBot/1.0'}
                 resp = requests.get(GITHUB_JSON_URL, headers=headers, timeout=15)
                 resp.raise_for_status()
-                
                 data = resp.json()
+
                 if not isinstance(data.get("bots"), list):
-                    raise ValueError("Invalid data format: 'bots' key missing or not a list")
-                
-                # Store by bot["name"]
-                for bot in data.get("bots", []):
-                    if not isinstance(bot, dict):
-                        continue
+                    raise ValueError("Invalid format: 'bots' missing or not list")
+
+                for bot in data["bots"]:
                     bot_name = bot.get("name")
                     conversations = bot.get("conversations", [])
-                    
+
                     if bot_name and isinstance(conversations, list):
+                        # ✅ Store directly by bot name
                         BOT_RESPONSES_CACHE[bot_name] = conversations
-                        
-                        # Build Markov model on assistant responses
+
+                        # Build Markov model on Assistant replies
                         training_text = "\n".join([
                             msg["content"].strip()
-                            for msg in conversations 
-                            if (msg.get("role") == "assistant" and 
-                                len(msg.get("content", "").split()) > 3 and
-                                len(msg.get("content", "")) < 200 and
-                                msg.get("content", "").endswith(('.', '?', '!'))
-                            )
+                            for msg in conversations
+                            if msg.get("role") == "Assistant"
+                            and 3 < len(msg.get("content", "").split()) < 200
+                            and msg.get("content", "").endswith(('.', '?', '!'))
                         ])
-                        
                         if training_text:
                             try:
-                                MARKOV_MODELS[bot_name] = markovify.Text(
-                                    training_text,
-                                    state_size=3,
-                                    well_formed=False,
-                                    reject_reg=r'^(?:%s)' % '|'.join([
-                                        r'\W+$',
-                                        r'^[^A-Z]',
-                                        r'^(?:Yeah|Yes|No|Okay)\b',
-                                        r'^.{0,3}$'
-                                    ])
-                                )
+                                MARKOV_MODELS[bot_name] = markovify.Text(training_text, state_size=3)
                             except Exception as e:
-                                print(f"[ERROR] Markov model failed for {bot_name}: {str(e)}")
-                
+                                print(f"[ERROR] Markov model failed for {bot_name}: {e}")
+
             except Exception as e:
-                print(f"[ERROR] Failed to load bot responses: {str(e)}")
+                print(f"[ERROR] Failed to load bot responses: {e}")
                 traceback.print_exc()
-                
+
         return BOT_RESPONSES_CACHE
 
-def get_bot_reply(bot_name: str, user_msg: str) -> str:
-    """
-    Fetch a reply by matching user_msg with the JSON conversations
-    under the bot with 'name' == bot_name. Falls back to Markovify if no match.
-    """
-    data = get_bot_responses()  # cached JSON with structure { "bots": [...] }
-    bot_entry = None
-
-    # Find the bot entry by name
-    for bot in data.get("bots", []):
-        if bot.get("name", "").lower() == bot_name.lower():
-            bot_entry = bot
-            break
-
-    if not bot_entry:
-        return f"⚠️ No bot found with name {bot_name}."
-
-    conversations = bot_entry.get("conversations", [])
-    user_msg_clean = user_msg.strip().lower()
-
-    # --- Exact + fuzzy matching ---
-    best_match_idx = None
-    best_ratio = 0.0
-
-    for i, convo in enumerate(conversations):
-        if convo.get("role", "").lower() == "user":
-            candidate = convo.get("content", "").strip().lower()
-            ratio = difflib.SequenceMatcher(None, candidate, user_msg_clean).ratio()
-
-            if candidate == user_msg_clean:
-                best_match_idx = i
-                best_ratio = 1.0
-                break
-            elif ratio > best_ratio and ratio > 0.65:  # fuzzy threshold
-                best_match_idx = i
-                best_ratio = ratio
-
-    if best_match_idx is not None and best_match_idx + 1 < len(conversations):
-        reply = conversations[best_match_idx + 1]
-        if reply.get("role", "").lower() == "assistant":
-            return reply.get("content", "")
-
-    # --- Markovify fallback ---
-    markov_model = MARKOV_MODELS.get(bot_name)
-    if markov_model:
-        try:
-            generated = markov_model.make_sentence(tries=100)
-            if generated:
-                return generated
-        except Exception as e:
-            print(f"[ERROR] Markov fallback failed for {bot_name}: {str(e)}")
-
-    # --- Last fallback ---
-    return "I'm here with you 💙. Even if I don’t have the perfect words, I want you to know you’re not alone."
-
-def fake_response():
-    """Fallback response when no good match is found"""
-    return random.choice(TEMPLATES)
-
-def stream_response(reply):
-    """Split response into chunks for streaming"""
-    sentences = re.split(r"(?<=[.!?]) +", reply)
-    for sentence in sentences:
-        chunk = sentence.strip()
-        if chunk:
-            yield chunk + " "
+# ------------------ Core Matching Logic ------------------
+def normalize_text(text: str) -> str:
+    """Lowercase + remove punctuation + trim spaces"""
+    return re.sub(r'[^\w\s]', '', text.lower()).strip()
 
 def find_best_response(bot_name, user_input, threshold=0.65):
-    """Find best matching response from bot's JSON history (priority layer)."""
+    """Find best matching Assistant reply from bot's JSON"""
     conversations = get_bot_responses().get(bot_name, [])
     if not conversations:
         return None
 
     best_score, best_reply = threshold, None
-    user_input_clean = re.sub(r'[^\w\s]', '', user_input.lower())
+    user_input_clean = normalize_text(user_input)
 
     for i in range(0, len(conversations) - 1, 2):
-        if not (conversations[i]["role"].lower() == "user" and 
-                conversations[i+1]["role"].lower() == "assistant"):
+        if not (conversations[i]["role"] == "User" and conversations[i+1]["role"] == "Assistant"):
             continue
 
         conv_content = conversations[i].get("content", "")
-        conv_content_clean = re.sub(r'[^\w\s]', '', conv_content.lower())
+        conv_content_clean = normalize_text(conv_content)
 
-        # exact match shortcut
-        if conv_content_clean == user_input_clean:
+        # ✅ relaxed greeting/short input handling
+        if user_input_clean == conv_content_clean:
             return conversations[i+1].get("content")
 
-        # fuzzy + overlap
+        # fuzzy + word overlap
         sequence_score = SequenceMatcher(None, user_input_clean, conv_content_clean).ratio()
         user_words = set(user_input_clean.split())
         conv_words = set(conv_content_clean.split())
@@ -1045,215 +920,53 @@ def find_best_response(bot_name, user_input, threshold=0.65):
     return best_reply if best_reply else None
 
 
-def find_best_response(bot_name, user_input, threshold=0.65):
-    """Find best matching response from bot's history"""
-    conversations = get_bot_responses().get(bot_name, [])
-    if not conversations:
-        return None
-        
-    best_score, best_reply = threshold, None
-    user_input_clean = re.sub(r'[^\w\s]', '', user_input.lower())
-    
-    for i in range(0, len(conversations) - 1, 2):
-        if not (conversations[i]["role"] == "user" and 
-                conversations[i+1]["role"] == "assistant"):
-            continue
-            
-        conv_content = conversations[i].get("content", "")
-        conv_content_clean = re.sub(r'[^\w\s]', '', conv_content.lower())
-        
-        sequence_score = SequenceMatcher(None, user_input_clean, conv_content_clean).ratio()
-        user_words = set(user_input_clean.split())
-        conv_words = set(conv_content_clean.split())
-        overlap_score = len(user_words & conv_words) / max(len(user_words), 1)
-        combined_score = (sequence_score * 0.7) + (overlap_score * 0.3)
-        
-        if combined_score > best_score:
-            best_score = combined_score
-            best_reply = conversations[i+1].get("content")
-    
-    return best_reply if best_score >= threshold else None
-
-def validate_response(response, user_input):
-    """Ensure response meets quality standards"""
-    if not response or not isinstance(response, str):
-        return False
-        
-    response = response.strip()
-    if not response:
-        return False
-        
-    words = response.split()
-    if len(words) < 4 or len(words) > 30:
-        return False
-        
-    if not response[-1] in '.?!':
-        return False
-    if not response[0].isupper():
-        return False
-        
-    if any(bad_start in response.lower().split()[:3] for bad_start in 
-           ['um', 'uh', 'like', 'so', 'well']):
-        return False
-        
-    user_words = set(re.sub(r'[^\w\s]', '', user_input.lower()).split())
-    response_words = set(re.sub(r'[^\w\s]', '', response.lower()).split())
-    common_words = user_words & response_words
-    
-    min_common = 1 if len(user_words) < 6 else 2
-    return len(common_words) >= min_common
-
-def get_contextual_fallback(user_input):
-    """Intelligent fallback based on context"""
-    if not user_input or not isinstance(user_input, str):
-        return fake_response()
-        
-    lower_input = user_input.lower()
-    
-    categories = {
-        'family': ["mother", "father", "parent", "family", "mom", "dad"],
-        'relationships': ["partner", "boyfriend", "girlfriend", "husband", "wife"],
-        'work': ["job", "work", "boss", "colleague"],
-        'school': ["school", "class", "teacher"],
-        'emotions': ["feel", "feeling", "depressed", "anxious"]
-    }
-    
-    responses = {
-        'family': [
-            "Family relationships can be complex. How does this make you feel?",
-            "It sounds like this family situation is affecting you.",
-            "Family dynamics can be challenging. What would you like to see change?"
-        ],
-        'relationships': [
-            "Relationships can bring both joy and pain. Tell me more about this.",
-            "It sounds like this relationship is important to you.",
-            "How is this situation affecting you emotionally?"
-        ],
-        'work': [
-            "Work situations can be stressful. What about this is most concerning?",
-            "It sounds like your work life is affecting you.",
-            "Work challenges can be difficult. What would be your ideal resolution?"
-        ],
-        'school': [
-            "School can create pressure. What aspect is most troubling you?",
-            "It sounds like your education situation is on your mind.",
-            "Academic challenges can feel overwhelming. What support would help?"
-        ],
-        'emotions': [
-            "I hear you're feeling that way. Can you describe the feeling more?",
-            "Emotions can be powerful. Where do you feel this in your body?",
-            "That sounds like a significant feeling. How long have you felt this way?"
-        ]
-    }
-    
-    for category, keywords in categories.items():
-        if any(keyword in lower_input for keyword in keywords):
-            return random.choice(responses[category])
-    
-    return fake_response()
-
 def markov_generate_response(bot_name, user_input, max_length=150):
-    """Generate context-aware responses using Markov chains"""
-    if not user_input or not isinstance(user_input, str):
-        return get_contextual_fallback(user_input)
-        
+    """Fallback: Markov chain generation"""
     try:
         model = MARKOV_MODELS.get(bot_name)
         if not model:
-            return get_contextual_fallback(user_input)
-            
-        relevant_keywords = [
-            kw for kw in BOT_KEYWORDS.get(bot_name, []) 
-            if kw.lower() in user_input.lower()
-        ]
-        
-        for _ in range(5):
-            if relevant_keywords:
-                try:
-                    keyword = random.choice(relevant_keywords)
-                    response = model.make_sentence_with_start(
-                        keyword,
-                        max_chars=max_length,
-                        tries=30,
-                        strict=False,
-                        test_output=lambda x: validate_response(x, user_input)
-                    )
-                    if response:
-                        return response.capitalize()
-                except Exception:
-                    continue
-        
-        for _ in range(15):
-            try:
-                response = model.make_sentence(
-                    max_chars=max_length,
-                    tries=30,
-                    test_output=lambda x: validate_response(x, user_input)
-                )
-                if response:
-                    return response.capitalize()
-            except Exception:
-                continue
-                
-        return get_contextual_fallback(user_input)
+            return None
+        for _ in range(10):
+            response = model.make_sentence(max_chars=max_length, tries=30)
+            if response:
+                return response
+        return None
     except Exception as e:
-        print(f"[ERROR] Markov generation failed: {str(e)}")
-        return get_contextual_fallback(user_input)
+        print(f"[ERROR] Markov generation failed: {e}")
+        return None
 
-def detect_category_with_keywords(message):
-    """
-    Category detection:
-    - 1 keyword match triggers detection
-    - Multi-word phrases still work
-    Returns: (category, confidence)
-    """
-    if not message or not isinstance(message, str):
-        return None, None
+def fake_response():
+    """Last fallback random template"""
+    return random.choice(TEMPLATES)
 
-    lower_msg = f" {message.lower()} "
-    category_scores = {category: 0 for category in CATEGORIES}
+def stream_response(reply):
+    """Split into chunks for streaming"""
+    sentences = re.split(r"(?<=[.!?]) +", reply)
+    for sentence in sentences:
+        chunk = sentence.strip()
+        if chunk:
+            yield chunk + " "
 
-    for category in CATEGORIES:
-        bot_name = BOT_MAP[category]
-        for keyword in BOT_KEYWORDS[bot_name]:
-            if f" {keyword} " in lower_msg:
-                category_scores[category] += 1
-
-    best_category = max(category_scores, key=lambda x: category_scores[x])
-    best_score = category_scores[best_category]
-
-    if best_score >= 1:  # allow one match
-        return best_category, "high"
-    return None, None
-
-
+# ------------------ Utility ------------------
 def is_gibberish(user_msg):
     """Detect nonsensical input"""
     words = user_msg.lower().strip().split()
     if not words:
         return True
-
     gibberish_count = 0
     for word in words:
         if not re.search(r"[aeiou]", word) or re.search(r"[^aeiou]{4,}", word):
             gibberish_count += 1
-
     return gibberish_count / len(words) > 0.6
 
-# ------------------ Flask Endpoint ------------------
 # ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     try:
-        # Parse input data
-        try:
-            data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
-            if not data:
-                return jsonify({"error": "No input data"}), 400
-        except Exception as e:
-            return jsonify({"error": f"Invalid input: {str(e)}"}), 400
+        data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
+        if not data:
+            return jsonify({"error": "No input data"}), 400
 
-        # Extract parameters
         user_msg = data.get("message", "").strip()
         if not user_msg:
             return jsonify({"error": "Empty message"}), 400
@@ -1264,61 +977,17 @@ def newstream():
 
         def generate():
             try:
-                lower_msg = user_msg.lower()
-
-                # --- Safety checks ---
-                if any(term in lower_msg for term in TECHNICAL_TERMS):
-                    yield (
-                        "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
-                        "For technical questions about training algorithms, system architecture, or development-related topics, "
-                        "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
-                        "Is there anything about your mental health or wellbeing I can help you with instead?"
-                    )
-                    return
-
-                if any(term in lower_msg for term in ESCALATION_TERMS):
-                    yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
-                    return
-
-                if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
-                    yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
-                    return
-
                 if is_gibberish(user_msg):
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
 
-                # --- Bot switching logic ---
-                correct_bot = None
-                category, confidence = detect_category_with_keywords(user_msg)
-
-                if category:
-                    correct_bot = BOT_MAP.get(category, category)
-
-                # If another bot is more suitable → ask to switch
-                if correct_bot and correct_bot != current_bot:
-                    yield (
-                        f"I notice you're dealing with **{category}** concerns. "
-                        f"**{correct_bot}** specializes in this area and can provide more targeted support. "
-                        "Would you like to switch? 🔄"
-                    )
-                    return
-
-                # --- PRIORITIZED RESPONSE GENERATION ---
+                # --- PRIORITIZED RESPONSE ---
                 reply = None
-
-                # 1. Try JSON match first (exact or fuzzy)
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
 
-                # 2. If JSON failed, fall back to Markov
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
 
-                # 3. If Markov also fails, contextual fallback
-                if not reply:
-                    reply = get_contextual_fallback(user_msg)
-
-                # 4. If even that fails, final fake template
                 if not reply:
                     reply = fake_response()
 
@@ -1341,17 +1010,18 @@ def newstream():
                         "is_active": True
                     }, merge=True)
                 except Exception as e:
-                    print(f"[ERROR] Firestore error: {str(e)}")
+                    print(f"[ERROR] Firestore error: {e}")
 
             except Exception as e:
-                print(f"[ERROR] Generation failed: {str(e)}")
+                print(f"[ERROR] Generation failed: {e}")
                 yield "Sorry, I encountered an error. Please try again."
 
         return Response(generate(), mimetype="text/event-stream")
 
     except Exception as e:
-        print(f"[CRITICAL] Endpoint error: {str(e)}")
+        print(f"[CRITICAL] Endpoint error: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
 
              
 def handle_message(data):
@@ -2444,6 +2114,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
