@@ -2065,27 +2065,29 @@ def wellness_status():
         checkins = []
         for doc in docs:
             data = doc.to_dict()
+            numeric_intensity = convert_intensity(data.get("intensity", ""))
             checkins.append({
                 "date": datetime.strptime(data.get("date"), "%d-%m-%Y").strftime("%Y-%m-%d"),
                 "mood": data.get("mood", ""),
-                "intensity": convert_intensity(data.get("intensity", "")),
+                "intensity": numeric_intensity,  # ✅ store numeric
             })
 
-        low_mood_labels = {"Sad", "Tired", "Angry", "Anxious","Okay"}
+        low_mood_labels = {"sad", "tired", "angry", "anxious", "okay"}
         min_low_intensity = 3
 
-        # Metrics
+        # --- Metrics ---
         low_mood_days = sum(
             1 for c in checkins
             if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity
         )
+
         mood_variety = len(set(c["mood"].lower() for c in checkins))
         avg_mood = round(sum(c["intensity"] for c in checkins) / len(checkins), 1) if checkins else 0
 
         # Recovery rate
         recovery_count = 0
         for i, c in enumerate(checkins):
-            if c["mood"].lower() in low_mood_labels and c["intensity"] >= min_low_intensity:
+            if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity:
                 current_date = datetime.strptime(c["date"], "%Y-%m-%d")
                 for next_c in checkins[i+1:]:
                     next_date = datetime.strptime(next_c["date"], "%Y-%m-%d")
@@ -2134,7 +2136,8 @@ def convert_intensity(intensity):
     mapping = {"low": 3, "medium": 6, "high": 9}
     if isinstance(intensity, int):
         return intensity
-    return mapping.get(intensity.lower(), 5)
+    return mapping.get(str(intensity).lower(), 5)
+
 
 
 
@@ -2142,6 +2145,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
