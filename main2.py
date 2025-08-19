@@ -921,19 +921,47 @@ def find_best_response(bot_name, user_input, threshold=0.65):
 
 
 def markov_generate_response(bot_name, user_input, max_length=150):
-    """Fallback: Markov chain generation"""
+    """Generate context-aware therapist-like responses using Markov + templates"""
     try:
         model = MARKOV_MODELS.get(bot_name)
         if not model:
             return None
-        for _ in range(10):
+
+        # --- Extract keywords from user input ---
+        user_words = [w for w in re.sub(r'[^\w\s]', '', user_input.lower()).split() if len(w) > 3]
+        keywords = user_words[:3]  # take first 2–3 important words
+
+        # --- Therapist framing templates ---
+        therapist_templates = [
+            "I hear that you’re feeling {resp}. Can you tell me more?",
+            "It sounds like {resp}. That must feel heavy 💙.",
+            "Thanks for opening up. {resp} How is this affecting you right now?",
+            "I understand — {resp}. What part feels hardest?",
+            "That’s important to share. {resp} What would help you feel supported?"
+        ]
+
+        # --- Try keyword-anchored generation first ---
+        for kw in keywords:
+            for _ in range(5):
+                try:
+                    response = model.make_sentence_with_start(kw, max_chars=max_length, tries=30)
+                    if response and response[0].isupper() and response.endswith(('.', '?', '!')):
+                        # Wrap inside therapist template
+                        return random.choice(therapist_templates).format(resp=response)
+                except Exception:
+                    continue
+
+        # --- Fallback: normal Markov generation with validation ---
+        for _ in range(15):
             response = model.make_sentence(max_chars=max_length, tries=30)
-            if response:
-                return response
+            if response and response[0].isupper() and response.endswith(('.', '?', '!')) and len(response.split()) > 5:
+                return random.choice(therapist_templates).format(resp=response)
+
         return None
     except Exception as e:
         print(f"[ERROR] Markov generation failed: {e}")
         return None
+
 
 def fake_response():
     """Last fallback random template"""
@@ -2114,6 +2142,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
