@@ -2068,7 +2068,9 @@ def wellness_status():
 
             # normalize date
             try:
-                formatted_date = datetime.strptime(data.get("date", ""), "%d-%m-%Y").strftime("%Y-%m-%d")
+                formatted_date = datetime.strptime(
+                    data.get("date", ""), "%d-%m-%Y"
+                ).strftime("%Y-%m-%d")
             except Exception:
                 formatted_date = data.get("date", "")
 
@@ -2081,11 +2083,13 @@ def wellness_status():
         # --- Metrics ---
         low_mood_labels = {"sad", "tired", "angry", "anxious", "okay"}
 
-        # 1) Low mood days (simple string check)
-        low_mood_days = sum(
-            1 for c in checkins
+        # 1) Low mood days (unique dates with low mood + low intensity)
+        low_mood_dates = set(
+            c["date"]
+            for c in checkins
             if c["mood"].lower() in low_mood_labels and str(c["intensity_raw"]).lower() == "low"
         )
+        low_mood_days = len(low_mood_dates)
 
         # 2) Convert intensity for numeric calculations
         for c in checkins:
@@ -2101,9 +2105,15 @@ def wellness_status():
         recovery_count = 0
         for i, c in enumerate(checkins):
             if c["mood"].lower() in low_mood_labels and str(c["intensity_raw"]).lower() == "low":
-                current_date = datetime.strptime(c["date"], "%Y-%m-%d")
+                try:
+                    current_date = datetime.strptime(c["date"], "%Y-%m-%d")
+                except Exception:
+                    continue
                 for next_c in checkins[i+1:]:
-                    next_date = datetime.strptime(next_c["date"], "%Y-%m-%d")
+                    try:
+                        next_date = datetime.strptime(next_c["date"], "%Y-%m-%d")
+                    except Exception:
+                        continue
                     if 0 < (next_date - current_date).days <= 2 and next_c["intensity"] >= 6:
                         recovery_count += 1
                         break
@@ -2160,6 +2170,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
