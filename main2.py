@@ -879,6 +879,125 @@ TEMPLATES = [
 
 # ------------------ Helper Functions ------------------
 # ------------------ Helper Functions ------------------
+import difflib
+# ------------------ Bot Responses Cache ------------------
+BOT_RESPONSES_CACHE = {}
+MARKOV_MODELS = {}
+CACHE_LOCK = threading.Lock()
+
+def get_bot_responses():
+    """Fetch bot responses from GitHub (JSON) or cache with enhanced error handling"""
+    global BOT_RESPONSES_CACHE, MARKOV_MODELS
+
+    with CACHE_LOCK:
+        if not BOT_RESPONSES_CACHE:
+            try:
+                headers = {'User-Agent': 'MentalHealthBot/1.0'}
+                resp = requests.get(GITHUB_JSON_URL, headers=headers, timeout=15)
+                resp.raise_for_status()
+                
+                data = resp.json()
+                if not isinstance(data.get("bots"), list):
+                    raise ValueError("Invalid data format: 'bots' key missing or not a list")
+                
+                # Store by bot["name"]
+                for bot in data.get("bots", []):
+                    if not isinstance(bot, dict):
+                        continue
+                    bot_name = bot.get("name")
+                    conversations = bot.get("conversations", [])
+                    
+                    if bot_name and isinstance(conversations, list):
+                        BOT_RESPONSES_CACHE[bot_name] = conversations
+                        
+                        # Build Markov model on assistant responses
+                        training_text = "\n".join([
+                            msg["content"].strip()
+                            for msg in conversations 
+                            if (msg.get("role") == "assistant" and 
+                                len(msg.get("content", "").split()) > 3 and
+                                len(msg.get("content", "")) < 200 and
+                                msg.get("content", "").endswith(('.', '?', '!'))
+                            )
+                        ])
+                        
+                        if training_text:
+                            try:
+                                MARKOV_MODELS[bot_name] = markovify.Text(
+                                    training_text,
+                                    state_size=3,
+                                    well_formed=False,
+                                    reject_reg=r'^(?:%s)' % '|'.join([
+                                        r'\W+$',
+                                        r'^[^A-Z]',
+                                        r'^(?:Yeah|Yes|No|Okay)\b',
+                                        r'^.{0,3}$'
+                                    ])
+                                )
+                            except Exception as e:
+                                print(f"[ERROR] Markov model failed for {bot_name}: {str(e)}")
+                
+            except Exception as e:
+                print(f"[ERROR] Failed to load bot responses: {str(e)}")
+                traceback.print_exc()
+                
+        return BOT_RESPONSES_CACHE
+
+def get_bot_reply(bot_name: str, user_msg: str) -> str:
+    """
+    Fetch a reply by matching user_msg with the JSON conversations
+    under the bot with 'name' == bot_name. Falls back to Markovify if no match.
+    """
+    data = get_bot_responses()  # cached JSON with structure { "bots": [...] }
+    bot_entry = None
+
+    # Find the bot entry by name
+    for bot in data.get("bots", []):
+        if bot.get("name", "").lower() == bot_name.lower():
+            bot_entry = bot
+            break
+
+    if not bot_entry:
+        return f"⚠️ No bot found with name {bot_name}."
+
+    conversations = bot_entry.get("conversations", [])
+    user_msg_clean = user_msg.strip().lower()
+
+    # --- Exact + fuzzy matching ---
+    best_match_idx = None
+    best_ratio = 0.0
+
+    for i, convo in enumerate(conversations):
+        if convo.get("role", "").lower() == "user":
+            candidate = convo.get("content", "").strip().lower()
+            ratio = difflib.SequenceMatcher(None, candidate, user_msg_clean).ratio()
+
+            if candidate == user_msg_clean:
+                best_match_idx = i
+                best_ratio = 1.0
+                break
+            elif ratio > best_ratio and ratio > 0.65:  # fuzzy threshold
+                best_match_idx = i
+                best_ratio = ratio
+
+    if best_match_idx is not None and best_match_idx + 1 < len(conversations):
+        reply = conversations[best_match_idx + 1]
+        if reply.get("role", "").lower() == "assistant":
+            return reply.get("content", "")
+
+    # --- Markovify fallback ---
+    markov_model = MARKOV_MODELS.get(bot_name)
+    if markov_model:
+        try:
+            generated = markov_model.make_sentence(tries=100)
+            if generated:
+                return generated
+        except Exception as e:
+            print(f"[ERROR] Markov fallback failed for {bot_name}: {str(e)}")
+
+    # --- Last fallback ---
+    return "I'm here with you 💙. Even if I don’t have the perfect words, I want you to know you’re not alone."
+
 def fake_response():
     """Fallback response when no good match is found"""
     return random.choice(TEMPLATES)
@@ -2325,6 +2444,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
