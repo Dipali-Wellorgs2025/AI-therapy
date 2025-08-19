@@ -976,7 +976,7 @@ def get_bot_responses():
                             try:
                                 MARKOV_MODELS[bot_name] = markovify.Text(
                                     training_text,
-                                    state_size=3,
+                                    state_size=2,
                                     well_formed=False,
                                     reject_reg=r'^(?:%s)' % '|'.join([
                                         r'\W+$',
@@ -994,7 +994,7 @@ def get_bot_responses():
                 
         return BOT_RESPONSES_CACHE
 
-def find_best_response(bot_name, user_input, threshold=0):
+def find_best_response(bot_name, user_input, threshold=0.65):
     """Find best matching response from bot's history"""
     conversations = get_bot_responses().get(bot_name, [])
     if not conversations:
@@ -1055,8 +1055,8 @@ def validate_response(response, user_input):
 def get_contextual_fallback(user_input):
     """Intelligent fallback based on context"""
     if not user_message or not isinstance(user_message, str):
-        return random.choice(RESPONSES["default"])
-        
+       return random.choice(RESPONSES["default"])
+
     lower_input = user_input.lower()
     
     categories = {
@@ -1289,6 +1289,7 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
              
