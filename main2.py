@@ -891,59 +891,40 @@ def stream_response(reply):
         if chunk:
             yield chunk + " "
 
-def get_bot_responses():
-    """Fetch bot responses from GitHub or cache with enhanced error handling"""
-    with CACHE_LOCK:
-        if not BOT_RESPONSES_CACHE:
-            try:
-                headers = {'User-Agent': 'MentalHealthBot/1.0'}
-                resp = requests.get(GITHUB_JSON_URL, headers=headers, timeout=15)
-                resp.raise_for_status()
-                
-                data = resp.json()
-                if not isinstance(data.get("bots"), list):
-                    raise ValueError("Invalid data format: 'bots' key missing or not a list")
-                
-                for bot in data.get("bots", []):
-                    if not isinstance(bot, dict):
-                        continue
-                    bot_name = bot.get("name")
-                    conversations = bot.get("conversations", [])
-                    
-                    if bot_name and isinstance(conversations, list):
-                        BOT_RESPONSES_CACHE[bot_name] = conversations
-                        
-                        training_text = "\n".join([
-                            msg["content"].strip()
-                            for msg in conversations 
-                            if (msg.get("role") == "assistant" and 
-                                len(msg.get("content", "").split()) > 3 and
-                                len(msg.get("content", "")) < 200 and
-                                msg.get("content", "").endswith(('.', '?', '!'))
-                            )
-                        ])
-                        
-                        if training_text:
-                            try:
-                                MARKOV_MODELS[bot_name] = markovify.Text(
-                                    training_text,
-                                    state_size=3,
-                                    well_formed=False,
-                                    reject_reg=r'^(?:%s)' % '|'.join([
-                                        r'\W+$',
-                                        r'^[^A-Z]',
-                                        r'^(?:Yeah|Yes|No|Okay)\b',
-                                        r'^.{0,3}$'
-                                    ])
-                                )
-                            except Exception as e:
-                                print(f"[ERROR] Markov model failed for {bot_name}: {str(e)}")
-                
-            except Exception as e:
-                print(f"[ERROR] Failed to load bot responses: {str(e)}")
-                traceback.print_exc()
-                
-        return BOT_RESPONSES_CACHE
+def find_best_response(bot_name, user_input, threshold=0.65):
+    """Find best matching response from bot's JSON history (priority layer)."""
+    conversations = get_bot_responses().get(bot_name, [])
+    if not conversations:
+        return None
+
+    best_score, best_reply = threshold, None
+    user_input_clean = re.sub(r'[^\w\s]', '', user_input.lower())
+
+    for i in range(0, len(conversations) - 1, 2):
+        if not (conversations[i]["role"].lower() == "user" and 
+                conversations[i+1]["role"].lower() == "assistant"):
+            continue
+
+        conv_content = conversations[i].get("content", "")
+        conv_content_clean = re.sub(r'[^\w\s]', '', conv_content.lower())
+
+        # exact match shortcut
+        if conv_content_clean == user_input_clean:
+            return conversations[i+1].get("content")
+
+        # fuzzy + overlap
+        sequence_score = SequenceMatcher(None, user_input_clean, conv_content_clean).ratio()
+        user_words = set(user_input_clean.split())
+        conv_words = set(conv_content_clean.split())
+        overlap_score = len(user_words & conv_words) / max(len(user_words), 1)
+        combined_score = (sequence_score * 0.7) + (overlap_score * 0.3)
+
+        if combined_score > best_score:
+            best_score = combined_score
+            best_reply = conversations[i+1].get("content")
+
+    return best_reply if best_reply else None
+
 
 def find_best_response(bot_name, user_input, threshold=0.65):
     """Find best matching response from bot's history"""
@@ -1141,6 +1122,7 @@ def is_gibberish(user_msg):
     return gibberish_count / len(words) > 0.6
 
 # ------------------ Flask Endpoint ------------------
+# ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     try:
@@ -1203,14 +1185,25 @@ def newstream():
                     )
                     return
 
-                # If Ava or unknown → Ava responds
+                # --- PRIORITIZED RESPONSE GENERATION ---
+                reply = None
+
+                # 1. Try JSON match first (exact or fuzzy)
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
+
+                # 2. If JSON failed, fall back to Markov
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
+
+                # 3. If Markov also fails, contextual fallback
+                if not reply:
+                    reply = get_contextual_fallback(user_msg)
+
+                # 4. If even that fails, final fake template
                 if not reply:
                     reply = fake_response()
 
-                # Stream the reply
+                # --- Stream the reply ---
                 yield "\n\n"
                 for chunk in stream_response(reply):
                     yield chunk
@@ -1240,7 +1233,6 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
-
 
              
 def handle_message(data):
@@ -2333,6 +2325,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
