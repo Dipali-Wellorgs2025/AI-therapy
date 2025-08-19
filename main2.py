@@ -2058,33 +2058,38 @@ def wellness_status():
         # Get SOS count for the user (default 0 if not found)
         sos_usage = sos_counts.get(user_id, 0)
 
-        # Get check-ins from Firestore for this user
+        # Get check-ins from Firestore
         checkins_ref = db.collection("recent-checkin").where("user_id", "==", user_id)
         docs = checkins_ref.stream()
 
         checkins = []
         for doc in docs:
             data = doc.to_dict()
-            numeric_intensity = convert_intensity(data.get("intensity", ""))
+            numeric_intensity = convert_intensity(data.get("intensity", ""))  # ✅ normalize
+
             checkins.append({
                 "date": datetime.strptime(data.get("date"), "%d-%m-%Y").strftime("%Y-%m-%d"),
                 "mood": data.get("mood", ""),
-                "intensity": numeric_intensity,  # ✅ store numeric
+                "intensity": numeric_intensity,
             })
 
+        # --- Metrics ---
         low_mood_labels = {"sad", "tired", "angry", "anxious", "okay"}
         min_low_intensity = 3
 
-        # --- Metrics ---
+        # Count low mood days
         low_mood_days = sum(
             1 for c in checkins
             if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity
         )
 
-        mood_variety = len(set(c["mood"].lower() for c in checkins))
+        # Mood variety
+        mood_variety = len(set(c["mood"].lower() for c in checkins if c["mood"]))
+
+        # Average mood intensity
         avg_mood = round(sum(c["intensity"] for c in checkins) / len(checkins), 1) if checkins else 0
 
-        # Recovery rate
+        # Recovery rate (low mood followed by high intensity within 2 days)
         recovery_count = 0
         for i, c in enumerate(checkins):
             if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity:
@@ -2094,9 +2099,10 @@ def wellness_status():
                     if 0 < (next_date - current_date).days <= 2 and next_c["intensity"] >= 6:
                         recovery_count += 1
                         break
+
         recovery_rate = round((recovery_count / low_mood_days) * 100, 1) if low_mood_days > 0 else 100
 
-        # Scoring
+        # --- Scoring ---
         score = 0
         if mood_variety >= 8: score += 10
         if low_mood_days < 5: score += 20
@@ -2104,7 +2110,7 @@ def wellness_status():
         if avg_mood >= 6: score += 20
         if recovery_rate >= 66: score += 30
 
-        # Status
+        # --- Status ---
         if score >= 90:
             status = "THRIVING"
             message = "✅ Excellent mental health indicators! You're maintaining emotional variety, zero crisis episodes, and consistent positive trends."
@@ -2132,11 +2138,11 @@ def wellness_status():
 
 
 def convert_intensity(intensity):
-    """Convert intensity from string like 'High'/'Medium'/'Low' to numeric scale 1-10."""
+    """Convert intensity from string like 'High'/'Medium'/'Low' to numeric scale 1–10."""
     mapping = {"low": 3, "medium": 6, "high": 9}
-    if isinstance(intensity, int):
+    if isinstance(intensity, int):  # already numeric
         return intensity
-    return mapping.get(str(intensity).lower(), 5)
+    return mapping.get(str(intensity).lower(), 5)  # default = 5 (medium-ish)
 
 
 
@@ -2145,6 +2151,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
