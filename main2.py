@@ -663,7 +663,7 @@ BOT_KEYWORDS = {
     ],
 
     "Ava": [  # Family
-        "family", "parents", "siblings", "home", "children", "relatives", "family issues", "sister",
+        "family", "bro", "sis", "parents", "siblings", "home", "children", "relatives", "family issues", "sister",
         "argument with family", "parenting", "support system", "inheritance", "family conflict",
         "closeness", "family bonding", "mom", "dad", "brother", "sister", "cousin", "grandparents",
         "uncle", "aunt", "niece", "nephew", "stepfamily", "blended family", "in-laws",
@@ -840,18 +840,90 @@ BOT_MAP = {
 
 # ------------------ Response Templates ------------------
 TEMPLATES = [
-    "I hear you. Can you tell me more about that?",
-    "That sounds challenging. How are you coping?",
-    "It's okay to feel this way. What do you think is the hardest part?",
-    "Thanks for sharing. Let's explore that together.",
-    "I understand. What emotions are coming up for you right now?",
+    # General empathy
+    "I hear you 💙. Do you want to share what’s on your mind?",
+    "That sounds really tough 😔. How are you holding up?",
+    "It's okay to feel this way 🌱. What do you think hurts the most?",
+    "Thanks for opening up 🤝. I'm here with you, no rush.",
+    "I understand 💭. What emotions are strongest right now?",
+
+    # Specific to sadness/upset
+    "I can sense how upset you are 😞. Want to tell me what triggered it?",
+    "It must feel heavy 💔. Do you want to cry it out or talk it through?",
+    "I’m really sorry you’re going through this 🌧️. I’m here to listen.",
+    "You don’t have to go through this alone 🤍. I’m right here.",
+    "Take a deep breath with me 🌬️. One step at a time, okay?",
+
+    # Fight/relationship trouble
+    "Arguments can feel overwhelming 😣. What happened between you two?",
+    "Fights can drain a lot of energy 💢. Do you want to vent safely here?",
+    "Sometimes letting it out helps 📝. Want to walk me through the fight?",
+    "It’s okay to need space 🌌. How are you feeling after the fight?",
+    "Leaving someone is hard 💔. What makes you think it might be best?",
+
+    # Seeking help
+    "I’m here 🤗. Tell me how I can support you right now?",
+    "You don’t need to go through this alone 🤍. What kind of help feels right?",
+    "It’s brave of you to reach out 🙌. What’s the first thing on your mind?",
+    "I’ve got you 🫂. Can you share what’s troubling you most?",
+    "We’ll work through this together 🌟. Where do you want to start?",
+
+    # Casual/opening responses
+    "Hey 👋, I’m here. How are you feeling right now?",
+    "Hello 😊. Want to share what’s been going on?",
+    "I’m right here 👂. What’s up?",
+    "Yes, I’m listening 👀. Tell me more.",
+    "I’m here for you 💌. What’s weighing on your heart?",
 ]
 
 
 # ------------------ Helper Functions ------------------
-def fake_response():
-    """Fallback response when no good match is found"""
-    return random.choice(TEMPLATES)
+import random
+
+# Categorized templates
+RESPONSES = {
+    "greeting": [
+        "Hey there! 👋 How are you feeling today?",
+        "Hello 🌸, I’m here with you.",
+        "Hi 💙 I’ve got you — what’s on your mind?",
+    ],
+    "sadness": [
+        "I'm really sorry you're feeling this way 💔. Want to talk about it?",
+        "It’s okay to cry 😢, I’ll be here with you through it.",
+        "That sounds heavy 💭. What do you think would help you feel a little lighter?",
+    ],
+    "anger_conflict": [
+        "Fights can hurt a lot 💥. Do you want to share what happened?",
+        "I hear your pain 💔. What do you feel you need most right now?",
+        "It’s not easy to go through conflict 😞. How can I support you?",
+    ],
+    "help": [
+        "I hear your call for help 🙏. I’m right here with you.",
+        "You’re not alone 💜. Let’s take this step by step.",
+        "I’ve got you 🤝. Tell me what’s happening right now.",
+    ],
+    "default": [
+        "I hear you 💙. Can you share a little more?",
+        "Thanks for opening up 🌱. What are you feeling most strongly?",
+        "I’m listening 👂, tell me what’s on your heart.",
+    ],
+}
+
+def fake_response(user_message: str):
+    """Context-aware fallback response"""
+    msg = user_message.lower()
+
+    if any(word in msg for word in ["hello", "hi", "hey", "u there"]):
+        return random.choice(RESPONSES["greeting"])
+    elif any(word in msg for word in ["sad", "upset", "cry"]):
+        return random.choice(RESPONSES["sadness"])
+    elif any(word in msg for word in ["fight", "angry", "leave him"]):
+        return random.choice(RESPONSES["anger_conflict"])
+    elif any(word in msg for word in ["help", "trouble"]):
+        return random.choice(RESPONSES["help"])
+    else:
+        return random.choice(RESPONSES["default"])
+
 """
 def stream_response(reply):
     Split response into chunks for streaming
@@ -904,7 +976,7 @@ def get_bot_responses():
                             try:
                                 MARKOV_MODELS[bot_name] = markovify.Text(
                                     training_text,
-                                    state_size=2,
+                                    state_size=3,
                                     well_formed=False,
                                     reject_reg=r'^(?:%s)' % '|'.join([
                                         r'\W+$',
@@ -922,7 +994,7 @@ def get_bot_responses():
                 
         return BOT_RESPONSES_CACHE
 
-def find_best_response(bot_name, user_input, threshold=0.65):
+def find_best_response(bot_name, user_input, threshold=0):
     """Find best matching response from bot's history"""
     conversations = get_bot_responses().get(bot_name, [])
     if not conversations:
@@ -982,8 +1054,8 @@ def validate_response(response, user_input):
 
 def get_contextual_fallback(user_input):
     """Intelligent fallback based on context"""
-    if not user_input or not isinstance(user_input, str):
-        return fake_response()
+    if not user_message or not isinstance(user_message, str):
+        return random.choice(RESPONSES["default"])
         
     lower_input = user_input.lower()
     
@@ -1027,7 +1099,7 @@ def get_contextual_fallback(user_input):
         if any(keyword in lower_input for keyword in keywords):
             return random.choice(responses[category])
     
-    return fake_response()
+    return fake_response(user_input)
 
 def markov_generate_response(bot_name, user_input, max_length=150):
     """Generate context-aware responses using Markov chains"""
@@ -1185,7 +1257,7 @@ def newstream():
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
                 if not reply:
-                    reply = fake_response()
+                    reply = fake_response(user_msg)
 
                 # Stream the reply
                 yield "\n\n"
@@ -2310,6 +2382,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
