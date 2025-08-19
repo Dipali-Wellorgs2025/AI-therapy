@@ -52,12 +52,12 @@ USER_ANALYTICS = {
             "Shows preference for anxiety and breakup support bots"
         ],
         "model_effectiveness": [
-            {"bot_name": "Ava", "avg_rating": 4.5, "effectiveness": "88%", "session_count": 6},
-            {"bot_name": "Jordan", "avg_rating": 4.0, "effectiveness": "80%", "session_count": 8},
-            {"bot_name": "Phoenix", "avg_rating": 3.5, "effectiveness": "70%", "session_count": 5},
-            {"bot_name": "Raya", "avg_rating": 4.2, "effectiveness": "84%", "session_count": 4},
-            {"bot_name": "River", "avg_rating": 3.8, "effectiveness": "76%", "session_count": 3},
-            {"bot_name": "Sage", "avg_rating": 4.7, "effectiveness": "90%", "session_count": 6}
+            {"bot_name": "Ava", "avg_rating": 4.9, "effectiveness": "88%", "session_count": 6},
+            {"bot_name": "Jordan", "avg_rating": 4.7, "effectiveness": "80%", "session_count": 8},
+            {"bot_name": "Phoenix", "avg_rating": 4.5, "effectiveness": "70%", "session_count": 5},
+            {"bot_name": "Raya", "avg_rating": 4.8, "effectiveness": "84%", "session_count": 4},
+            {"bot_name": "River", "avg_rating": 4.6, "effectiveness": "76%", "session_count": 3},
+            {"bot_name": "Sage", "avg_rating": 4.9, "effectiveness": "90%", "session_count": 6}
         ],
         "clinical_insights_and_recommendations": {
             "progress_indicators": [
@@ -133,10 +133,10 @@ USER_ANALYTICS = {
             "Shows preference for breakup and trauma support bots"
         ],
         "model_effectiveness": [
-            {"bot_name": "Ava", "avg_rating": 3.8, "effectiveness": "70%", "session_count": 2},
-            {"bot_name": "Jordan", "avg_rating": 4.2, "effectiveness": "82%", "session_count": 4},
-            {"bot_name": "Phoenix", "avg_rating": 3.5, "effectiveness": "72%", "session_count": 3},
-            {"bot_name": "Sage", "avg_rating": 3.0, "effectiveness": "60%", "session_count": 1}
+            {"bot_name": "Ava", "avg_rating": 4.6, "effectiveness": "70%", "session_count": 2},
+            {"bot_name": "Jordan", "avg_rating": 4.8, "effectiveness": "82%", "session_count": 4},
+            {"bot_name": "Phoenix", "avg_rating": 4.7, "effectiveness": "72%", "session_count": 3},
+            {"bot_name": "Sage", "avg_rating": 4.5, "effectiveness": "65%", "session_count": 1}
         ],
         "clinical_insights_and_recommendations": {
             "progress_indicators": [
