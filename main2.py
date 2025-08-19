@@ -2058,41 +2058,49 @@ def wellness_status():
         # Get SOS count for the user (default 0 if not found)
         sos_usage = sos_counts.get(user_id, 0)
 
-        # Get check-ins from Firestore
-        checkins_ref = db.collection("recent-checkin").where("user_id", "==", user_id)
+        # Fetch check-ins from Firestore
+        checkins_ref = db.collection("recent-checkin").where("uid", "==", user_id)
         docs = checkins_ref.stream()
 
         checkins = []
         for doc in docs:
             data = doc.to_dict()
-            numeric_intensity = convert_intensity(data.get("intensity", ""))  # ✅ normalize
+
+            # normalize date
+            try:
+                formatted_date = datetime.strptime(data.get("date", ""), "%d-%m-%Y").strftime("%Y-%m-%d")
+            except Exception:
+                formatted_date = data.get("date", "")
 
             checkins.append({
-                "date": datetime.strptime(data.get("date"), "%d-%m-%Y").strftime("%Y-%m-%d"),
+                "date": formatted_date,
                 "mood": data.get("mood", ""),
-                "intensity": numeric_intensity,
+                "intensity_raw": data.get("intensity", ""),  # keep original string
             })
 
         # --- Metrics ---
         low_mood_labels = {"sad", "tired", "angry", "anxious", "okay"}
-        min_low_intensity = 3
 
-        # Count low mood days
+        # 1) Low mood days (simple string check)
         low_mood_days = sum(
             1 for c in checkins
-            if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity
+            if c["mood"].lower() in low_mood_labels and str(c["intensity_raw"]).lower() == "low"
         )
 
-        # Mood variety
+        # 2) Convert intensity for numeric calculations
+        for c in checkins:
+            c["intensity"] = convert_intensity(c["intensity_raw"])
+
+        # 3) Mood variety (unique moods)
         mood_variety = len(set(c["mood"].lower() for c in checkins if c["mood"]))
 
-        # Average mood intensity
+        # 4) Average mood (numeric intensity)
         avg_mood = round(sum(c["intensity"] for c in checkins) / len(checkins), 1) if checkins else 0
 
-        # Recovery rate (low mood followed by high intensity within 2 days)
+        # 5) Recovery rate (low → high within 2 days)
         recovery_count = 0
         for i, c in enumerate(checkins):
-            if c["mood"].lower() in low_mood_labels and c["intensity"] <= min_low_intensity:
+            if c["mood"].lower() in low_mood_labels and str(c["intensity_raw"]).lower() == "low":
                 current_date = datetime.strptime(c["date"], "%Y-%m-%d")
                 for next_c in checkins[i+1:]:
                     next_date = datetime.strptime(next_c["date"], "%Y-%m-%d")
@@ -2123,14 +2131,14 @@ def wellness_status():
 
         return jsonify({
             "user_id": user_id,
-            "mental_health_status": status,
-            "low_mood_days": low_mood_days,
-            "sos_usage": sos_usage,
-            "mood_variety": mood_variety,
             "average_mood": avg_mood,
+            "low_mood_days": low_mood_days,
+            "mental_health_status": status,
+            "message": message,
+            "mood_variety": mood_variety,
             "recovery_rate": recovery_rate,
             "score": score,
-            "message": message
+            "sos_usage": sos_usage
         })
 
     except Exception as e:
@@ -2138,11 +2146,12 @@ def wellness_status():
 
 
 def convert_intensity(intensity):
-    """Convert intensity from string like 'High'/'Medium'/'Low' to numeric scale 1–10."""
+    """Convert intensity string to numeric scale 1–10."""
     mapping = {"low": 3, "medium": 6, "high": 9}
-    if isinstance(intensity, int):  # already numeric
+    if isinstance(intensity, int):
         return intensity
-    return mapping.get(str(intensity).lower(), 5)  # default = 5 (medium-ish)
+    return mapping.get(str(intensity).strip().lower(), 5)  # default = 5
+
 
 
 
@@ -2151,6 +2160,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
