@@ -190,10 +190,13 @@ USER_ANALYTICS = {
                 "Potential risk of social withdrawal during low mood days"
             ],
             "therapeutic_effectiveness": [
-                "Jordan effective in emotional stability",
-                "Phoenix partly effective in trauma recovery",
-                "Ava supportive in reframing thoughts",
-                "Sage effective only in short bursts, not consistently"
+                "Felt calmer after regular journaling practice",
+                "Sleep improved slightly with consistent routine",
+                "Stress levels reduced by practicing breathing exercises",
+                "Confidence increased after daily affirmations",
+                "Energy levels improved with better hydration",
+                "Felt more focused after reducing screen time",
+                "Improved social interactions by staying present in conversations",
             ],
             "treatment_recommendations": [
                 "Encourage daily check-ins",
