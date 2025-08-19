@@ -878,67 +878,18 @@ TEMPLATES = [
 
 
 # ------------------ Helper Functions ------------------
-import random
+# ------------------ Helper Functions ------------------
+def fake_response():
+    """Fallback response when no good match is found"""
+    return random.choice(TEMPLATES)
 
-# Categorized templates
-RESPONSES = {
-    "greeting": [
-        "Hey there! 👋 How are you feeling today?",
-        "Hello 🌸, I’m here with you.",
-        "Hi 💙 I’ve got you — what’s on your mind?",
-    ],
-    "sadness": [
-        "I'm really sorry you're feeling this way 💔. Want to talk about it?",
-        "It’s okay to cry 😢, I’ll be here with you through it.",
-        "That sounds heavy 💭. What do you think would help you feel a little lighter?",
-    ],
-    "anger_conflict": [
-        "Fights can hurt a lot 💥. Do you want to share what happened?",
-        "I hear your pain 💔. What do you feel you need most right now?",
-        "It’s not easy to go through conflict 😞. How can I support you?",
-    ],
-    "help": [
-        "I hear your call for help 🙏. I’m right here with you.",
-        "You’re not alone 💜. Let’s take this step by step.",
-        "I’ve got you 🤝. Tell me what’s happening right now.",
-    ],
-    "default": [
-        "I hear you 💙. Can you share a little more?",
-        "Thanks for opening up 🌱. What are you feeling most strongly?",
-        "I’m listening 👂, tell me what’s on your heart.",
-    ],
-}
-
-def fake_response(user_message: str):
-    """Context-aware fallback response"""
-    msg = user_message.lower()
-
-    if any(word in msg for word in ["hello", "hi", "hey", "u there"]):
-        return random.choice(RESPONSES["greeting"])
-    elif any(word in msg for word in ["sad", "upset", "cry"]):
-        return random.choice(RESPONSES["sadness"])
-    elif any(word in msg for word in ["fight", "angry", "leave him"]):
-        return random.choice(RESPONSES["anger_conflict"])
-    elif any(word in msg for word in ["help", "trouble"]):
-        return random.choice(RESPONSES["help"])
-    else:
-        return random.choice(RESPONSES["default"])
-
-"""
 def stream_response(reply):
-    Split response into chunks for streaming
+    """Split response into chunks for streaming"""
     sentences = re.split(r"(?<=[.!?]) +", reply)
     for sentence in sentences:
         chunk = sentence.strip()
         if chunk:
             yield chunk + " "
-"""
-def stream_response(reply: str, chunk_size: int = 4):
-    """Stream response in 3–4 word chunks"""
-    words = reply.split()
-    for i in range(0, len(words), chunk_size):
-        yield " ".join(words[i:i+chunk_size]) + " "
-
 
 def get_bot_responses():
     """Fetch bot responses from GitHub or cache with enhanced error handling"""
@@ -976,7 +927,7 @@ def get_bot_responses():
                             try:
                                 MARKOV_MODELS[bot_name] = markovify.Text(
                                     training_text,
-                                    state_size=2,
+                                    state_size=3,
                                     well_formed=False,
                                     reject_reg=r'^(?:%s)' % '|'.join([
                                         r'\W+$',
@@ -1054,9 +1005,9 @@ def validate_response(response, user_input):
 
 def get_contextual_fallback(user_input):
     """Intelligent fallback based on context"""
-    if not user_message or not isinstance(user_message, str):
-       return random.choice(RESPONSES["default"])
-
+    if not user_input or not isinstance(user_input, str):
+        return fake_response()
+        
     lower_input = user_input.lower()
     
     categories = {
@@ -1099,7 +1050,7 @@ def get_contextual_fallback(user_input):
         if any(keyword in lower_input for keyword in keywords):
             return random.choice(responses[category])
     
-    return fake_response(user_input)
+    return fake_response()
 
 def markov_generate_response(bot_name, user_input, max_length=150):
     """Generate context-aware responses using Markov chains"""
@@ -1257,7 +1208,7 @@ def newstream():
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
                 if not reply:
-                    reply = fake_response(user_msg)
+                    reply = fake_response()
 
                 # Stream the reply
                 yield "\n\n"
@@ -1289,7 +1240,6 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
-
 
 
              
@@ -2383,6 +2333,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
