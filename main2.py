@@ -1073,7 +1073,7 @@ def newstream():
                     return
 
                 # --- PRIORITIZED RESPONSE (JSON → Markov → Fake) ---
-                reply = find_best_response(current_bot, user_msg, threshold=0.6)
+                reply = find_best_response(current_bot, user_msg)
 
                 if not reply:
                     reply = markov_generate_response(current_bot, user_msg, max_length=120)
@@ -2234,6 +2234,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
