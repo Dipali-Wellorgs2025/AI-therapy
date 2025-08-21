@@ -988,6 +988,7 @@ def is_gibberish(user_msg):
     return gibberish_count / len(words) > 0.6
 
 # ------------------ Flask Endpoint ------------------
+# ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     try:
@@ -1005,12 +1006,46 @@ def newstream():
 
         def generate():
             try:
+                lower_msg = user_msg.lower()
+
+                # --- Safety checks ---
+                if any(term in lower_msg for term in TECHNICAL_TERMS):
+                    yield (
+                        "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+                        "For technical questions about training algorithms, system architecture, or development-related topics, "
+                        "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
+                        "Is there anything about your mental health or wellbeing I can help you with instead?"
+                    )
+                    return
+
+                if any(term in lower_msg for term in ESCALATION_TERMS):
+                    yield "I'm really sorry you're feeling this way. Please reach out to a crisis line or emergency support near you or you can reach out to our SOS services. You're not alone in this. 💙"
+                    return
+
+                if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
+                    yield "This topic needs care from a licensed mental health professional. Please consider talking with one directly. 🤝"
+                    return
+
                 if is_gibberish(user_msg):
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
 
+                # --- Bot switching logic ---
+                correct_bot = None
+                category, confidence = detect_category_with_keywords(user_msg)
+
+                if category:
+                    correct_bot = BOT_MAP.get(category, category)
+
+                if correct_bot and correct_bot != current_bot:
+                    yield (
+                        f"I notice you're dealing with **{category}** concerns. "
+                        f"**{correct_bot}** specializes in this area and can provide more targeted support. "
+                        "Would you like to switch? 🔄"
+                    )
+                    return
+
                 # --- PRIORITIZED RESPONSE ---
-                reply = None
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
 
                 if not reply:
@@ -1049,6 +1084,7 @@ def newstream():
     except Exception as e:
         print(f"[CRITICAL] Endpoint error: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
              
@@ -2170,6 +2206,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
