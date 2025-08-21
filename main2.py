@@ -1015,89 +1015,115 @@ def is_gibberish(user_msg):
     return gibberish_count / len(words) > 0.6
 
 # ------------------ Flask Endpoint ------------------
-def generate():
+# ------------------ Flask Endpoint ------------------
+@app.route("/api/newstream", methods=["GET", "POST"])
+def newstream():
     try:
-        lower_msg = user_msg.lower()
+        # --- Parse request ---
+        data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
+        if not data:
+            return jsonify({"error": "No input data"}), 400
 
-        # --- Safety checks ---
-        if any(term in lower_msg for term in TECHNICAL_TERMS):
-            yield (
-                "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
-                "For technical questions about training algorithms, system architecture, or development-related topics, "
-                "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
-                "Is there anything about your mental health or wellbeing I can help you with instead?"
-            )
-            return
+        user_msg = data.get("message", "").strip()
+        if not user_msg:
+            return jsonify({"error": "Empty message"}), 400
 
-        if any(term in lower_msg for term in ESCALATION_TERMS):
-            yield (
-                "I'm really sorry you're feeling this way. "
-                "Please reach out to a crisis line or emergency support near you, "
-                "or you can reach out to our SOS services. You're not alone in this. 💙"
-            )
-            return
+        user_id = data.get("user_id", "unknown")
+        current_bot = data.get("botName", "Ava")
+        session_id = f"{user_id}_{current_bot}"
 
-        if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
-            yield (
-                "This topic needs care from a licensed mental health professional. "
-                "Please consider talking with one directly. 🤝"
-            )
-            return
+        # --- Streaming generator ---
+        def generate():
+            try:
+                lower_msg = user_msg.lower()
 
-        # --- Bot switching logic ---
-        correct_bot = None
-        category, confidence = detect_category_with_keywords(user_msg)
+                # --- Safety checks ---
+                if any(term in lower_msg for term in TECHNICAL_TERMS):
+                    yield (
+                        "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
+                        "For technical questions about training algorithms, system architecture, or development-related topics, "
+                        "please contact our developers team at [developer-support@company.com]. 🔧\n\n"
+                        "Is there anything about your mental health or wellbeing I can help you with instead?"
+                    )
+                    return
 
-        if category:
-            correct_bot = BOT_MAP.get(category, category)
+                if any(term in lower_msg for term in ESCALATION_TERMS):
+                    yield (
+                        "I'm really sorry you're feeling this way. "
+                        "Please reach out to a crisis line or emergency support near you, "
+                        "or you can reach out to our SOS services. You're not alone in this. 💙"
+                    )
+                    return
 
-        if correct_bot and correct_bot != current_bot:
-            yield (
-                f"I notice you're dealing with **{category}** concerns. "
-                f"**{correct_bot}** specializes in this area and can provide more targeted support. "
-                "Would you like to switch? 🔄"
-            )
-            return
+                if any(term in lower_msg for term in OUT_OF_SCOPE_TOPICS):
+                    yield (
+                        "This topic needs care from a licensed mental health professional. "
+                        "Please consider talking with one directly. 🤝"
+                    )
+                    return
 
-        # --- Gibberish check ---
-        if is_gibberish(user_msg):
-            yield "Sorry, I didn't get that. Could you please rephrase? 😊"
-            return
+                # --- Bot switching logic ---
+                correct_bot = None
+                category, confidence = detect_category_with_keywords(user_msg)
 
-        # --- PRIORITIZED RESPONSE ---
-        reply = None
-        reply = find_best_response(current_bot, user_msg, threshold=0.6)
+                if category:
+                    correct_bot = BOT_MAP.get(category, category)
 
-        if not reply:
-            reply = markov_generate_response(current_bot, user_msg, max_length=120)
+                if correct_bot and correct_bot != current_bot:
+                    yield (
+                        f"I notice you're dealing with **{category}** concerns. "
+                        f"**{correct_bot}** specializes in this area and can provide more targeted support. "
+                        "Would you like to switch? 🔄"
+                    )
+                    return
 
-        if not reply:
-            reply = fake_response()
+                # --- Gibberish check ---
+                if is_gibberish(user_msg):
+                    yield "Sorry, I didn't get that. Could you please rephrase? 😊"
+                    return
 
-        # --- Stream the reply ---
-        yield "\n\n"
-        for chunk in stream_response(reply):
-            yield chunk
+                # --- PRIORITIZED RESPONSE ---
+                reply = None
+                reply = find_best_response(current_bot, user_msg, threshold=0.6)
 
-        # --- Save to Firestore ---
-        try:
-            now = datetime.now(timezone.utc).isoformat()
-            db.collection("sessions").document(session_id).set({
-                "user_id": user_id,
-                "bot_name": current_bot,
-                "messages": firestore.ArrayUnion([
-                    {"sender": "User", "message": user_msg, "timestamp": now},
-                    {"sender": current_bot, "message": reply, "timestamp": now}
-                ]),
-                "last_updated": firestore.SERVER_TIMESTAMP,
-                "is_active": True
-            }, merge=True)
-        except Exception as e:
-            print(f"[ERROR] Firestore error: {e}")
+                if not reply:
+                    reply = markov_generate_response(current_bot, user_msg, max_length=120)
+
+                if not reply:
+                    reply = fake_response()
+
+                # --- Stream the reply ---
+                yield "\n\n"
+                for chunk in stream_response(reply):
+                    yield chunk
+
+                # --- Save to Firestore ---
+                try:
+                    now = datetime.now(timezone.utc).isoformat()
+                    db.collection("sessions").document(session_id).set({
+                        "user_id": user_id,
+                        "bot_name": current_bot,
+                        "messages": firestore.ArrayUnion([
+                            {"sender": "User", "message": user_msg, "timestamp": now},
+                            {"sender": current_bot, "message": reply, "timestamp": now}
+                        ]),
+                        "last_updated": firestore.SERVER_TIMESTAMP,
+                        "is_active": True
+                    }, merge=True)
+                except Exception as e:
+                    print(f"[ERROR] Firestore error: {e}")
+
+            except Exception as e:
+                print(f"[ERROR] Generation failed: {e}")
+                yield "Sorry, I encountered an error. Please try again."
+
+        # --- Return streaming response ---
+        return Response(generate(), mimetype="text/event-stream")
 
     except Exception as e:
-        print(f"[ERROR] Generation failed: {e}")
-        yield "Sorry, I encountered an error. Please try again."
+        print(f"[CRITICAL] Endpoint error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
 
 
 
@@ -2220,6 +2246,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
