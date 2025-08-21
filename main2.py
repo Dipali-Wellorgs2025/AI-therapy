@@ -668,26 +668,25 @@ BOT_KEYWORDS = {
     ],
 
     "Raya": [  # Crisis
-        "crisis", "urgent", "need help", "need advice", "problem right now",
+        "crisis", "urgent", "problem right now",
         "serious issue", "big problem", "important", "critical", "high stress",
         "overwhelmed", "meltdown", "can't handle this", "falling apart",
         "breaking down", "about to break", "stressed out", "out of control",
         "escalating", "can't think straight", "too much going on",
-        "spinning out", "under pressure", "time sensitive", "need guidance",
-        "need to talk", "need support", "trouble coping", "seriously stressed",
+        "spinning out", "under pressure", "time sensitive","trouble coping", "seriously stressed",
         "need direction", "feeling trapped", "messy situation", "tough spot",
         "hard time", "big trouble", "urgent matter", "falling behind",
         "out of options", "backed into a corner", "can't decide", "torn",
-        "confused", "overloaded", "need clarity", "overthinking",
+        "confused", "overloaded", "overthinking",
         "high tension", "touchy situation", "complex problem", "problematic",
         "feeling lost", "don't know what to do", "tricky situation",
         "hard choice", "crossroads", "complicated", "feeling pressured",
         "time running out", "quick decision", "conflict", "dispute",
         "serious conversation", "sensitive matter", "strained relationship",
         "communication breakdown", "tough call", "difficult choice",
-        "at a loss", "need urgent help", "fast moving situation",
-        "stressful moment", "need resolution", "pressing matter",
-        "heated moment", "stress overload", "need immediate advice"
+        "at a loss", "urgent help", "fast moving situation",
+        "stressful moment", "pressing matter",
+        "heated moment", "stress overload", "immediate advice"
     ]
 }
 
@@ -2234,6 +2233,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
