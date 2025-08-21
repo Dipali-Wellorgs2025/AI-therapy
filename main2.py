@@ -974,6 +974,33 @@ def stream_response(reply):
         chunk = sentence.strip()
         if chunk:
             yield chunk + " "
+#-----------------------------------------------
+
+def detect_category_with_keywords(message):
+    """
+    Category detection:
+    - 1 keyword match triggers detection
+    - Multi-word phrases still work
+    Returns: (category, confidence)
+    """
+    if not message or not isinstance(message, str):
+        return None, None
+
+    lower_msg = f" {message.lower()} "
+    category_scores = {category: 0 for category in CATEGORIES}
+
+    for category in CATEGORIES:
+        bot_name = BOT_MAP[category]
+        for keyword in BOT_KEYWORDS[bot_name]:
+            if f" {keyword} " in lower_msg:
+                category_scores[category] += 1
+
+    best_category = max(category_scores, key=lambda x: category_scores[x])
+    best_score = category_scores[best_category]
+
+    if best_score >= 1:  # allow one match
+        return best_category, "high"
+    return None, None
 
 # ------------------ Utility ------------------
 def is_gibberish(user_msg):
@@ -2206,6 +2233,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
