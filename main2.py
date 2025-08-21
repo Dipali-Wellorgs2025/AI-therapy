@@ -1015,11 +1015,9 @@ def is_gibberish(user_msg):
     return gibberish_count / len(words) > 0.6
 
 # ------------------ Flask Endpoint ------------------
-# ------------------ Flask Endpoint ------------------
 @app.route("/api/newstream", methods=["GET", "POST"])
 def newstream():
     try:
-        # --- Parse request ---
         data = request.args.to_dict() if request.method == "GET" else request.get_json(force=True)
         if not data:
             return jsonify({"error": "No input data"}), 400
@@ -1032,12 +1030,11 @@ def newstream():
         current_bot = data.get("botName", "Ava")
         session_id = f"{user_id}_{current_bot}"
 
-        # --- Streaming generator ---
         def generate():
             try:
                 lower_msg = user_msg.lower()
 
-                # --- Safety checks ---
+                # --- SAFETY & SPECIAL CHECKS ---
                 if any(term in lower_msg for term in TECHNICAL_TERMS):
                     yield (
                         "I understand you're asking about technical aspects, but I'm designed to focus on mental health support. "
@@ -1062,10 +1059,9 @@ def newstream():
                     )
                     return
 
-                # --- Bot switching logic ---
+                # --- BOT SWITCHING ---
                 correct_bot = None
                 category, confidence = detect_category_with_keywords(user_msg)
-
                 if category:
                     correct_bot = BOT_MAP.get(category, category)
 
@@ -1077,13 +1073,12 @@ def newstream():
                     )
                     return
 
-                # --- Gibberish check ---
+                # --- GIBBERISH CHECK ---
                 if is_gibberish(user_msg):
                     yield "Sorry, I didn't get that. Could you please rephrase? 😊"
                     return
 
-                # --- PRIORITIZED RESPONSE ---
-                reply = None
+                # --- PRIORITIZED RESPONSE (JSON → Markov → Fake) ---
                 reply = find_best_response(current_bot, user_msg, threshold=0.6)
 
                 if not reply:
@@ -1117,7 +1112,6 @@ def newstream():
                 print(f"[ERROR] Generation failed: {e}")
                 yield "Sorry, I encountered an error. Please try again."
 
-        # --- Return streaming response ---
         return Response(generate(), mimetype="text/event-stream")
 
     except Exception as e:
@@ -2246,6 +2240,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
