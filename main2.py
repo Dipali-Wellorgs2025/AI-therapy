@@ -888,8 +888,7 @@ def normalize_text(text: str) -> str:
 
 def find_best_response(bot_name, user_input, threshold=0.65):
     """Find best matching Assistant reply from bot's JSON.
-       Step 1: Try exact / direct matches
-       Step 2: If not found, try fuzzy similarity
+       First check for exact cleaned match, if not found then use similarity.
     """
     conversations = get_bot_responses().get(bot_name, [])
     if not conversations:
@@ -897,26 +896,27 @@ def find_best_response(bot_name, user_input, threshold=0.65):
 
     user_input_clean = normalize_text(user_input)
 
-    # -------- Step 1: Exact / direct match --------
+    # 1️⃣ Exact Match Check (cleaned)
     for i in range(0, len(conversations) - 1, 2):
-        if conversations[i]["role"] == "User" and conversations[i+1]["role"] == "Assistant":
-            conv_content = normalize_text(conversations[i].get("content", ""))
-            if user_input_clean == conv_content:
-                return conversations[i+1].get("content")
+        if not (conversations[i]["role"] == "User" and conversations[i+1]["role"] == "Assistant"):
+            continue
 
-    # -------- Step 2: Fuzzy + overlap match --------
+        conv_content_clean = normalize_text(conversations[i].get("content", ""))
+        if user_input_clean == conv_content_clean:
+            return conversations[i+1].get("content")
+
+    # 2️⃣ Similarity Check (only if no exact match found)
     best_score, best_reply = threshold, None
     for i in range(0, len(conversations) - 1, 2):
         if not (conversations[i]["role"] == "User" and conversations[i+1]["role"] == "Assistant"):
             continue
 
-        conv_content = normalize_text(conversations[i].get("content", ""))
-        sequence_score = SequenceMatcher(None, user_input_clean, conv_content).ratio()
+        conv_content_clean = normalize_text(conversations[i].get("content", ""))
 
+        sequence_score = SequenceMatcher(None, user_input_clean, conv_content_clean).ratio()
         user_words = set(user_input_clean.split())
-        conv_words = set(conv_content.split())
+        conv_words = set(conv_content_clean.split())
         overlap_score = len(user_words & conv_words) / max(len(user_words), 1)
-
         combined_score = (sequence_score * 0.7) + (overlap_score * 0.3)
 
         if combined_score > best_score:
@@ -2247,6 +2247,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")
 
  
+
 
 
 
